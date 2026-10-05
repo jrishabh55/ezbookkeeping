@@ -1,0 +1,32 @@
+Account Statement for Account Number 0000000000009999
+
+Branch Details,
+Branch Name:,TEST BRANCH
+Branch Address:,1 TEST ROAD 
+City:, TEST 
+Pin:, 000000
+IFSC:,PUNB0000000
+MICR Code:,000000000
+
+Customer Details,
+Customer Name:,TEST USER
+Customer Address:,1 TEST STREET
+City:,TEST CITY
+Pin:,000000
+Nominee:1,TEST
+
+Statement Period:     01-04-2026    to     30-04-2026
+
+Txn No.,Txn Date,Description,Branch Name,Cheque No.,Dr Amount,Cr Amount,Balance
+S00000005,30/04/2026,1234567890:Int.Pd:01-04-2026 to 30-04-2026,-,,,12.5,61262.5 Cr.,
+S00000004,20/04/2026,"NEFT_OUT:TEST0000001/Test User, Savings/HDFC0000001",-,,"1,000.0",,61250.0 Cr.,
+S00000003,10/04/2026,IMPS-IN/000000000001/0000000000/TEST EMPLOYER,-,,,50000.0,62250.0 Cr.,
+S00000002,05/04/2026,SMS CHRG FOR:01-01-2026to31-03-2026,-,,11.8,,12250.0 Cr.,
+S0000001,01/04/2026,IMPS-OUT/000000000002/HDFC0000001/0000000000,-,,738.2,,12261.8 Cr.,
+
+***Generated through PNB ONE ***
+"1.  Unless constituent notifies the bank immediately of any discrepancy, it will be taken that he/she has found the account correct.
+2. Computer generated entries shown in the statement of account do not require any authentication.
+"3. Abbreviations are as under:
+ BR: Branch Name , Csh: Cash , Clg: Clearing
+ Ret:Returning , Chq: Cheque , SI: Standing Instruction"

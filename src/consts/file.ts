@@ -332,6 +332,11 @@ export const SUPPORTED_IMPORT_FILE_CATEGORY_AND_TYPES: ImportFileCategoryAndType
                 extensions: '.xls'
             },
             {
+                type: 'pnb_one_csv',
+                name: 'Punjab National Bank (PNB ONE) Account Statement File',
+                extensions: '.csv'
+            },
+            {
                 type: 'jdcom_finance_app_csv',
                 name: 'JD.com Finance Statement File',
                 extensions: '.csv',

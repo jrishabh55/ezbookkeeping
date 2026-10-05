@@ -17,6 +17,7 @@ import (
 	"github.com/mayswind/ezbookkeeping/pkg/converters/jdcom"
 	"github.com/mayswind/ezbookkeeping/pkg/converters/mt"
 	"github.com/mayswind/ezbookkeeping/pkg/converters/ofx"
+	"github.com/mayswind/ezbookkeeping/pkg/converters/pnb"
 	"github.com/mayswind/ezbookkeeping/pkg/converters/qif"
 	"github.com/mayswind/ezbookkeeping/pkg/converters/wechat"
 	"github.com/mayswind/ezbookkeeping/pkg/errs"
@@ -88,6 +89,8 @@ func GetTransactionDataImporter(fileType string) (converter.TransactionDataImpor
 		return jdcom.JDComFinanceTransactionDataCsvFileImporter, nil
 	} else if fileType == "hdfc_bank_xls" {
 		return hdfc.HdfcBankTransactionDataXlsFileImporter, nil
+	} else if fileType == "pnb_one_csv" {
+		return pnb.PnbOneTransactionDataCsvFileImporter, nil
 	} else {
 		return nil, errs.ErrImportFileTypeNotSupported
 	}

@@ -43,8 +43,10 @@ jobs:
           platforms: linux/${{ matrix.arch }}
           push: true
           tags: ${{ env.IMAGE }}:${{ github.ref_name }}-${{ matrix.arch }}
+          # BUILD_PIPELINE=1 makes the tests that call live third-party exchange rate apis skip themselves, as in upstream ci
           build-args: |
             RELEASE_BUILD=1
+            BUILD_PIPELINE=1
           cache-from: type=gha,scope=${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
 
