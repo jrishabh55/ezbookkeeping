@@ -181,5 +181,53 @@ func updateAllDatabaseTablesStructure(c *core.CliContext) error {
 
 	log.BootInfof(c, "[database.updateAllDatabaseTablesStructure] insights explorer table maintained successfully")
 
+	err = datastore.Container.UserDataStore.SyncStructs(new(models.Budget))
+
+	if err != nil {
+		return err
+	}
+
+	log.BootInfof(c, "[database.updateAllDatabaseTablesStructure] budget table maintained successfully")
+
+	err = datastore.Container.UserDataStore.SyncStructs(new(models.BudgetScope))
+
+	if err != nil {
+		return err
+	}
+
+	log.BootInfof(c, "[database.updateAllDatabaseTablesStructure] budget scope table maintained successfully")
+
+	err = datastore.Container.UserDataStore.SyncStructs(new(models.BudgetCycle))
+
+	if err != nil {
+		return err
+	}
+
+	log.BootInfof(c, "[database.updateAllDatabaseTablesStructure] budget cycle table maintained successfully")
+
+	err = datastore.Container.UserDataStore.SyncStructs(new(models.Bucket))
+
+	if err != nil {
+		return err
+	}
+
+	log.BootInfof(c, "[database.updateAllDatabaseTablesStructure] bucket table maintained successfully")
+
+	err = datastore.Container.UserDataStore.SyncStructs(new(models.BucketAccount))
+
+	if err != nil {
+		return err
+	}
+
+	log.BootInfof(c, "[database.updateAllDatabaseTablesStructure] bucket account table maintained successfully")
+
+	err = datastore.Container.UserDataStore.SyncStructs(new(models.BucketTransaction))
+
+	if err != nil {
+		return err
+	}
+
+	log.BootInfof(c, "[database.updateAllDatabaseTablesStructure] bucket transaction table maintained successfully")
+
 	return nil
 }

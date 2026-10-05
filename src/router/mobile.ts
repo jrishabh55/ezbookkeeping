@@ -51,6 +51,9 @@ import TagGroupListPage from '@/views/mobile/tags/GroupListPage.vue';
 
 import TemplateListPage from '@/views/mobile/templates/ListPage.vue';
 
+import BudgetListPage from '@/views/mobile/budgets/ListPage.vue';
+import BucketListPage from '@/views/mobile/buckets/ListPage.vue';
+
 function asyncResolve(component: unknown): (ctx: Router.RouteCallbackCtx) => void {
     return function({ resolve }: { resolve: ({ component }: { component: unknown }) => void }): void {
         return resolve({
@@ -366,6 +369,16 @@ const routes: Router.RouteParameters[] = [
     {
         path: '/template/edit',
         async: asyncResolve(TransactionEditPage),
+        beforeEnter: [checkLogin]
+    },
+    {
+        path: '/budget/list',
+        async: asyncResolve(BudgetListPage),
+        beforeEnter: [checkLogin]
+    },
+    {
+        path: '/bucket/list',
+        async: asyncResolve(BucketListPage),
         beforeEnter: [checkLogin]
     },
     {

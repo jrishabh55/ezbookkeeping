@@ -45,6 +45,9 @@ import DeveloperToolsPage from '@/views/desktop/settings/DeveloperToolsPage.vue'
 
 import ExchangeRatesListPage from '@/views/desktop/exchangerates/ListPage.vue';
 
+import BudgetListPage from '@/views/desktop/budgets/ListPage.vue';
+import BucketListPage from '@/views/desktop/buckets/ListPage.vue';
+
 function checkLogin(): NavigationGuardReturn {
     if (!isUserLogined()) {
         return {
@@ -197,6 +200,16 @@ const router = createRouter({
                 {
                     path: '/custom_icon/list',
                     component: UserCustomIconListPage,
+                    beforeEnter: checkLogin
+                },
+                {
+                    path: '/budget/list',
+                    component: BudgetListPage,
+                    beforeEnter: checkLogin
+                },
+                {
+                    path: '/bucket/list',
+                    component: BucketListPage,
                     beforeEnter: checkLogin
                 },
                 {

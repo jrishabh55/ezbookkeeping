@@ -27,6 +27,24 @@
 
             <li class="nav-section-title">
                 <div class="title-wrapper">
+                    <span class="title-text">{{ tt('Planning') }}</span>
+                </div>
+            </li>
+            <li class="nav-link">
+                <router-link to="/budget/list">
+                    <v-icon class="nav-item-icon" :icon="mdiWalletOutline"/>
+                    <span class="nav-item-title">{{ tt('Budgets') }}</span>
+                </router-link>
+            </li>
+            <li class="nav-link">
+                <router-link to="/bucket/list">
+                    <v-icon class="nav-item-icon" :icon="mdiPiggyBankOutline"/>
+                    <span class="nav-item-title">{{ tt('Buckets') }}</span>
+                </router-link>
+            </li>
+
+            <li class="nav-section-title">
+                <div class="title-wrapper">
                     <span class="title-text">{{ tt('Basis Data') }}</span>
                 </div>
             </li>
@@ -150,7 +168,9 @@ import {
     mdiCloudOutline,
     mdiSwapHorizontal,
     mdiDatabaseClockOutline,
-    mdiCodeBraces
+    mdiCodeBraces,
+    mdiWalletOutline,
+    mdiPiggyBankOutline
 } from '@mdi/js';
 
 const route = useRoute();

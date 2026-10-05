@@ -515,6 +515,29 @@ func startWebServer(c *core.CliContext) error {
 			apiV1Route.POST("/exchange_rates/user_custom/update.json", bindApi(api.ExchangeRates.UserCustomExchangeRateUpdateHandler, config))
 			apiV1Route.POST("/exchange_rates/user_custom/delete.json", bindApi(api.ExchangeRates.UserCustomExchangeRateDeleteHandler, config))
 
+			// Budgets
+			apiV1Route.GET("/budgets/list.json", bindApi(api.Budgets.BudgetListHandler, config))
+			apiV1Route.GET("/budgets/get.json", bindApi(api.Budgets.BudgetGetHandler, config))
+			apiV1Route.POST("/budgets/add.json", bindApi(api.Budgets.BudgetCreateHandler, config))
+			apiV1Route.POST("/budgets/modify.json", bindApi(api.Budgets.BudgetModifyHandler, config))
+			apiV1Route.POST("/budgets/hide.json", bindApi(api.Budgets.BudgetHideHandler, config))
+			apiV1Route.POST("/budgets/move.json", bindApi(api.Budgets.BudgetMoveHandler, config))
+			apiV1Route.POST("/budgets/delete.json", bindApi(api.Budgets.BudgetDeleteHandler, config))
+			apiV1Route.GET("/budgets/progress.json", bindApi(api.Budgets.BudgetProgressHandler, config))
+
+			// Buckets
+			apiV1Route.GET("/buckets/list.json", bindApi(api.Buckets.BucketListHandler, config))
+			apiV1Route.GET("/buckets/get.json", bindApi(api.Buckets.BucketGetHandler, config))
+			apiV1Route.POST("/buckets/add.json", bindApi(api.Buckets.BucketCreateHandler, config))
+			apiV1Route.POST("/buckets/modify.json", bindApi(api.Buckets.BucketModifyHandler, config))
+			apiV1Route.POST("/buckets/hide.json", bindApi(api.Buckets.BucketHideHandler, config))
+			apiV1Route.POST("/buckets/move.json", bindApi(api.Buckets.BucketMoveHandler, config))
+			apiV1Route.POST("/buckets/delete.json", bindApi(api.Buckets.BucketDeleteHandler, config))
+			apiV1Route.POST("/buckets/allocate.json", bindApi(api.Buckets.BucketAllocateHandler, config))
+			apiV1Route.POST("/buckets/withdraw.json", bindApi(api.Buckets.BucketWithdrawHandler, config))
+			apiV1Route.GET("/buckets/transactions/list.json", bindApi(api.Buckets.BucketTransactionListHandler, config))
+			apiV1Route.POST("/buckets/transactions/delete.json", bindApi(api.Buckets.BucketTransactionDeleteHandler, config))
+
 			// System
 			apiV1Route.GET("/systems/version.json", bindApi(api.Systems.VersionHandler, config))
 		}

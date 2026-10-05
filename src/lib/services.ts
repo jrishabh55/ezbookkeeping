@@ -190,6 +190,22 @@ import type {
     UserCustomIconMoveRequest,
     UserCustomIconDeleteRequest
 } from '@/models/user_custom_icon.ts';
+import type {
+    BudgetInfoResponse,
+    BudgetCreateRequest,
+    BudgetModifyRequest,
+    BudgetMoveRequest,
+    BudgetProgressResponse
+} from '@/models/budget.ts';
+import type {
+    BucketInfoResponse,
+    BucketCreateRequest,
+    BucketModifyRequest,
+    BucketMoveRequest,
+    BucketAllocateRequest,
+    BucketWithdrawRequest,
+    BucketTransactionInfoResponse
+} from '@/models/bucket.ts';
 
 import {
     getCurrentToken,
@@ -941,6 +957,70 @@ export default {
     },
     deleteUserCustomExchangeRate: (req: UserCustomExchangeRateDeleteRequest): ApiResponsePromise<boolean> => {
         return axios.post<ApiResponse<boolean>>('v1/exchange_rates/user_custom/delete.json', req);
+    },
+    getAllBudgets: (): ApiResponsePromise<BudgetInfoResponse[]> => {
+        return axios.get<ApiResponse<BudgetInfoResponse[]>>('v1/budgets/list.json');
+    },
+    getBudget: ({ id }: { id: string }): ApiResponsePromise<BudgetInfoResponse> => {
+        return axios.get<ApiResponse<BudgetInfoResponse>>('v1/budgets/get.json?id=' + id);
+    },
+    addBudget: (req: BudgetCreateRequest): ApiResponsePromise<BudgetInfoResponse> => {
+        return axios.post<ApiResponse<BudgetInfoResponse>>('v1/budgets/add.json', req);
+    },
+    modifyBudget: (req: BudgetModifyRequest): ApiResponsePromise<BudgetInfoResponse> => {
+        return axios.post<ApiResponse<BudgetInfoResponse>>('v1/budgets/modify.json', req);
+    },
+    hideBudget: (req: { id: string, hidden: boolean }): ApiResponsePromise<boolean> => {
+        return axios.post<ApiResponse<boolean>>('v1/budgets/hide.json', req);
+    },
+    moveBudget: (req: BudgetMoveRequest): ApiResponsePromise<boolean> => {
+        return axios.post<ApiResponse<boolean>>('v1/budgets/move.json', req);
+    },
+    deleteBudget: (req: { id: string }): ApiResponsePromise<boolean> => {
+        return axios.post<ApiResponse<boolean>>('v1/budgets/delete.json', req);
+    },
+    getBudgetProgress: ({ id, startTime, endTime }: { id: string, startTime?: number, endTime?: number }): ApiResponsePromise<BudgetProgressResponse> => {
+        let url = 'v1/budgets/progress.json?id=' + id;
+        if (startTime) url += '&startTime=' + startTime;
+        if (endTime) url += '&endTime=' + endTime;
+        return axios.get<ApiResponse<BudgetProgressResponse>>(url);
+    },
+    getAllBuckets: (): ApiResponsePromise<BucketInfoResponse[]> => {
+        return axios.get<ApiResponse<BucketInfoResponse[]>>('v1/buckets/list.json');
+    },
+    getBucket: ({ id }: { id: string }): ApiResponsePromise<BucketInfoResponse> => {
+        return axios.get<ApiResponse<BucketInfoResponse>>('v1/buckets/get.json?id=' + id);
+    },
+    addBucket: (req: BucketCreateRequest): ApiResponsePromise<BucketInfoResponse> => {
+        return axios.post<ApiResponse<BucketInfoResponse>>('v1/buckets/add.json', req);
+    },
+    modifyBucket: (req: BucketModifyRequest): ApiResponsePromise<BucketInfoResponse> => {
+        return axios.post<ApiResponse<BucketInfoResponse>>('v1/buckets/modify.json', req);
+    },
+    hideBucket: (req: { id: string, hidden: boolean }): ApiResponsePromise<boolean> => {
+        return axios.post<ApiResponse<boolean>>('v1/buckets/hide.json', req);
+    },
+    moveBucket: (req: BucketMoveRequest): ApiResponsePromise<boolean> => {
+        return axios.post<ApiResponse<boolean>>('v1/buckets/move.json', req);
+    },
+    deleteBucket: (req: { id: string }): ApiResponsePromise<boolean> => {
+        return axios.post<ApiResponse<boolean>>('v1/buckets/delete.json', req);
+    },
+    allocateToBucket: (req: BucketAllocateRequest): ApiResponsePromise<BucketTransactionInfoResponse> => {
+        return axios.post<ApiResponse<BucketTransactionInfoResponse>>('v1/buckets/allocate.json', req);
+    },
+    withdrawFromBucket: (req: BucketWithdrawRequest): ApiResponsePromise<BucketTransactionInfoResponse> => {
+        return axios.post<ApiResponse<BucketTransactionInfoResponse>>('v1/buckets/withdraw.json', req);
+    },
+    getBucketTransactions: ({ bucketId, maxTime, minTime, count }: { bucketId: string, maxTime?: number, minTime?: number, count?: number }): ApiResponsePromise<BucketTransactionInfoResponse[]> => {
+        let url = 'v1/buckets/transactions/list.json?bucketId=' + bucketId;
+        if (maxTime) url += '&maxTime=' + maxTime;
+        if (minTime) url += '&minTime=' + minTime;
+        if (count) url += '&count=' + count;
+        return axios.get<ApiResponse<BucketTransactionInfoResponse[]>>(url);
+    },
+    deleteBucketTransaction: (req: { id: string }): ApiResponsePromise<boolean> => {
+        return axios.post<ApiResponse<boolean>>('v1/buckets/transactions/delete.json', req);
     },
     getServerVersion: (): ApiResponsePromise<VersionInfo> => {
         return axios.get<ApiResponse<VersionInfo>>('v1/systems/version.json');
