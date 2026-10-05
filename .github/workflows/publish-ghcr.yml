@@ -1,0 +1,69 @@
+name: Publish Docker Image to GHCR
+
+# Builds the fork's deploy branch for amd64 and arm64 on native runners and
+# publishes ghcr.io/<owner>/ezbookkeeping:<branch>, which the Dokploy server pulls.
+
+on:
+  push:
+    branches:
+      - budgets-buckets
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/ezbookkeeping
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/${{ matrix.arch }}
+          push: true
+          tags: ${{ env.IMAGE }}:${{ github.ref_name }}-${{ matrix.arch }}
+          build-args: |
+            RELEASE_BUILD=1
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
+
+  manifest:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Combine per-arch images under one tag
+        run: |
+          docker buildx imagetools create \
+            -t "$IMAGE:${{ github.ref_name }}" \
+            -t "$IMAGE:${{ github.ref_name }}-${{ github.sha }}" \
+            "$IMAGE:${{ github.ref_name }}-amd64" \
+            "$IMAGE:${{ github.ref_name }}-arm64"
