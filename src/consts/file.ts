@@ -327,6 +327,11 @@ export const SUPPORTED_IMPORT_FILE_CATEGORY_AND_TYPES: ImportFileCategoryAndType
                 }
             },
             {
+                type: 'hdfc_bank_xls',
+                name: 'HDFC Bank Account Statement File',
+                extensions: '.xls'
+            },
+            {
                 type: 'jdcom_finance_app_csv',
                 name: 'JD.com Finance Statement File',
                 extensions: '.csv',
