@@ -6,7 +6,7 @@
                     <div class="d-flex align-center">
                         <span>{{ tt('SMS Auto-capture') }}</span>
                         <v-btn density="compact" color="default" variant="text" size="24" class="ms-2"
-                               :aria-label="tt('Refresh')" :icon="true" :loading="loading" @click="loadStatus(false)">
+                               :aria-label="tt('Refresh')" :icon="true" :loading="loading" @click="refreshStatus">
                             <template #loader>
                                 <v-progress-circular indeterminate size="20"/>
                             </template>
@@ -134,14 +134,12 @@ import ConfirmDialog from '@/components/desktop/ConfirmDialog.vue';
 import SnackBar from '@/components/desktop/SnackBar.vue';
 import { VTextField } from 'vuetify/components/VTextField';
 
-import { ref, computed, onBeforeUnmount, useTemplateRef } from 'vue';
+import { ref, onBeforeUnmount, useTemplateRef } from 'vue';
 
 import { useI18n } from '@/locales/helpers.ts';
 
-import { useAlertsStore } from '@/stores/alert.ts';
-import type { AlertStatusResponse } from '@/models/alert.ts';
+import { useSmsCapturePageBase } from '@/views/base/settings/SmsCapturePageBase.ts';
 
-import { parseDateTimeFromUnixTime } from '@/lib/datetime.ts';
 import { copyTextToClipboard } from '@/lib/ui/common.ts';
 
 import { mdiRefresh } from '@mdi/js';
@@ -149,69 +147,35 @@ import { mdiRefresh } from '@mdi/js';
 type ConfirmDialogType = InstanceType<typeof ConfirmDialog>;
 type SnackBarType = InstanceType<typeof SnackBar>;
 
-const TEST_POLL_INTERVAL_MILLS = 3000;
-const TEST_POLL_MAX_DURATION_MILLS = 2 * 60 * 1000;
+const { tt } = useI18n();
 
-const { tt, formatDateTimeToLongDateTime } = useI18n();
-
-const alertsStore = useAlertsStore();
+const {
+    loading,
+    status,
+    settingUp,
+    revoking,
+    testing,
+    lastReceivedDisplay,
+    lastOutcomeDisplay,
+    loadStatus,
+    createToken,
+    revokeToken,
+    sendTest: sendTestPoll,
+    stopTestPoll
+} = useSmsCapturePageBase();
 
 const currentPasswordInput = useTemplateRef<VTextField>('currentPasswordInput');
 const confirmDialog = useTemplateRef<ConfirmDialogType>('confirmDialog');
 const snackbar = useTemplateRef<SnackBarType>('snackbar');
 const tokenButtonContainer = useTemplateRef<HTMLElement>('tokenButtonContainer');
 
-const loading = ref<boolean>(true);
-const status = ref<AlertStatusResponse | null>(null);
 const showSetupForm = ref<boolean>(false);
-const settingUp = ref<boolean>(false);
-const revoking = ref<boolean>(false);
-const testing = ref<boolean>(false);
 const currentPassword = ref<string>('');
 const generatedToken = ref<string>('');
 
-let testPollTimer: ReturnType<typeof setInterval> | null = null;
-
-const lastReceivedDisplay = computed<string>(() => {
-    if (!status.value || !status.value.lastReceivedAt) {
-        return tt('Never');
-    }
-
-    return formatDateTimeToLongDateTime(parseDateTimeFromUnixTime(status.value.lastReceivedAt));
-});
-
-const lastOutcomeDisplay = computed<string>(() => {
-    if (!status.value || !status.value.lastOutcome) {
-        return tt('Never');
-    }
-
-    return outcomeDisplayName(status.value.lastOutcome);
-});
-
-function outcomeDisplayName(outcome: string): string {
-    if (outcome === 'added') {
-        return tt('Added');
-    } else if (outcome === 'duplicate') {
-        return tt('Duplicate');
-    } else if (outcome === 'ignored') {
-        return tt('Ignored');
-    } else if (outcome === 'unparsed') {
-        return tt('Unparsed');
-    }
-
-    return outcome;
-}
-
-function loadStatus(silent?: boolean): void {
-    loading.value = true;
-
-    alertsStore.getAlertStatus().then(response => {
-        status.value = response;
-        loading.value = false;
-    }).catch(error => {
-        loading.value = false;
-
-        if (!silent && !error.processed) {
+function refreshStatus(): void {
+    loadStatus(true).catch(error => {
+        if (!error.processed) {
             snackbar.value?.showError(error);
         }
     });
@@ -234,18 +198,17 @@ function setUp(): void {
         return;
     }
 
-    settingUp.value = true;
-
-    alertsStore.createAlertToken({ password: currentPassword.value }).then(response => {
-        settingUp.value = false;
+    createToken(currentPassword.value).then(response => {
         currentPassword.value = '';
         showSetupForm.value = false;
         generatedToken.value = response.token;
 
-        loadStatus(true);
+        loadStatus(false).catch(error => {
+            if (!error.processed) {
+                snackbar.value?.showError(error);
+            }
+        });
     }).catch(error => {
-        settingUp.value = false;
-
         if (!error.processed) {
             snackbar.value?.showError(error);
         }
@@ -262,46 +225,17 @@ function closeToken(): void {
 }
 
 function sendTest(): void {
-    if (!status.value || !status.value.configured || testing.value) {
-        return;
-    }
+    sendTestPoll(
+        (outcomeText) => snackbar.value?.showMessage(outcomeText),
+        () => snackbar.value?.showMessage('No test SMS received within 2 minutes'),
+        (error) => {
+            const err = error as { processed?: boolean, message?: string };
 
-    const lastReceivedAtAtStart = status.value.lastReceivedAt;
-    testing.value = true;
-
-    stopTestPoll();
-
-    const startTime = Date.now();
-
-    testPollTimer = setInterval(() => {
-        if (Date.now() - startTime >= TEST_POLL_MAX_DURATION_MILLS) {
-            stopTestPoll();
-            testing.value = false;
-            snackbar.value?.showMessage('No test SMS received within 2 minutes');
-            return;
+            if (!err.processed) {
+                snackbar.value?.showError(err.message ? { message: err.message } : (error as string));
+            }
         }
-
-        alertsStore.getAlertStatus().then(response => {
-            status.value = response;
-
-            if (response.lastReceivedAt > lastReceivedAtAtStart) {
-                stopTestPoll();
-                testing.value = false;
-                snackbar.value?.showMessage(outcomeDisplayName(response.lastOutcome));
-            }
-        }).catch(error => {
-            if (!error.processed) {
-                snackbar.value?.showError(error);
-            }
-        });
-    }, TEST_POLL_INTERVAL_MILLS);
-}
-
-function stopTestPoll(): void {
-    if (testPollTimer !== null) {
-        clearInterval(testPollTimer);
-        testPollTimer = null;
-    }
+    );
 }
 
 function revoke(): void {
@@ -310,15 +244,15 @@ function revoke(): void {
     }
 
     confirmDialog.value?.open('Are you sure you want to revoke the SMS Auto-capture token?').then(() => {
-        revoking.value = true;
-
-        alertsStore.revokeAlertToken().then(() => {
-            revoking.value = false;
+        revokeToken().then(() => {
             snackbar.value?.showMessage('SMS Auto-capture has been revoked');
-            loadStatus(true);
-        }).catch(error => {
-            revoking.value = false;
 
+            loadStatus(false).catch(error => {
+                if (!error.processed) {
+                    snackbar.value?.showError(error);
+                }
+            });
+        }).catch(error => {
             if (!error.processed) {
                 snackbar.value?.showError(error);
             }
@@ -333,5 +267,5 @@ onBeforeUnmount(() => {
     stopTestPoll();
 });
 
-loadStatus();
+refreshStatus();
 </script>

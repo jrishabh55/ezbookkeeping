@@ -8,13 +8,13 @@
 
         <f7-list strong inset dividers class="margin-vertical-half skeleton-text" v-if="loading">
             <f7-list-item title="Status" after="Unknown"></f7-list-item>
-            <f7-list-item title="Last Received" after="Unknown"></f7-list-item>
+            <f7-list-item media-item title="Last Received" text="Unknown"></f7-list-item>
             <f7-list-item title="Last Outcome" after="Unknown"></f7-list-item>
         </f7-list>
 
         <f7-list strong inset dividers class="margin-vertical-half" v-else-if="!loading">
             <f7-list-item :title="tt('Status')" :after="tt(status && status.configured ? 'Enabled' : 'Not Set Up')"></f7-list-item>
-            <f7-list-item :title="tt('Last Received')" :after="lastReceivedDisplay"></f7-list-item>
+            <f7-list-item media-item :title="tt('Last Received')" :text="lastReceivedDisplay"></f7-list-item>
             <f7-list-item :title="tt('Last Outcome')" :after="lastOutcomeDisplay"></f7-list-item>
         </f7-list>
 
@@ -37,8 +37,8 @@
             <ol class="padding-inline-start no-margin">
                 <li>{{ tt('Tap "Install Shortcut" above and add it to your iPhone.') }}</li>
                 <li>{{ tt('When prompted, paste your SMS Auto-capture token as the setup code.') }}</li>
-                <li>{{ tt('In the Shortcuts app, create an Automation: Message → Message Contains your bank\'s sender → Run Immediately → Run Shortcut ("Record bank SMS").') }}</li>
-                <li>{{ tt('Turn off "Ask Before Running" so new bank SMS are captured automatically.') }}</li>
+                <li>{{ tt('In the Shortcuts app, create two Automations — Message → Message Contains "Rs", and Message → Message Contains "INR" — each set to Run Immediately → Run Shortcut ("Record bank SMS").') }}</li>
+                <li>{{ tt('Turn off "Ask Before Running" on both automations so new bank SMS are captured automatically.') }}</li>
             </ol>
         </f7-block>
 
@@ -64,89 +64,46 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onBeforeUnmount } from 'vue';
+import { ref, onBeforeUnmount } from 'vue';
 import type { Router } from 'framework7/types';
 
 import { useI18n } from '@/locales/helpers.ts';
 import { useI18nUIComponents, showLoading, hideLoading } from '@/lib/ui/mobile.ts';
 
-import { parseDateTimeFromUnixTime } from '@/lib/datetime.ts';
-
-import { useAlertsStore } from '@/stores/alert.ts';
-import type { AlertStatusResponse } from '@/models/alert.ts';
-
-const TEST_POLL_INTERVAL_MILLS = 3000;
-const TEST_POLL_MAX_DURATION_MILLS = 2 * 60 * 1000;
+import { useSmsCapturePageBase } from '@/views/base/settings/SmsCapturePageBase.ts';
 
 const props = defineProps<{
     f7router: Router.Router;
 }>();
 
-const { tt, formatDateTimeToLongDateTime } = useI18n();
+const { tt } = useI18n();
 const { showToast, showConfirm, openExternalUrl, routeBackOnError } = useI18nUIComponents();
 
-const alertsStore = useAlertsStore();
+const {
+    loading,
+    status,
+    settingUp,
+    revoking,
+    testing,
+    lastReceivedDisplay,
+    lastOutcomeDisplay,
+    loadStatus,
+    createToken,
+    revokeToken,
+    sendTest: sendTestPoll,
+    stopTestPoll
+} = useSmsCapturePageBase();
 
-const loading = ref<boolean>(true);
 const loadingError = ref<unknown | null>(null);
-const status = ref<AlertStatusResponse | null>(null);
-const settingUp = ref<boolean>(false);
-const revoking = ref<boolean>(false);
-const testing = ref<boolean>(false);
 const currentPassword = ref<string>('');
 const generatedToken = ref<string>('');
 const showPasswordSheet = ref<boolean>(false);
 const showTokenSheet = ref<boolean>(false);
 
-let testPollTimer: ReturnType<typeof setInterval> | null = null;
-
-const lastReceivedDisplay = computed<string>(() => {
-    if (!status.value || !status.value.lastReceivedAt) {
-        return tt('Never');
-    }
-
-    return formatDateTimeToLongDateTime(parseDateTimeFromUnixTime(status.value.lastReceivedAt));
-});
-
-const lastOutcomeDisplay = computed<string>(() => {
-    if (!status.value || !status.value.lastOutcome) {
-        return tt('Never');
-    }
-
-    return outcomeDisplayName(status.value.lastOutcome);
-});
-
-function outcomeDisplayName(outcome: string): string {
-    if (outcome === 'added') {
-        return tt('Added');
-    } else if (outcome === 'duplicate') {
-        return tt('Duplicate');
-    } else if (outcome === 'ignored') {
-        return tt('Ignored');
-    } else if (outcome === 'unparsed') {
-        return tt('Unparsed');
-    }
-
-    return outcome;
-}
-
-function loadStatus(silent?: boolean): void {
-    if (!silent) {
-        loading.value = true;
-    }
-
-    alertsStore.getAlertStatus().then(response => {
-        status.value = response;
-        loading.value = false;
-    }).catch(error => {
-        if (error.processed) {
-            loading.value = false;
-        } else {
-            if (!silent) {
-                loadingError.value = error;
-            }
-
-            loading.value = false;
+function initialLoad(): void {
+    loadStatus(true).catch(error => {
+        if (!error.processed) {
+            loadingError.value = error;
             showToast(error.message || error);
         }
     });
@@ -159,11 +116,9 @@ function setUp(password: string | null): void {
         return;
     }
 
-    settingUp.value = true;
     showLoading(() => settingUp.value);
 
-    alertsStore.createAlertToken({ password }).then(response => {
-        settingUp.value = false;
+    createToken(password).then(response => {
         currentPassword.value = '';
         hideLoading();
 
@@ -171,9 +126,12 @@ function setUp(password: string | null): void {
         generatedToken.value = response.token;
         showTokenSheet.value = true;
 
-        loadStatus(true);
+        loadStatus(false).catch(error => {
+            if (!error.processed) {
+                showToast(error.message || error);
+            }
+        });
     }).catch(error => {
-        settingUp.value = false;
         hideLoading();
 
         if (!error.processed) {
@@ -195,47 +153,17 @@ function installShortcut(): void {
 }
 
 function sendTest(): void {
-    if (!status.value || !status.value.configured || testing.value) {
-        return;
-    }
+    sendTestPoll(
+        (outcomeText) => showToast(outcomeText),
+        () => showToast('No test SMS received within 2 minutes'),
+        (error) => {
+            const err = error as { processed?: boolean, message?: string };
 
-    const lastReceivedAtAtStart = status.value.lastReceivedAt;
-    testing.value = true;
-
-    stopTestPoll();
-
-    const startTime = Date.now();
-
-    testPollTimer = setInterval(() => {
-        if (Date.now() - startTime >= TEST_POLL_MAX_DURATION_MILLS) {
-            stopTestPoll();
-            testing.value = false;
-            showToast('No test SMS received within 2 minutes');
-            return;
+            if (!err.processed) {
+                showToast(err.message || (error as string));
+            }
         }
-
-        alertsStore.getAlertStatus().then(response => {
-            const newStatus = response;
-            status.value = newStatus;
-
-            if (newStatus.lastReceivedAt > lastReceivedAtAtStart) {
-                stopTestPoll();
-                testing.value = false;
-                showToast(outcomeDisplayName(newStatus.lastOutcome));
-            }
-        }).catch(error => {
-            if (!error.processed) {
-                showToast(error.message || error);
-            }
-        });
-    }, TEST_POLL_INTERVAL_MILLS);
-}
-
-function stopTestPoll(): void {
-    if (testPollTimer !== null) {
-        clearInterval(testPollTimer);
-        testPollTimer = null;
-    }
+    );
 }
 
 function revoke(): void {
@@ -244,17 +172,19 @@ function revoke(): void {
     }
 
     showConfirm('Are you sure you want to revoke the SMS Auto-capture token?', () => {
-        revoking.value = true;
         showLoading(() => revoking.value);
 
-        alertsStore.revokeAlertToken().then(() => {
-            revoking.value = false;
+        revokeToken().then(() => {
             hideLoading();
 
             showToast('SMS Auto-capture has been revoked');
-            loadStatus(true);
+
+            loadStatus(false).catch(error => {
+                if (!error.processed) {
+                    showToast(error.message || error);
+                }
+            });
         }).catch(error => {
-            revoking.value = false;
             hideLoading();
 
             if (!error.processed) {
@@ -284,5 +214,5 @@ onBeforeUnmount(() => {
     clearSensitiveState();
 });
 
-loadStatus();
+initialLoad();
 </script>
