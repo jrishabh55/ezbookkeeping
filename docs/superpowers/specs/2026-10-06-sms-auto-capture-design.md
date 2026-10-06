@@ -1,7 +1,7 @@
 # SMS auto-capture: design
 
 Date: 2026-10-06
-Status: approved in conversation; awaiting spec review
+Status: approved
 
 ## Goal
 
@@ -154,6 +154,9 @@ The shortcut posts the message and shows a notification only on failure
 - Manual check on the local test build with the real shortcut before deploying.
 
 ## Out of scope (for now)
+
+- AI fallback between classifier steps 3 and 4 (send only the payee / narration of an unknown payee to the
+  configured `[ai]` provider, accept only confident answers). Add if "Needs review" volume justifies it.
 
 - Email-alert ingestion (the endpoint is ready for it; add when SMS gaps show up).
 - Android (would use an SMS-forwarding app hitting the same endpoint).
