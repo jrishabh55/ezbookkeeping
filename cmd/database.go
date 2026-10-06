@@ -229,5 +229,13 @@ func updateAllDatabaseTablesStructure(c *core.CliContext) error {
 
 	log.BootInfof(c, "[database.updateAllDatabaseTablesStructure] bucket transaction table maintained successfully")
 
+	err = datastore.Container.UserDataStore.SyncStructs(new(models.AlertMessage))
+
+	if err != nil {
+		return err
+	}
+
+	log.BootInfof(c, "[database.updateAllDatabaseTablesStructure] alert message table maintained successfully")
+
 	return nil
 }
