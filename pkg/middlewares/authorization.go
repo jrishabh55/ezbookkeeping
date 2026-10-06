@@ -146,6 +146,33 @@ func JWTOAuth2CallbackAuthorization(config *settings.Config) core.MiddlewareHand
 	}
 }
 
+// IsAlertIngestToken reports whether the claims belong to an SMS alert ingest token
+func IsAlertIngestToken(claims *core.UserTokenClaims) bool {
+	return claims != nil && claims.Type == core.USER_TOKEN_TYPE_ALERT_INGEST
+}
+
+// JWTAlertIngestAuthorization accepts only alert ingest tokens (used solely on the ingest route)
+func JWTAlertIngestAuthorization(config *settings.Config) core.MiddlewareHandlerFunc {
+	return func(c *core.WebContext) {
+		claims, tokenContext, err := getTokenClaims(c, TOKEN_SOURCE_TYPE_HEADER)
+
+		if err != nil {
+			utils.PrintJsonErrorResult(c, err)
+			return
+		}
+
+		if !IsAlertIngestToken(claims) {
+			log.Warnf(c, "[authorization.JWTAlertIngestAuthorization] user \"uid:%d\" token type (%d) is not an alert ingest token", claims.Uid, claims.Type)
+			utils.PrintJsonErrorResult(c, errs.ErrCurrentInvalidTokenType)
+			return
+		}
+
+		c.SetTokenClaims(claims)
+		c.SetTokenContext(tokenContext)
+		c.Next()
+	}
+}
+
 func jwtAuthorization(config *settings.Config, source TokenSourceType, allowedAPIToken bool) core.MiddlewareHandlerFunc {
 	return func(c *core.WebContext) {
 		claims, tokenContext, err := getTokenClaims(c, source)

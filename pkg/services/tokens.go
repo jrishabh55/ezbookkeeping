@@ -61,7 +61,7 @@ func (s *TokenService) GetAllUnexpiredNormalAndMCPTokensByUid(c core.Context, ui
 	now := time.Now().Unix()
 
 	var tokenRecords []*models.TokenRecord
-	err := s.TokenDB(uid).NewSession(c).Cols("uid", "user_token_id", "token_type", "user_agent", "created_unix_time", "expired_unix_time", "last_seen_unix_time").Where("uid=? AND (token_type=? OR token_type=? OR token_type=?) AND expired_unix_time>?", uid, core.USER_TOKEN_TYPE_NORMAL, core.USER_TOKEN_TYPE_MCP, core.USER_TOKEN_TYPE_API, now).Find(&tokenRecords)
+	err := s.TokenDB(uid).NewSession(c).Cols("uid", "user_token_id", "token_type", "user_agent", "created_unix_time", "expired_unix_time", "last_seen_unix_time").Where("uid=? AND (token_type=? OR token_type=? OR token_type=? OR token_type=?) AND expired_unix_time>?", uid, core.USER_TOKEN_TYPE_NORMAL, core.USER_TOKEN_TYPE_MCP, core.USER_TOKEN_TYPE_API, core.USER_TOKEN_TYPE_ALERT_INGEST, now).Find(&tokenRecords)
 
 	return tokenRecords, err
 }
@@ -146,6 +146,30 @@ func (s *TokenService) CreateMCPToken(c *core.WebContext, user *models.User, exp
 	}
 
 	token, claims, _, err := s.createToken(c, user, core.USER_TOKEN_TYPE_MCP, s.getUserAgent(c), "", tokenExpiredTimeDuration)
+	return token, claims, err
+}
+
+// CreateAlertIngestToken replaces the user's SMS alert ingest token (one active token per user)
+func (s *TokenService) CreateAlertIngestToken(c *core.WebContext, user *models.User, expiresInSeconds int64) (string, *core.UserTokenClaims, error) {
+	var old []*models.TokenRecord
+
+	if err := s.TokenDB(user.Uid).NewSession(c).Where("uid=? AND token_type=?", user.Uid, core.USER_TOKEN_TYPE_ALERT_INGEST).Find(&old); err != nil {
+		return "", nil, err
+	}
+
+	if len(old) > 0 {
+		if err := s.DeleteTokens(c, user.Uid, old); err != nil {
+			return "", nil, err
+		}
+	}
+
+	duration := time.Unix(tokenMaxExpiredAtUnixTime, 0).Sub(time.Now())
+
+	if expiresInSeconds > 0 {
+		duration = time.Duration(expiresInSeconds) * time.Second
+	}
+
+	token, claims, _, err := s.createToken(c, user, core.USER_TOKEN_TYPE_ALERT_INGEST, s.getUserAgent(c), "", duration)
 	return token, claims, err
 }
 

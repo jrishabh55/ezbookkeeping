@@ -28,6 +28,7 @@ const (
 	USER_TOKEN_TYPE_OAUTH2_CALLBACK_REQUIRE_VERIFY TokenType = 6
 	USER_TOKEN_TYPE_OAUTH2_CALLBACK                TokenType = 7
 	USER_TOKEN_TYPE_API                            TokenType = 8
+	USER_TOKEN_TYPE_ALERT_INGEST                   TokenType = 9
 )
 
 // UserTokenClaims represents user token
