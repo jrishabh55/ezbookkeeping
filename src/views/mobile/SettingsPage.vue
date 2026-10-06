@@ -73,6 +73,7 @@
             <f7-list-item :title="tt('Preferences')" link="/settings/preferences"></f7-list-item>
             <f7-list-item :title="tt('Statistics Settings')" link="/statistic/settings"></f7-list-item>
             <f7-list-item :title="tt('Settings Sync')" link="/settings/sync"></f7-list-item>
+            <f7-list-item :title="tt('SMS Auto-capture')" link="/settings/sms_capture"></f7-list-item>
 
             <f7-list-item>
                 <template #after-title>

@@ -154,6 +154,10 @@ import type {
     TokenInfoResponse
 } from '@/models/token.ts';
 import type {
+    AlertTokenCreateResponse,
+    AlertStatusResponse
+} from '@/models/alert.ts';
+import type {
     TwoFactorEnableConfirmRequest,
     TwoFactorEnableResponse,
     TwoFactorEnableConfirmResponse,
@@ -437,6 +441,9 @@ export default {
     revokeAllTokens: (): ApiResponsePromise<boolean> => {
         return axios.post<ApiResponse<boolean>>('v1/tokens/revoke_all.json');
     },
+    createAlertToken: (req: { password: string }): ApiResponsePromise<AlertTokenCreateResponse> => axios.post<ApiResponse<AlertTokenCreateResponse>>('v1/alerts/token.json', req),
+    revokeAlertToken: (): ApiResponsePromise<boolean> => axios.post<ApiResponse<boolean>>('v1/alerts/token/revoke.json', {}),
+    getAlertStatus: (): ApiResponsePromise<AlertStatusResponse> => axios.get<ApiResponse<AlertStatusResponse>>('v1/alerts/status.json'),
     getProfile: (): ApiResponsePromise<UserProfileResponse> => {
         return axios.get<ApiResponse<UserProfileResponse>>('v1/users/profile/get.json');
     },

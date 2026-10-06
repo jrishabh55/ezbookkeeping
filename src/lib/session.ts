@@ -4,6 +4,7 @@ import {
     type TokenInfoResponse,
     TOKEN_TYPE_API,
     TOKEN_TYPE_MCP,
+    TOKEN_TYPE_ALERT_INGEST,
     SessionDeviceType,
     SessionInfo
 } from '@/models/token.ts';
@@ -85,6 +86,7 @@ function parseDeviceInfo(uaInfo: UserAgentInfo): string {
 export function parseSessionInfo(token: TokenInfoResponse): SessionInfo {
     const isCreateForAPI = token.tokenType === TOKEN_TYPE_API;
     const isCreateForMCP = token.tokenType === TOKEN_TYPE_MCP;
+    const isCreateForAlertIngest = token.tokenType === TOKEN_TYPE_ALERT_INGEST;
     const uaInfo = parseUserAgent(token.userAgent);
     let deviceType: SessionDeviceType = SessionDeviceType.Default;
     let deviceName: string = 'Other Device';
@@ -95,6 +97,9 @@ export function parseSessionInfo(token: TokenInfoResponse): SessionInfo {
     } else if (isCreateForMCP) {
         deviceType = SessionDeviceType.MCP;
         deviceName = 'MCP Token';
+    } else if (isCreateForAlertIngest) {
+        deviceType = SessionDeviceType.Api;
+        deviceName = 'SMS Auto-capture Token';
     } else {
         if (uaInfo && uaInfo.device) {
             if (uaInfo.device.type === 'mobile') {

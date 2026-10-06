@@ -115,6 +115,12 @@
                 </router-link>
             </li>
             <li class="nav-link">
+                <router-link to="/settings/sms_capture">
+                    <v-icon class="nav-item-icon" :icon="mdiMessageTextOutline"/>
+                    <span class="nav-item-title">{{ tt('SMS Auto-capture') }}</span>
+                </router-link>
+            </li>
+            <li class="nav-link">
                 <router-link to="/exchange_rate">
                     <v-icon class="nav-item-icon" :icon="mdiSwapHorizontal"/>
                     <span class="nav-item-title">{{ tt('Exchange Rates Data') }}</span>
@@ -170,7 +176,8 @@ import {
     mdiDatabaseClockOutline,
     mdiCodeBraces,
     mdiWalletOutline,
-    mdiPiggyBankOutline
+    mdiPiggyBankOutline,
+    mdiMessageTextOutline
 } from '@mdi/js';
 
 const route = useRoute();

@@ -4,6 +4,7 @@ import type { UserBasicInfo } from './user.ts';
 
 export const TOKEN_TYPE_API: number = 8;
 export const TOKEN_TYPE_MCP: number = 5;
+export const TOKEN_TYPE_ALERT_INGEST: number = 9;
 
 export interface TokenGenerateAPIRequest {
     readonly expiresInSeconds: number;

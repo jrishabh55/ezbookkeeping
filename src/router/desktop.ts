@@ -41,6 +41,7 @@ import ApplicationLockPage from '@/views/desktop/settings/ApplicationLockPage.vu
 import StatisticsSettingPage from '@/views/desktop/settings/StatisticsSettingPage.vue';
 import ApplicationCloudSyncSettingsPage from '@/views/desktop/settings/ApplicationCloudSyncSettingsPage.vue';
 import BrowserCacheSettingPage from '@/views/desktop/settings/BrowserCacheSettingPage.vue';
+import SmsCapturePage from '@/views/desktop/settings/SmsCapturePage.vue';
 import DeveloperToolsPage from '@/views/desktop/settings/DeveloperToolsPage.vue';
 
 import ExchangeRatesListPage from '@/views/desktop/exchangerates/ListPage.vue';
@@ -255,6 +256,11 @@ const router = createRouter({
                 {
                     path: '/settings/browser_cache',
                     component: BrowserCacheSettingPage,
+                    beforeEnter: checkLogin
+                },
+                {
+                    path: '/settings/sms_capture',
+                    component: SmsCapturePage,
                     beforeEnter: checkLogin
                 },
                 {
