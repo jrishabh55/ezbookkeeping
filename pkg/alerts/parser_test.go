@@ -41,6 +41,10 @@ func TestParse(t *testing.T) {
 			ParsedAlert{Outcome: OutcomeParsed, Direction: Debit, Amount: 50000, Last4: "5678", Counterparty: "BIGBAZAAR OFFER STORE"}},
 		{"collect-request-not-debit", "XX-HDFCBK", "Payment request of Rs.500 sent to shopkeeper@upi. Approve in BHIM app",
 			ParsedAlert{Outcome: OutcomeIgnored}},
+		{"acc-abbreviation", "XX-YESBNK", "INR 100.00 debited from Acc XX1234 on 05-10-26",
+			ParsedAlert{Outcome: OutcomeParsed, Direction: Debit, Amount: 10000, Last4: "1234"}},
+		{"dual-verb-with-promo-word", "XX-HDFCBK", "Rs.500 cashback debited and credited to A/c XX1234 on 05-10-26",
+			ParsedAlert{Outcome: OutcomeUnparsed}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) { assert.Equal(t, c.want, Parse(c.sender, c.text)) })

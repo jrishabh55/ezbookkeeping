@@ -38,8 +38,8 @@ type ParsedAlert struct {
 var (
 	// reHardIgnore matches messages that are never a completed transaction, regardless of
 	// whether they otherwise look like one (OTP prompts, mandate setup, future-tense
-	// reminders, collect requests, limit/statement notices, FASTag info).
-	reHardIgnore = regexp.MustCompile(`(?i)\botp\b|\bone time password\b|\be-mandate\b|\bmandate\b|\bis due\b|\bdue on\b|\bwill be debited\b|\blimit (?:has been )?(?:increased|enhanced)\b|\bfastag\b|\btransaction limit\b|\b(?:payment|money)\s+request\b|\brequest(?:ed)?\s+(?:money|payment)\b|\bstatement\s*:`)
+	// reminders, collect requests, limit/statement notices).
+	reHardIgnore = regexp.MustCompile(`(?i)\botp\b|\bone time password\b|\be-mandate\b|\bmandate\b|\bis due\b|\bdue on\b|\bwill be debited\b|\blimit (?:has been )?(?:increased|enhanced)\b|\btransaction limit\b|\b(?:payment|money)\s+request\b|\brequest(?:ed)?\s+(?:money|payment)\b|\bstatement\s*:`)
 	// reSoftIgnore matches promo-ish words that only mean "ignore" when the message does
 	// not otherwise look like a real transaction (debit/credit verb + amount + last-4).
 	reSoftIgnore = regexp.MustCompile(`(?i)\bcashback\b|\boffer\b|\bapply now\b`)
@@ -53,7 +53,7 @@ var (
 	// spells out debited/credited/sent/spent/etc.
 	reDebit   = regexp.MustCompile(`(?i)\b(debited|sent|spent|withdrawn|paid|purchase|transferred to)`)
 	reCredit  = regexp.MustCompile(`(?i)\b(credited|deposited|received|refund(ed)?|posted)`)
-	reLast4   = regexp.MustCompile(`(?i)(?:a/?c|acct|account|card)(?:\s+(?:no\.?|number|ending(?:\s+with)?))?\s*[:\-]?\s*(?:[x*]+[\s\-]*)?(\d{4})\b`)
+	reLast4   = regexp.MustCompile(`(?i)(?:a/?c|acct|account|acc\b|card)(?:\s+(?:no\.?|number|ending(?:\s+with)?))?\s*[:\-]?\s*(?:[x*]+[\s\-]*)?(\d{4})\b`)
 	reRef     = regexp.MustCompile(`(?i)\b(?:ref(?:erence)?(?:\s*no\.?)?|rrn|upi(?:\s*ref)?|imps(?:\s*ref)?)\s*[:\-]?\s*(\d{6,})`)
 	reBalance = regexp.MustCompile(`(?i)\b(?:avl\.?|avail(?:able)?)?\s*bal(?:ance)?\s*(?:is)?\s*[:\-]?\s*(?:rs\.?|inr)\s*(\d[\d,]*(?:\.\d{1,2})?)`)
 	// The capture itself is deliberately case-sensitive (?-i: ...): every genuine name in
@@ -87,6 +87,14 @@ func Parse(sender string, text string) ParsedAlert {
 		last4 = m[1]
 	}
 
+	if isDebit && isCredit {
+		// Both verbs present (e.g. a same-message transfer between two accounts): genuinely
+		// ambiguous, can't be safely reduced to one direction/one amount/one account. This
+		// check must run before the soft-ignore check below: a dual-verb message is never
+		// silently dropped just because it also contains a promo word.
+		return ParsedAlert{Outcome: OutcomeUnparsed}
+	}
+
 	// A message that has a clear single direction and an identifiable account/card is a
 	// transaction even if it also contains a promo word (e.g. a cashback credit, or a card
 	// spend at a merchant whose name happens to contain "offer").
@@ -94,12 +102,6 @@ func Parse(sender string, text string) ParsedAlert {
 
 	if !looksLikeTxn && reSoftIgnore.MatchString(text) {
 		return ParsedAlert{Outcome: OutcomeIgnored}
-	}
-
-	if isDebit && isCredit {
-		// Both verbs present (e.g. a same-message transfer between two accounts): genuinely
-		// ambiguous, can't be safely reduced to one direction/one amount/one account.
-		return ParsedAlert{Outcome: OutcomeUnparsed}
 	}
 
 	if !isDebit && !isCredit {

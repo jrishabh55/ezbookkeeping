@@ -199,14 +199,14 @@
   "sender": "XX-YESBNK",
   "text": "INR 7,38,036.08 debited from VALLEY PHARMACY Acc XX6282 on 17-JAN-7047 00:34:04-QUICK FUELS-MANDIGOBIND-902727864607814-AMIT KUMAR. Avl bal-INR 1,754.63. Not you? PRIYA SHARMA <Cust ID> to 2824360958 to block.",
   "expected": {
-   "Outcome": "unparsed",
-   "Direction": "",
-   "Amount": 0,
-   "Last4": "",
+   "Outcome": "parsed",
+   "Direction": "debit",
+   "Amount": 73803608,
+   "Last4": "6282",
    "Counterparty": "",
    "Reference": "",
-   "Balance": 0,
-   "HasBalance": false
+   "Balance": 175463,
+   "HasBalance": true
   }
  },
  {
@@ -257,7 +257,7 @@
  {
   "id": "f018",
   "sender": "XX-YESBAK",
-  "text": "Your a/c no. XXXXXXXX0177 is debited  for Rs.70647.01 on 17-07-78 and a/c  XXXXXXXX357 credited (IMPS Ref no  734150192438). Warm Regards, YES Bank",
+  "text": "Your a/c no. XXXXXXXX0177 is debited  for Rs.70647.01 on 17-07-78 and a/c  XXXXXXXX3570 credited (IMPS Ref no  734150192438). Warm Regards, YES Bank",
   "expected": {
    "Outcome": "unparsed",
    "Direction": "",
@@ -889,7 +889,7 @@
   "sender": "XX-KOTAKB",
   "text": "Kotak FASTag:Rs.66.11 paid for Toll at QUICK FUELS  for ZR11G3175 on 16-01-2445@05:03 .Bal.935.00.Log on https://kotakfastag.in for disputes.",
   "expected": {
-   "Outcome": "ignored",
+   "Outcome": "unparsed",
    "Direction": "",
    "Amount": 0,
    "Last4": "",
