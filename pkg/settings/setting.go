@@ -347,6 +347,9 @@ type Config struct {
 	EnableMCPServer     bool
 	MCPAllowedRemoteIPs []*core.IPPattern
 
+	// Alerts
+	AlertsShortcutUrl string
+
 	// Database
 	DatabaseConfig     *DatabaseConfig
 	EnableQueryLog     bool
@@ -537,6 +540,12 @@ func LoadConfiguration(configFilePath string) (*Config, error) {
 	}
 
 	err = loadMCPServerConfiguration(config, cfgFile, "mcp")
+
+	if err != nil {
+		return nil, err
+	}
+
+	err = loadAlertsConfiguration(config, cfgFile, "alerts")
 
 	if err != nil {
 		return nil, err
@@ -752,6 +761,12 @@ func loadMCPServerConfiguration(config *Config, configFile *ini.File, sectionNam
 	if err != nil {
 		return err
 	}
+
+	return nil
+}
+
+func loadAlertsConfiguration(config *Config, configFile *ini.File, sectionName string) error {
+	config.AlertsShortcutUrl = getConfigItemStringValue(configFile, sectionName, "shortcut_url", "")
 
 	return nil
 }

@@ -34,6 +34,7 @@ type DataManagementsApi struct {
 	userCustomIcons         *services.UserCustomIconService
 	userCustomExchangeRates *services.UserCustomExchangeRatesService
 	insightsExploreres      *services.InsightsExplorerService
+	alerts                  *services.AlertService
 }
 
 // Initialize a data management api singleton instance
@@ -54,6 +55,7 @@ var (
 		userCustomIcons:         services.UserCustomIcons,
 		userCustomExchangeRates: services.UserCustomExchangeRates,
 		insightsExploreres:      services.InsightsExplorers,
+		alerts:                  services.Alerts,
 	}
 )
 
@@ -240,6 +242,13 @@ func (a *DataManagementsApi) ClearAllDataHandler(c *core.WebContext) (any, *errs
 
 	if err != nil {
 		log.Errorf(c, "[data_managements.ClearAllDataHandler] failed to delete all explorations, because %s", err.Error())
+		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+
+	err = a.alerts.DeleteAllAlertMessages(c, uid)
+
+	if err != nil {
+		log.Errorf(c, "[data_managements.ClearAllDataHandler] failed to delete all alert messages, because %s", err.Error())
 		return nil, errs.Or(err, errs.ErrOperationFailed)
 	}
 

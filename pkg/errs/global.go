@@ -31,6 +31,7 @@ var (
 	ErrNumericOverflow                 = NewNormalError(NormalSubcategoryGlobal, 21, http.StatusBadRequest, "numeric overflow")
 	ErrDateRangeInvalid                = NewNormalError(NormalSubcategoryGlobal, 22, http.StatusBadRequest, "date range is invalid")
 	ErrDuplicatedSubmission            = NewNormalError(NormalSubcategoryGlobal, 23, http.StatusBadRequest, "duplicated submission")
+	ErrTooManyRequests                 = NewNormalError(NormalSubcategoryGlobal, 24, http.StatusTooManyRequests, "too many requests")
 )
 
 // GetParameterInvalidMessage returns specific error message for invalid parameter error

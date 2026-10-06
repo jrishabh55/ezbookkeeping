@@ -271,6 +271,12 @@ func startWebServer(c *core.CliContext) error {
 		}
 	}
 
+	alertRoute := router.Group("/api/v1/alerts/ingest.json")
+	alertRoute.Use(bindMiddleware(middlewares.RequestId(config), config))
+	alertRoute.Use(bindMiddleware(middlewares.RequestLog, config))
+	alertRoute.Use(bindMiddleware(middlewares.JWTAlertIngestAuthorization(config), config))
+	alertRoute.POST("", bindApi(api.Alerts.IngestHandler, config))
+
 	if config.EnableOAuth2Login {
 		oauth2Route := router.Group("/oauth2")
 		oauth2Route.Use(bindMiddleware(middlewares.RequestId(config), config))
@@ -388,6 +394,11 @@ func startWebServer(c *core.CliContext) error {
 				apiV1Route.GET("/data/export.csv", bindCsv(api.DataManagements.ExportDataToEzbookkeepingCSVHandler, config))
 				apiV1Route.GET("/data/export.tsv", bindTsv(api.DataManagements.ExportDataToEzbookkeepingTSVHandler, config))
 			}
+
+			// Alerts
+			apiV1Route.POST("/alerts/token.json", bindApi(api.Alerts.TokenCreateHandler, config))
+			apiV1Route.POST("/alerts/token/revoke.json", bindApi(api.Alerts.TokenRevokeHandler, config))
+			apiV1Route.GET("/alerts/status.json", bindApi(api.Alerts.StatusHandler, config))
 
 			// Accounts
 			apiV1Route.GET("/accounts/list.json", bindApi(api.Accounts.AccountListHandler, config))
