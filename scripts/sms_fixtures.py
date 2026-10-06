@@ -59,7 +59,22 @@ STOPWORDS = {
     'AVAILABLE', 'PLEASE', 'IGNORE', 'ALREADY', 'DONE', 'SUCCESSFUL',
     'TRANSACTION', 'PAYMENT', 'REQUEST', 'STATEMENT', 'GENERATED',
     'CASHBACK', 'OFFER', 'NOW', 'APPLY', 'LTD', 'PVT', 'INDIA', 'NA',
+    # Common SMS-template vocabulary that must survive verbatim -- it's the
+    # same wording for every user, and swallowing it into a fake name
+    # garbles the sentence (e.g. "DO NOT SHARE-PNB" -> "<NAME>-PNB").
+    'DO', 'SECRET', 'CONFIDENTIAL', 'NEVER', 'SHARE', 'VALID', 'KINDLY',
+    'DISCLOSE', 'ANYONE', 'MINS', 'MIN', 'MINUTES', 'ASKS', 'EVER', 'WITH',
+    'OR', 'AND', 'OF', 'IF',
 }
+
+
+_MONTH_ABBR = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
+
+
+def _rand_num_width(width, lo, hi):
+    """A random integer in [lo, hi], zero-padded/truncated to exactly `width` digits."""
+    hi = min(hi, 10 ** width - 1)
+    return str(rng.randint(lo, max(lo, hi))).zfill(width)
 
 
 def fake_digits_like(s):
@@ -82,6 +97,39 @@ def fake_digits_like(s):
 def anonymise(text):
     t = text
 
+    # -1. VPA / email-like handles: replace local part only, keep the bank
+    # suffix shape. This must run *before* URL protection below, otherwise
+    # a dotted local part (e.g. "fastag.support@kotak.com") would itself get
+    # matched and shielded as a fake "domain" by step 0, and the real
+    # domain would then be replaced with an opaque placeholder that breaks
+    # this pass's own lookahead (it needs to see real letters after "@").
+    t = re.sub(
+        r'[A-Za-z0-9._+-]+(?=@[A-Za-z][A-Za-z0-9.]*)',
+        lambda m: rng.choice(VPA_LOCAL_POOL),
+        t,
+    )
+
+    # 0. URLs: keep the domain, randomise the path, and shield the whole
+    # thing (as an opaque placeholder) from every later pass below, so a
+    # name/id sweep can't reach into the path and insert a space or eat the
+    # domain.
+    _url_placeholders = []
+
+    def protect_url(m):
+        domain, path = m.group(1), m.group(2) or ''
+        if path:
+            alphabet = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+            path = '/' + ''.join(rng.choice(alphabet) if ch.isalnum() else ch for ch in path[1:])
+        token = f'\x00URL{len(_url_placeholders)}\x00'
+        _url_placeholders.append(domain + path)
+        return token
+
+    t = re.sub(
+        r'\b(?>((?:https?://)?(?:[A-Za-z0-9-]+\.)+[a-z]{2,}(?::\d+)?)(/\S*)?)(?!@)',
+        protect_url,
+        t,
+    )
+
     # 1. Amounts / balances: "Rs.1,23,456.78", "INR 500", "Rs 500.00" etc.
     t = re.sub(
         r'(?i)\b(?:rs\.?|inr)\s*[\d][\d,]*(?:\.\d{1,2})?',
@@ -96,10 +144,87 @@ def anonymise(text):
         t,
     )
 
-    # 3. VPA / email-like handles: replace local part only, keep the bank suffix shape
+    # 2b. Dates and times: jitter every real date/time to a random *valid*
+    # value in the same format (same separators, zero-padding, month-name
+    # case) so neither the real day/month nor the real time-of-day survives
+    # -- the generic 3+ digit sweep below misses these because each
+    # component (DD, MM, HH, MM, SS) is only 1-2 digits on its own.
+    def jitter_numeric_date(m):
+        d, sep, mo, y = m.group(1), m.group(2), m.group(3), m.group(4)
+        return f'{_rand_num_width(len(d), 1, 28)}{sep}{_rand_num_width(len(mo), 1, 12)}{sep}{_rand_num_width(len(y), 0, 10 ** len(y) - 1)}'
+
+    t = re.sub(r'\b(\d{1,2})([-/])(\d{1,2})\2(\d{2}|\d{4})\b', jitter_numeric_date, t)
+
+    def jitter_iso_date(m):
+        y, sep, mo, d = m.group(1), m.group(2), m.group(3), m.group(4)
+        return f'{_rand_num_width(len(y), 1000, 9999)}{sep}{_rand_num_width(len(mo), 1, 12)}{sep}{_rand_num_width(len(d), 1, 28)}'
+
+    t = re.sub(r'\b(\d{4})(-)(\d{1,2})\2(\d{1,2})\b', jitter_iso_date, t)
+
+    def jitter_month_name_date(m):
+        d, sep, mon, y = m.group(1), m.group(2), m.group(3), m.group(4)
+        choice = rng.choice(_MONTH_ABBR)
+        if mon.isupper():
+            nmon = choice
+        elif mon.islower():
+            nmon = choice.lower()
+        else:
+            nmon = choice.capitalize()
+        return f'{_rand_num_width(len(d), 1, 28)}{sep}{nmon}{sep}{_rand_num_width(len(y), 0, 10 ** len(y) - 1)}'
+
+    t = re.sub(r'\b(\d{1,2})([-/])([A-Za-z]{3})\2(\d{2}|\d{4})\b', jitter_month_name_date, t)
+
+    # Bare DD-MM / DD/MM with no year (e.g. "On 13-02") -- the lookahead
+    # keeps this from double-touching a DD-MM-YY(YY) date already jittered
+    # above, and the value ranges keep it from firing on unrelated number
+    # pairs like item counts.
+    def jitter_bare_day_month(m):
+        d, sep, mo = m.group(1), m.group(2), m.group(3)
+        if not (1 <= int(d) <= 31 and 1 <= int(mo) <= 12):
+            return m.group(0)
+        return f'{_rand_num_width(len(d), 1, 28)}{sep}{_rand_num_width(len(mo), 1, 12)}'
+
+    t = re.sub(r'(?<!\d[-/])\b(\d{1,2})([-/])(\d{1,2})\b(?![-/]\d)', jitter_bare_day_month, t)
+
+    def jitter_time(m):
+        hh, mm, ss = m.group(1), m.group(2), m.group(3)
+        out = f'{_rand_num_width(len(hh), 0, 23)}:{_rand_num_width(len(mm), 0, 59)}'
+        if ss is not None:
+            out += f':{_rand_num_width(len(ss), 0, 59)}'
+        return out
+
+    t = re.sub(r'\b(\d{1,2}):(\d{2})(?::(\d{2}))?\b', jitter_time, t)
+
+    # Dot-separated time, e.g. "13.51.58" (some bank templates use dots
+    # instead of colons). Seconds are required so this can't collide with a
+    # 2-decimal amount like "13.51", which only has one dot.
+    def jitter_dot_time(m):
+        hh, mm, ss = m.group(1), m.group(2), m.group(3)
+        return f'{_rand_num_width(len(hh), 0, 23)}.{_rand_num_width(len(mm), 0, 59)}.{_rand_num_width(len(ss), 0, 59)}'
+
+    t = re.sub(r'\b(\d{1,2})\.(\d{2})\.(\d{2})\b', jitter_dot_time, t)
+
+    # 2c. Indian vehicle registrations (FASTag/toll SMS): [state][RTO][series][number],
+    # e.g. "PB23Z8602" or "PB 23 Z 8602" -> replaced entirely with a
+    # same-shape fake. Restricted to real state/UT codes so this can't also
+    # fire on unrelated 2-letter+digits shapes like masked card prefixes
+    # (XX1234) or abbreviations (SL 1570, ON 06).
+    _VEH_STATE = (
+        'AP|AR|AS|BR|CH|CG|DN|DD|DL|GA|GJ|HR|HP|JK|JH|KA|KL|LA|LD|MP|MH|'
+        'MN|ML|MZ|NL|OD|OR|PY|PB|RJ|SK|TN|TG|TS|TR|UP|UK|UA|WB|AN'
+    )
+
+    def jitter_vehicle(m):
+        state, sp1, rto, sp2, series, sp3, num = m.groups()
+        r_state = ''.join(rng.choice('ABCDEFGHIJKLMNOPQRSTUVWXYZ') for _ in state)
+        r_rto = ''.join(str(rng.randint(0, 9)) for _ in rto)
+        r_series = ''.join(rng.choice('ABCDEFGHIJKLMNOPQRSTUVWXYZ') for _ in series) if series else ''
+        r_num = ''.join(str(rng.randint(0, 9)) for _ in num)
+        return f'{r_state}{sp1}{r_rto}{sp2}{r_series}{sp3}{r_num}'
+
     t = re.sub(
-        r'[A-Za-z0-9._+-]+(?=@[A-Za-z][A-Za-z0-9.]*)',
-        lambda m: rng.choice(VPA_LOCAL_POOL),
+        r'\b(' + _VEH_STATE + r')(\s?)(\d{1,2})(\s?)([A-Z]{0,3})(\s?)(\d{1,4})\b',
+        jitter_vehicle,
         t,
     )
 
@@ -185,12 +310,56 @@ def anonymise(text):
             return m.group(0)
         return rng.choice(NAME_POOL)
 
-    t = re.sub(r"\b[A-Z][A-Z.&']{1,}(?:\s+[A-Z][A-Z.&']{1,}){1,5}\b", blanket_name, t)
+    # Repeated words allow a single uppercase letter ("N", "R", "K") so names
+    # like "FERNS N GOLDEN BAKERY" / "R K TRADERS" are swallowed whole
+    # instead of leaving the 1-char word stranded as a false word boundary.
+    t = re.sub(r"\b[A-Z][A-Z.&']{1,}(?:\s+[A-Z][A-Z.&']*){1,5}\b", blanket_name, t)
+
+    # 7b. Reference-style IDs: an all-letter token of 8+ chars right after a
+    # label word (Mandate ID: XVPCZZUZQO), and any standalone token of 5+
+    # chars mixing letters and digits (SI Hub ID: X4NT6Nzdv0, N2JZW2) -- both
+    # look like opaque mandate/UMRN/reference codes, not real words, so they
+    # are replaced char-class-by-char-class (letter->letter, digit->digit,
+    # case preserved) rather than swept up as a "name".
+    def _rand_like(s):
+        out = []
+        for ch in s:
+            if ch.isdigit():
+                out.append(str(rng.randint(0, 9)))
+            elif ch.isupper():
+                out.append(rng.choice('ABCDEFGHIJKLMNOPQRSTUVWXYZ'))
+            elif ch.islower():
+                out.append(rng.choice('abcdefghijklmnopqrstuvwxyz'))
+            else:
+                out.append(ch)
+        return ''.join(out)
+
+    t = re.sub(
+        r'(?i)\b(?:id|ref|mandate|umrn|instructions|hub)\b\s*[:#]?\s*([A-Za-z]{8,})\b',
+        lambda m: m.group(0)[: m.start(1) - m.start(0)] + _rand_like(m.group(1)),
+        t,
+    )
+
+    _RESERVED_TOKEN = re.compile(r'(?i)^(?:rs|inr|usd|eur|gbp)\d|^[x*]{2,}\d+$')
+
+    def _mixed_token(m):
+        s = m.group(0)
+        if not (any(c.isdigit() for c in s) and any(c.isalpha() for c in s)):
+            return s
+        if _RESERVED_TOKEN.match(s):
+            return s
+        return _rand_like(s)
+
+    t = re.sub(r'\b[A-Za-z0-9]{5,}\b', _mixed_token, t)
 
     # 8. Generic sweep: any remaining run of 3+ digits (phones, unmasked
     # account numbers, long reference numbers, dates) -> random digits of
     # the same length.
     t = re.sub(r'\d{3,}', lambda m: ''.join(str(rng.randint(0, 9)) for _ in m.group(0)), t)
+
+    # 9. Restore the (already-randomised) URLs shielded in step 0.
+    for i, val in enumerate(_url_placeholders):
+        t = t.replace(f'\x00URL{i}\x00', val)
 
     return t
 
