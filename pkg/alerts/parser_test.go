@@ -1,6 +1,8 @@
 package alerts
 
 import (
+	"encoding/json"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -33,8 +35,33 @@ func TestParse(t *testing.T) {
 			ParsedAlert{Outcome: OutcomeIgnored}},
 		{"financial-but-unclear", "XX-HDFCBK", "Rs.500.00 transaction on A/c XX1234 could not be processed",
 			ParsedAlert{Outcome: OutcomeUnparsed}},
+		{"cashback-credit-not-ignored", "XX-HDFCBK", "Rs.50 cashback credited to your A/c XX1234 for txn dated 05-10-26. Avl Bal Rs.5000.00",
+			ParsedAlert{Outcome: OutcomeParsed, Direction: Credit, Amount: 5000, Last4: "1234", Balance: 500000, HasBalance: true}},
+		{"offer-word-in-merchant-name", "XX-HDFCBK", "Spent Rs.500 On HDFC Bank Card 5678 At BIGBAZAAR OFFER STORE On 05-10-26",
+			ParsedAlert{Outcome: OutcomeParsed, Direction: Debit, Amount: 50000, Last4: "5678", Counterparty: "BIGBAZAAR OFFER STORE"}},
+		{"collect-request-not-debit", "XX-HDFCBK", "Payment request of Rs.500 sent to shopkeeper@upi. Approve in BHIM app",
+			ParsedAlert{Outcome: OutcomeIgnored}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) { assert.Equal(t, c.want, Parse(c.sender, c.text)) })
+	}
+}
+
+func TestParseFixtures(t *testing.T) {
+	data, err := os.ReadFile("testdata/sms_fixtures.json")
+	assert.Nil(t, err)
+
+	var fixtures []struct {
+		ID       string       `json:"id"`
+		Sender   string       `json:"sender"`
+		Text     string       `json:"text"`
+		Expected *ParsedAlert `json:"expected"`
+	}
+	assert.Nil(t, json.Unmarshal(data, &fixtures))
+
+	for _, f := range fixtures {
+		if assert.NotNil(t, f.Expected, "fixture %s has no expected result yet", f.ID) {
+			assert.Equal(t, *f.Expected, Parse(f.Sender, f.Text), "fixture %s: %s", f.ID, f.Text)
+		}
 	}
 }

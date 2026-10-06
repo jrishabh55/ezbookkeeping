@@ -3,480 +3,1200 @@
   "id": "f001",
   "sender": "XX-HDFCBN",
   "text": "Scheduled Maintenance: Card services for Debit, Credit, Prepaid at HDFC Bank's Online, ATMs, POS unavailable for 2 hrs on June 4, 12:15-3:30 AM Inconvenience regretted \nRead: hdfcbk.io/H/mZbDix3Wf69",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f002",
   "sender": "XX-PNBSMS",
   "text": "Dear EAST END STORES, Your PNB Credit Card is Expired. As per regulatory guidelines your card will be closed if not renewed within 15 days. To renew please call @ 06872352915.",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f003",
   "sender": "XX-ICICIT",
   "text": "INR 5,665.69 spent using ICICI Bank Card XX1372 on 02-Jul-86 on IND*Amazon. Avl Limit: INR 3,00,876.16. If not you, call 7493 6737/SMS BLOCK 4376 to 0484453960.",
-  "expected": null
+  "expected": {
+   "Outcome": "parsed",
+   "Direction": "debit",
+   "Amount": 566569,
+   "Last4": "1372",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f004",
   "sender": "XX-DCBBNK",
   "text": "DCB Bank Safe Banking Tip - Memorize ATM PIN. Never write PIN on anything or on the card itself.",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f005",
   "sender": "HDFCBK-T",
   "text": "318243 is your OTP for service - Login request on HDFC Bank MyCards. Valid for 2 mins. Never share OTP @mycards.hdfc.bank.in #306005",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f006",
   "sender": "KOTAKB",
   "text": "Maintenance charges? What are those?\r\nBank like a boss open a Hpxhg166 zero balance account. https://bit.ly/Lm55TYiL  T&C Apply",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f007",
   "sender": "XX-HDFCBF",
   "text": "Dear Customer, One Time Password (ACME STORE) for your HDFCBANK Consumer Durable Loan application is 418298",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f008",
   "sender": "XX-INDUSB",
   "text": "IndusInd Bank's Net Profit for the Quarter ended September 30, 1201, at Rs. 3,989 cr. (Up by 57%). Details of Results are available on website www.indusind.com - IndusInd Bank",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f009",
   "sender": "XX-PNBSMS",
   "text": "Ac XXXX3443 Credited with Rs.0965.66, 09-05-6261 10:46:25. Aval Bal Rs.64234.21 CR. Helpline 77806709/77385429-PNB",
-  "expected": null
+  "expected": {
+   "Outcome": "parsed",
+   "Direction": "credit",
+   "Amount": 96566,
+   "Last4": "3443",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 6423421,
+   "HasBalance": true
+  }
  },
  {
   "id": "f010",
   "sender": "XX-CREDIT",
   "text": "NORTHGATE FUELS,\nExciting offers on travel,dining,shopping and more.Apply for an American express(R)card today.T&C \nApply- http://1kx.in/oLArVp Team PB",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f011",
   "sender": "XX-AXISBK",
   "text": "You have successfully added your A/c no. XX5194,XX0139 to JANE SMITH app - Axis Bank",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f012",
   "sender": "XX-AXISBK",
   "text": "An email has been sent to your mail ID to update you on the Credit Card application. If not received, please contact Axis Bank Phone Banking nos.                              ",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f013",
   "sender": "XX-ICICIB",
   "text": "Dear Customer, Payment of INR 7676 has been received towards your ICICI Bank Credit Card XX7099 on 18-OCT-79 through UPI. Thank you.",
-  "expected": null
+  "expected": {
+   "Outcome": "parsed",
+   "Direction": "credit",
+   "Amount": 767600,
+   "Last4": "7099",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f014",
   "sender": "XX-YESBNK",
   "text": "INR 7,38,036.08 debited from VALLEY PHARMACY Acc XX6282 on 17-JAN-7047 00:34:04-QUICK FUELS-MANDIGOBIND-902727864607814-AMIT KUMAR. Avl bal-INR 1,754.63. Not you? PRIYA SHARMA <Cust ID> to 2824360958 to block.",
-  "expected": null
+  "expected": {
+   "Outcome": "unparsed",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f015",
   "sender": "XX-HDFCSC",
   "text": "590281 is the One Time Password (SURESH REDDY) to 2FA login of your HDFC securities trading and investment account.",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f016",
   "sender": "XX-CREDIN",
   "text": "You have received Rs. 769 on CRED for your recent transaction. Click the link below to use it. \nhttps://link.cred.club/U2TuI9/dHEq/rjJ3oWox - CRED",
-  "expected": null
+  "expected": {
+   "Outcome": "unparsed",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f017",
   "sender": "XX-DCBBNK",
   "text": "Please note, ONLINE transactions are blocked for domestic & international usage (within & outside India) for your DCB Card ***2032. If it was not done by you, please inform DCB Customer Care 621-45062033/081-97935167.",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f018",
   "sender": "XX-YESBAK",
   "text": "Your a/c no. XXXXXXXX0177 is debited  for Rs.70647.01 on 17-07-78 and a/c  XXXXXXXX357 credited (IMPS Ref no  734150192438). Warm Regards, YES Bank",
-  "expected": null
+  "expected": {
+   "Outcome": "unparsed",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f019",
   "sender": "XX-DCBANK",
   "text": "Your EAST END STORES/c no. XX0452 has been credited with INR 0422.40 from JANE SMITH rahul.k@upi. UPI ref. no. 565708199721. - DCB Bank",
-  "expected": null
+  "expected": {
+   "Outcome": "unparsed",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f020",
   "sender": "XX-HDFCLI",
   "text": "Your policy no. 99116993 has been credited to eIA no. 4856832785769 on 06.06.3144 . Please check your registered email ID for login details-NB_HDFC Life",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f021",
   "sender": "XX-HDFCBN",
   "text": "Dispatched! Your HDFC Bank Credit Card is dispatched via Blue Dart Awb 10125898217 will be delivered by 06-09-4995. BlueDart will send an OTP for validation during delivery, Plz show valid ID proof to collect it. Track here hdfcbk.io/O/Ptr4MckW",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f022",
   "sender": "HDFCBK-S",
   "text": "Update! INR 1,98,698.69 deposited in HDFC Bank A/c XX3622 on 07-DEC-13 for NEFT Cr-FYCV7756794-AMIT KUMAR-LAKEVIEW TRADERS-SCNNV93977379541.Avl bal INR 1,20,259.03. Cheque deposits in A/C are subject to clearing",
-  "expected": null
+  "expected": {
+   "Outcome": "parsed",
+   "Direction": "credit",
+   "Amount": 19869869,
+   "Last4": "3622",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 12025903,
+   "HasBalance": true
+  }
  },
  {
   "id": "f023",
   "sender": "XX-HDFCLI",
   "text": "Excess Amount payout of INR 80134.76 against policy no. 70112885 has been credited to your bank a/c via NEFT on 23/11/0218 . T&C apply-PO_HDFC Life",
-  "expected": null
+  "expected": {
+   "Outcome": "unparsed",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f024",
   "sender": "XX-HDFCBK",
   "text": "HDFC Bank Credit Card XX6169 Statement: Total due amt: Rs.9.82 Min due amt: Rs.8.45 Due by:Nil. View statement here:https://hdfcbk.io/Bt71b6/J/EKqRrp/DTDxH2ND6Qp",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f025",
   "sender": "XX-HDFCBK",
   "text": "AutoPay (E-mandate) Success!\nFor NETFLIX \nTxn Amt:INR030.04\nDt:18/12/2096\nVia:HDFC Bank CC 4822\nSI Hub ID: M6SX0Vvew0\nTnC",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f026",
   "sender": "XX-AXISBK",
   "text": "481992 is the OTP to avail Vistara Signature. Valid for 5 minutes. Do not share with anyone. Charges applicable: Joining Fee: INR 4438, Annual Fee: INR 0401 & Interest: 4.4% per month. View TnC at http://www.axisbank.com/QWXHH & Key Fact Sheet at http://www.axisbank.com/yTIC3 - Axis Bank",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f027",
   "sender": "XX-CREDIN",
   "text": "3606 is your CRED verification OTP. The code will be valid for 10 min. Do not share this OTP with anyone.",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f028",
   "sender": "XX-HDFCBK",
   "text": "Available Bal in HDFC Bank A/c XX7200 as on yesterday:01-JUN-38 is INR 28,567.93. Cheques are subject to clearing.For updated A/C Bal dial 90793395254.",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f029",
   "sender": "XX-AXISBK",
   "text": "Thank you for applying for an Axis Bank Vistara Platinum with Application ID C1-00677374608016-C1. An SMS confirming your application status will be sent shortly. For TnCs, visit www.axisbank.com/CZN28 ; For details on Fees and Charges, visit www.axisbank.com/CzsjJ",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f030",
   "sender": "XX-PNBDBD",
   "text": "Do not share your confidential information like ATM PIN, CVV no, Card expiry date, OTP to anyone over phone or email. PNB never ask for such information.-PNB",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f031",
   "sender": "HDFCBK-S",
   "text": "Alert: EMI of Rs. 72784 is due on 28-Apr-5053, for HDFC Bank Loan A/c 1454546. Please ensure sufficient balance to avoid bounce and delayed interest charges.",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f032",
   "sender": "XX-DCBANK",
   "text": "Please note, ATM transactions are enabled for domestic & international usage (within & outside India) for your DCB Card ***0151. If it was not done by you, please inform DCB Customer Care 898-12494394/817-17827066.",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f033",
   "sender": "XX-ICICIO",
   "text": "184875 is OTP for txn of INR 8233.54 at AMAZON on ICICI Bank Credit Card XX1487. OTPs are SECRET. DO NOT disclose it to anyone. Bank NEVER asks for OTP.",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f034",
   "sender": "KOTAKA",
   "text": "Banking made easy with Qsmrv423 Saving Account, To submit details click here http://gs.im/j/BjA79HEpl1n \n T&C Apply -KBank",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f035",
   "sender": "XX-ICICIB",
   "text": "Dear Customer, registration of your ICICI Bank iMobile app has started. If it is not you, call 42517477591. Do not share details like Grid Card/OTP/CVV/expiry date to avoid financial loss.",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f036",
   "sender": "XX-PNBCCD",
   "text": "Dear RAVI VERMA,  Your Credit Card User Guide, MITC, Offers, Schedule of Fees & Charges and other relevant details are available on our website www.pnbcard.in. For any query, please write to us at rahul.k@pnb.co.in or call 80186319575 / 38990893168. -PNB",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f037",
   "sender": "XX-HDFCLE",
   "text": "Premium of INR 36305 for policy no. 36036051 will be debited from your registered account no. on 07/07/2249. T&C apply-PY_HDFC Life",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f038",
   "sender": "XX-PNBSMS",
   "text": "Dear Customer, Your transaction PIN for PNB One has been set successfully. If not initiated by you, report on 48881820/34981163 as fraud.-PNB",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f039",
   "sender": "XX-HDFCBK-S",
   "text": "Available Bal in HDFC Bank A/c XX2269 as on yesterday:01-MAR-32 is INR 38,477.72. Cheques are subject to clearing.For updated A/C Bal dial 73664350690.",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f040",
   "sender": "XX-ICICIT",
   "text": "Dear Customer, your payment of INR 644.23 for Google Workspace to be debited from your ICICI Bank Credit Card 4044, as per Standing Instructions UKCjwPu4Ya, is due by 27/07/8469. To cancel this debit or your Standing Instructions, visit www.icicibank.com >Cards>Credit Cards>Standing Instructions and Recurring Charges>Manage Standing Instructions.",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f041",
   "sender": "XX-ICICIT",
   "text": "Dear Customer, Payment of INR 945.70 has been received towards your ICICI Bank Credit Card XX2198 on 16-NOV-33 through UPI. Thank you.",
-  "expected": null
+  "expected": {
+   "Outcome": "parsed",
+   "Direction": "credit",
+   "Amount": 94570,
+   "Last4": "2198",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f042",
   "sender": "XX-YESBNK",
   "text": "Dear Customer, your six digit MPIN for txns on iris by URBAN GROCERS app is successfully updated on 24-Aug-0116 13:09:04 GREEN SUPERMARKET. The updated MPIN will also be applicable for UPI txns linked with AMIT KUMAR/c & RuPay Credit Card. Not you? CITY MART <Cust ID> to 0606414626 to block the app.",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f043",
   "sender": "XX-CREDIN",
   "text": "Rs. 384 on CRED expires in 2 days. \n\nPay via HILLTOP STATIONERS to extend the validity: https://link.cred.club/Rlo5YJ/cBJc/5zIWtokU - CRED",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f044",
   "sender": "XX-HDFCBN",
-  "text": "Sent Rs.839490.82\nFrom HDFC Bank A/C f3213\nTo CRED\nOn 13/10/52\nRef 275766005025\nNot You?\nCall 97568075581/SMS BLOCK UPI to 1665511825",
-  "expected": null
+  "text": "Sent Rs.839490.82\nFrom HDFC Bank A/C X3213\nTo CRED\nOn 13/10/52\nRef 275766005025\nNot You?\nCall 97568075581/SMS BLOCK UPI to 1665511825",
+  "expected": {
+   "Outcome": "parsed",
+   "Direction": "debit",
+   "Amount": 83949082,
+   "Last4": "3213",
+   "Counterparty": "CRED",
+   "Reference": "275766005025",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f045",
   "sender": "XX-KOTAKB",
   "text": "Your OTP for Kotak Bank FASTag registration is 047666 . Please do not share it with anyone.",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f046",
   "sender": "XX-HDFCLE",
   "text": "Dear Customer, we have initiated the refund of excess premium of INR 41565 received for policy no. 81596805. Refund will be credited within 4-6 working days-PY_HDFC Life",
-  "expected": null
+  "expected": {
+   "Outcome": "unparsed",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f047",
   "sender": "DCBBNK-S",
   "text": "DCB Bank Safe Banking Tip! Ensure your personal computer has antivirus with latest definitions & the operating software is updated automatically.",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f048",
   "sender": "XX-ICICIB",
   "text": "Congratulations! Avail a free credit limit increase on your ICICI Bank Credit Card ending with XX3287. Click here icici-cc.ubona.com/gEq8YCTjy to avail now.",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f049",
   "sender": "XX-DCBANK",
   "text": "427889 is your One Time password (AMIT KUMAR) for e-commerce. Please use within 3 minutes and do not share this OTP with anyone. - DCB Bank LTD.",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f050",
   "sender": "XX-ICICIB",
   "text": "LazyPay Repayment NBFC has requested money on your ICICI Bank app. On approving the request, Rs 524.77 will be debited from acct-ICICI Bank.",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f051",
   "sender": "XX-HDFCBK",
   "text": "OTP is 758263 for txn of INR 1554.27 at METRO BAKERY on HDFC Bank card ending 6239. Valid till  00:09. Do not share OTP for security reasons",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f052",
   "sender": "HDFCBK-S",
   "text": "Update! INR 9,653.69 deposited in HDFC Bank A/c XX5515 on 02-MAY-14 for SUNRISE FOOD CORNER- JANE SMITH-752774.Avl bal INR 92,727.03. Cheque deposits in A/C are subject to clearing",
-  "expected": null
+  "expected": {
+   "Outcome": "parsed",
+   "Direction": "credit",
+   "Amount": 965369,
+   "Last4": "5515",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 9272703,
+   "HasBalance": true
+  }
  },
  {
   "id": "f053",
   "sender": "XX-DCBANK",
   "text": "DCB Bank Alert - A/c no. *9304 is debited by INR 214.66 on account of POS Transaction. Avail Bal is INR 108.68 on 03-Mar-4034 13:27:46 PM. View on Mobile Banking at https://a.dcbbk.in/8wH590/9K9IhFlB",
-  "expected": null
+  "expected": {
+   "Outcome": "parsed",
+   "Direction": "debit",
+   "Amount": 21466,
+   "Last4": "9304",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 10868,
+   "HasBalance": true
+  }
  },
  {
   "id": "f054",
   "sender": "XX-SBIUPI",
   "text": "Dear GREEN SUPERMARKET, You have initiated the process of adding your bank account in your UPI App. Report it to us in case it is not you. Never share card details/OTP.-SBI",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f055",
   "sender": "XX-PNBCCD",
   "text": "Dear Customer, Do not share Credit Card no, CVV, expiry date, DOB & OTP to anyone. Emails, SMS, Calls may be fraudulent. Bank never asks for such details. PNB.78253357064/7902-3684835 -PNB",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f056",
   "sender": "XX-CREDIN",
   "text": "Payment of INR 5,311 was received for your HDFC Bank credit card XXXX-4545 on 02-Mar-3890 and you have earned 9,916 CRED coins. \n\nYour order id is 20URU9K52FGB. Payment will be credited to credit card account within the next 1 hour.\n\nView transaction details here: https://app.cred.club/Zx2T/uta - CRED",
-  "expected": null
+  "expected": {
+   "Outcome": "parsed",
+   "Direction": "credit",
+   "Amount": 531100,
+   "Last4": "4545",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f057",
   "sender": "XX-YESBNK",
   "text": "Dear Customer, To continue enjoying premium benefits & privileges with your YES First A/c, kindly maintain the required program criteria https://yesbnk.in/1wu2Kh/Ufnv5J. To know more about YES First Program features, click https://yesbnk.in/rVfODq/sfLQOh",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f058",
   "sender": "XX-YESBNK",
-  "text": "GREEN SUPERMARKET Ac G9106 debited for INR 57,577.45 on 12OCT41 09:10. IMPS:397051244404/AMIT KUMAR. Bal INR 64,321.95. Not U? SANJAY MEHTA <CustID> to 7844659415",
-  "expected": null
+  "text": "GREEN SUPERMARKET Ac X9106 debited for INR 57,577.45 on 12OCT41 09:10. IMPS:397051244404/AMIT KUMAR. Bal INR 64,321.95. Not U? SANJAY MEHTA <CustID> to 7844659415",
+  "expected": {
+   "Outcome": "parsed",
+   "Direction": "debit",
+   "Amount": 5757745,
+   "Last4": "9106",
+   "Counterparty": "",
+   "Reference": "397051244404",
+   "Balance": 6432195,
+   "HasBalance": true
+  }
  },
  {
   "id": "f059",
   "sender": "XX-ICICIB",
   "text": "Dear Customer, Congratulations on activating iMobile Pay, Mobile banking app from ICICI bank. If you have not activated it, please call Customer Care. As a security measure, the transaction limit for first 24 hours will be Rs.94,513.",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f060",
   "sender": "XX-KOTAKB",
   "text": "Kotak FASTag:Rs.66.11 paid for Toll at QUICK FUELS  for ZR11G3175 on 16-01-2445@05:03 .Bal.935.00.Log on https://kotakfastag.in for disputes.",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f061",
   "sender": "XX-HDFCLI",
   "text": "We are in receipt of your service request for Excess premium refund for HDFC Life Policy No. 01940314, Service Request No. 1-507610054963. You can track the status of your request by clicking on https://myaccount.hdfclife.com/F9/RB52DLituiuAbg2yMeO= -PS_HDFC Life ",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f062",
   "sender": "XX-HDFCIN",
   "text": "PRIME MOTORS : EAST END STORES 2149-7704, SL 7075, TGT 3747,7117, RIVER CAFE : Upto 1 Months. Click Here: ct3.io/JtB8mg7 -RAVI VERMA",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f063",
   "sender": "XX-ICICIP",
   "text": "Dear Customer, we have received the premium of Rs. 30407.45 paid for your ICICI Pru application no.MD98531393. You will receive the payment confirmation receipt shortly, subject to realization. T&C apply.",
-  "expected": null
+  "expected": {
+   "Outcome": "unparsed",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f064",
   "sender": "HDFCBK-S",
   "text": "OTP is 209674 for txn of INR 8927.99 at MAPLE DINER on HDFC Bank card ending 3150. Valid till  06:31. Do not share OTP for security reasons",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f065",
   "sender": "XX-KOTAKB",
   "text": "Alert! Check your vehicle no. in Kotak FASTag on fastag.kotak.com or call 0524 088 9807 to verify. If incorrect, pls email RC copy to rahul.k@kotak.com",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f066",
   "sender": "XX-HDFCSL",
   "text": "Dear Customer this is to inform you that trade has been executed in your trading account  5042572 on 12-Nov-88 For any query pls contact our customer care.",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f067",
   "sender": "XX-DCBANK",
   "text": "Thank you for choosing DCB Bank  . We are working hard to build even higher-quality products for our customers. We would love to hear your thoughts and opinion. Please click https://a.dcbbk.in/plQi5u/NfTo3RHA to share with us your feedback.",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f068",
   "sender": "XX-DCBANK",
   "text": "Please note, ONLINE transactions are enabled for domestic & international usage (within & outside India) for your DCB Card ***1212. If it was not done by you, please inform DCB Customer Care 800-56546750/059-63614685.",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f069",
   "sender": "XX-HDFCBN",
   "text": "Dear customer,\nImportant:\nCashBack benefits will be revised on your HDFC Bank Business Credit Card wef.3-April-7761.\nRead details here:\nhdfcbk.io/6/TC40v7dE\nT&C",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f070",
   "sender": "XX-ICICIP",
   "text": "We have not received auto debit mandate for your ICICIPru policy A7912999 . Kindly contact BLUE STAR ENTERPRISES on 4731254959 to submit new mandate or set standing instructions at www.iciciprulife.com/vZ. Ignore if already submitted",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f071",
   "sender": "HDFCBK-S",
   "text": "Dear HDFC Bank Cardmember, your request for a duplicate statement for your Credit Card has been processed.Ref# is 91503109049",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f072",
   "sender": "XX-YESBNK",
   "text": "INR 7.00 Debited to Ac XX7664 on 27-OCT-2358 14:06:08-PCA:9560474597:41XW53165621220:www.bookmyshow.com       Mumbai       IN22-NOV-24 23:05:30  Tot Avbl Bal-INR 79,390.94 on 15-FEB-4329 23:47:58.In case you have not done this transaction, HILLTOP STATIONERS <Space><Cust ID> <Space><Last 4 digit of Debit Card number> to 0935535068 from your registered mobile number to block your card. Warm Regards, YES Bank",
-  "expected": null
+  "expected": {
+   "Outcome": "parsed",
+   "Direction": "debit",
+   "Amount": 700,
+   "Last4": "7664",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 7939094,
+   "HasBalance": true
+  }
  },
  {
   "id": "f073",
   "sender": "XX-HDFCBN",
   "text": "Dear Customer,\nYour profile with HDFC Bank has been preapproved for a Car Loan Topup.\nCheck details: https://hdfcbk.io/OAwMFl/L/SZXmt9B2\nT&C",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f074",
   "sender": "YESBNK-S",
   "text": "Dear Customer, validity of your Home Loan sanction will expire soon. Please contact WESTSIDE MART-3400702235 to initiate disbursal. Kindly ignore if already disbursed. -PRIYA SHARMA",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f075",
   "sender": "XX-AXISMR",
   "text": "Please be ready with the following to complete Video-KYC for your Axis Bank Credit Card application: 1. Hard copy of PAN Card 2. Aadhaar Number 3. Enable Location access 4. Good lighting & internet connectivity Visit Axbk.in/HWjcoep5kBT (Link is valid only for 72 hours & V-KYC can be done 12/5)",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f076",
   "sender": "XX-HDFCBK-S",
   "text": "Sent Rs.524.29\nFrom HDFC Bank A/C *0039\nTo PRIYA SHARMA 02/01/75\nRef 361519133831\nNot You?\nCall 06184930888/SMS BLOCK UPI to 6622627509",
-  "expected": null
+  "expected": {
+   "Outcome": "parsed",
+   "Direction": "debit",
+   "Amount": 52429,
+   "Last4": "0039",
+   "Counterparty": "PRIYA SHARMA",
+   "Reference": "361519133831",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f077",
   "sender": "XX-YESBAK",
   "text": "Dear ACME STORE, You have initiated the process of adding your YES Bank account in your UPI App. Report it to us in case it is not you. Never share card details/OTP. -Yes Bank",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f078",
   "sender": "XX-HDFCBK",
   "text": "Posted\r\nCashBack of Rs.276 to HDFC Bank Credit Card 3869 on 05/MAR/6831 towards POOJA NAIR posting Aug'22. Chat to check unbilled txn bit.ly/8OH1Xuq",
-  "expected": null
+  "expected": {
+   "Outcome": "parsed",
+   "Direction": "credit",
+   "Amount": 27600,
+   "Last4": "3869",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f079",
   "sender": "XX-PNBSMS",
   "text": "NEFT Transaction with ref no. PVKNR84098824280 for INR 147009 has been credited on 01-12-0161 03:42:04Register for e-statement,if not done.-PNB",
-  "expected": null
+  "expected": {
+   "Outcome": "unparsed",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  },
  {
   "id": "f080",
   "sender": "XX-DCBANK",
   "text": "Dear Customer, your DCB Welcome kit was delivered at your postal address on 5579-10-09  by  ANITA RAO courier AWB  27607919471.If it was not received or tampered, please call DCB Customer Care 909 58738512,397 10418782.",
-  "expected": null
+  "expected": {
+   "Outcome": "ignored",
+   "Direction": "",
+   "Amount": 0,
+   "Last4": "",
+   "Counterparty": "",
+   "Reference": "",
+   "Balance": 0,
+   "HasBalance": false
+  }
  }
 ]
