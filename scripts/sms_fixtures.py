@@ -24,7 +24,7 @@ BANK_SENDER = re.compile(
 )
 DB = os.path.expanduser('~/Library/Messages/chat.db')
 MAX_FIXTURES = 80
-rng = random.Random(1)
+rng = random.Random(2)
 
 # ---- placeholders -----------------------------------------------------
 
@@ -69,6 +69,7 @@ STOPWORDS = {
 
 
 _MONTH_ABBR = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
+_MONTH_ABBR_SET = set(_MONTH_ABBR)
 
 
 def _rand_num_width(width, lo, hi):
@@ -113,16 +114,26 @@ def anonymise(text):
     # thing (as an opaque placeholder) from every later pass below, so a
     # name/id sweep can't reach into the path and insert a space or eat the
     # domain.
-    _url_placeholders = []
+    #
+    # The same placeholder list/mechanism is reused below by the date/time
+    # jitter passes: a jittered date or time can end right up against the
+    # next word with no separator in some templates (e.g. "00:09:10Register",
+    # "08JAN25at"), which would otherwise make that boundary invisible to
+    # \b and let the later mixed-token pass swallow the jittered digits
+    # together with the following real word, corrupting both.
+    _protected = []
+
+    def _shield(value):
+        token = f'\x00P{len(_protected)}\x00'
+        _protected.append(value)
+        return token
 
     def protect_url(m):
         domain, path = m.group(1), m.group(2) or ''
         if path:
             alphabet = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
             path = '/' + ''.join(rng.choice(alphabet) if ch.isalnum() else ch for ch in path[1:])
-        token = f'\x00URL{len(_url_placeholders)}\x00'
-        _url_placeholders.append(domain + path)
-        return token
+        return _shield(domain + path)
 
     t = re.sub(
         r'\b(?>((?:https?://)?(?:[A-Za-z0-9-]+\.)+[a-z]{2,}(?::\d+)?)(/\S*)?)(?!@)',
@@ -151,13 +162,13 @@ def anonymise(text):
     # component (DD, MM, HH, MM, SS) is only 1-2 digits on its own.
     def jitter_numeric_date(m):
         d, sep, mo, y = m.group(1), m.group(2), m.group(3), m.group(4)
-        return f'{_rand_num_width(len(d), 1, 28)}{sep}{_rand_num_width(len(mo), 1, 12)}{sep}{_rand_num_width(len(y), 0, 10 ** len(y) - 1)}'
+        return _shield(f'{_rand_num_width(len(d), 1, 28)}{sep}{_rand_num_width(len(mo), 1, 12)}{sep}{_rand_num_width(len(y), 0, 10 ** len(y) - 1)}')
 
     t = re.sub(r'\b(\d{1,2})([-/])(\d{1,2})\2(\d{2}|\d{4})\b', jitter_numeric_date, t)
 
     def jitter_iso_date(m):
         y, sep, mo, d = m.group(1), m.group(2), m.group(3), m.group(4)
-        return f'{_rand_num_width(len(y), 1000, 9999)}{sep}{_rand_num_width(len(mo), 1, 12)}{sep}{_rand_num_width(len(d), 1, 28)}'
+        return _shield(f'{_rand_num_width(len(y), 1000, 9999)}{sep}{_rand_num_width(len(mo), 1, 12)}{sep}{_rand_num_width(len(d), 1, 28)}')
 
     t = re.sub(r'\b(\d{4})(-)(\d{1,2})\2(\d{1,2})\b', jitter_iso_date, t)
 
@@ -170,9 +181,30 @@ def anonymise(text):
             nmon = choice.lower()
         else:
             nmon = choice.capitalize()
-        return f'{_rand_num_width(len(d), 1, 28)}{sep}{nmon}{sep}{_rand_num_width(len(y), 0, 10 ** len(y) - 1)}'
+        return _shield(f'{_rand_num_width(len(d), 1, 28)}{sep}{nmon}{sep}{_rand_num_width(len(y), 0, 10 ** len(y) - 1)}')
 
     t = re.sub(r'\b(\d{1,2})([-/])([A-Za-z]{3})\2(\d{2}|\d{4})\b', jitter_month_name_date, t)
+
+    # Compact DDMONYY(YY) with no separators at all (e.g. "08JAN25",
+    # "08JAN2025" -- seen in some bank templates). Guarded by an actual
+    # month-abbreviation check (case-insensitive) so this can't misfire on
+    # an unrelated digit-letters-digit reference code; without this pass
+    # these fall through to the generic mixed-token pass and come out as
+    # unrecognisable noise instead of a date.
+    def jitter_compact_date(m):
+        d, mon, y = m.group(1), m.group(2), m.group(3)
+        if mon.upper() not in _MONTH_ABBR_SET:
+            return m.group(0)
+        choice = rng.choice(_MONTH_ABBR)
+        if mon.isupper():
+            nmon = choice
+        elif mon.islower():
+            nmon = choice.lower()
+        else:
+            nmon = choice.capitalize()
+        return _shield(f'{_rand_num_width(len(d), 1, 28)}{nmon}{_rand_num_width(len(y), 0, 10 ** len(y) - 1)}')
+
+    t = re.sub(r'\b(\d{1,2})([A-Za-z]{3})(\d{2}|\d{4})\b', jitter_compact_date, t)
 
     # Bare DD-MM / DD/MM with no year (e.g. "On 13-02") -- the lookahead
     # keeps this from double-touching a DD-MM-YY(YY) date already jittered
@@ -182,7 +214,7 @@ def anonymise(text):
         d, sep, mo = m.group(1), m.group(2), m.group(3)
         if not (1 <= int(d) <= 31 and 1 <= int(mo) <= 12):
             return m.group(0)
-        return f'{_rand_num_width(len(d), 1, 28)}{sep}{_rand_num_width(len(mo), 1, 12)}'
+        return _shield(f'{_rand_num_width(len(d), 1, 28)}{sep}{_rand_num_width(len(mo), 1, 12)}')
 
     t = re.sub(r'(?<!\d[-/])\b(\d{1,2})([-/])(\d{1,2})\b(?![-/]\d)', jitter_bare_day_month, t)
 
@@ -191,18 +223,28 @@ def anonymise(text):
         out = f'{_rand_num_width(len(hh), 0, 23)}:{_rand_num_width(len(mm), 0, 59)}'
         if ss is not None:
             out += f':{_rand_num_width(len(ss), 0, 59)}'
-        return out
+        return _shield(out)
 
-    t = re.sub(r'\b(\d{1,2}):(\d{2})(?::(\d{2}))?\b', jitter_time, t)
+    # No trailing \b here: when a time is immediately followed by a letter
+    # with no separator (e.g. "00:09:10Register", a real template quirk),
+    # \b would force the match to back off before the seconds group (since
+    # digit->letter isn't a word boundary), leaving ":10Register" as a
+    # leftover that the mixed-token pass below would then swallow whole,
+    # corrupting the following real word and re-mangling the seconds digits
+    # out of their valid 0-59 range. (?!\d) still stops it from reaching
+    # into a longer, unrelated digit run; shielding the result (like the
+    # URL pass above) is what actually stops the mixed-token pass from
+    # reaching it at all, regardless of what follows with no separator.
+    t = re.sub(r'(?<!\d)(\d{1,2}):(\d{2})(?::(\d{2}))?(?!\d)', jitter_time, t)
 
     # Dot-separated time, e.g. "13.51.58" (some bank templates use dots
     # instead of colons). Seconds are required so this can't collide with a
     # 2-decimal amount like "13.51", which only has one dot.
     def jitter_dot_time(m):
         hh, mm, ss = m.group(1), m.group(2), m.group(3)
-        return f'{_rand_num_width(len(hh), 0, 23)}.{_rand_num_width(len(mm), 0, 59)}.{_rand_num_width(len(ss), 0, 59)}'
+        return _shield(f'{_rand_num_width(len(hh), 0, 23)}.{_rand_num_width(len(mm), 0, 59)}.{_rand_num_width(len(ss), 0, 59)}')
 
-    t = re.sub(r'\b(\d{1,2})\.(\d{2})\.(\d{2})\b', jitter_dot_time, t)
+    t = re.sub(r'(?<!\d)(\d{1,2})\.(\d{2})\.(\d{2})(?!\d)', jitter_dot_time, t)
 
     # 2c. Indian vehicle registrations (FASTag/toll SMS): [state][RTO][series][number],
     # e.g. "PB23Z8602" or "PB 23 Z 8602" -> replaced entirely with a
@@ -220,7 +262,7 @@ def anonymise(text):
         r_rto = ''.join(str(rng.randint(0, 9)) for _ in rto)
         r_series = ''.join(rng.choice('ABCDEFGHIJKLMNOPQRSTUVWXYZ') for _ in series) if series else ''
         r_num = ''.join(str(rng.randint(0, 9)) for _ in num)
-        return f'{r_state}{sp1}{r_rto}{sp2}{r_series}{sp3}{r_num}'
+        return _shield(f'{r_state}{sp1}{r_rto}{sp2}{r_series}{sp3}{r_num}')
 
     t = re.sub(
         r'\b(' + _VEH_STATE + r')(\s?)(\d{1,2})(\s?)([A-Z]{0,3})(\s?)(\d{1,4})\b',
@@ -357,9 +399,10 @@ def anonymise(text):
     # the same length.
     t = re.sub(r'\d{3,}', lambda m: ''.join(str(rng.randint(0, 9)) for _ in m.group(0)), t)
 
-    # 9. Restore the (already-randomised) URLs shielded in step 0.
-    for i, val in enumerate(_url_placeholders):
-        t = t.replace(f'\x00URL{i}\x00', val)
+    # 9. Restore the (already-randomised) URLs/dates/times/plates shielded
+    # above, now that nothing later in the pipeline can touch them.
+    for i, val in enumerate(_protected):
+        t = t.replace(f'\x00P{i}\x00', val)
 
     return t
 
