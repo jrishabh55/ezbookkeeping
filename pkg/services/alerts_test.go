@@ -1,8 +1,10 @@
 package services
 
 import (
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 
@@ -180,4 +182,38 @@ func TestDeleteAllAlertMessagesOnlyDeletesOwnRows(t *testing.T) {
 	statusAfter2, err := Alerts.Status(ctx, uid2)
 	assert.Nil(t, err)
 	assert.Equal(t, int64(1), statusAfter2.Counts["ignored"])
+}
+
+// TestIngestCommentTruncatesByRuneNotByte is the regression test for M2: the stored transaction
+// comment must be truncated at a rune boundary, not a byte boundary, so a multi-byte character
+// (e.g. "₹") that straddles the 255th byte is never split into invalid UTF-8.
+func TestIngestCommentTruncatesByRuneNotByte(t *testing.T) {
+	ctx, uid := newAlertTestUser(t, "HDFC Bank 1234")
+
+	base := "Sent Rs.250.00\nFrom HDFC Bank A/C *1234\nTo FOOD CORNER\nRef 700000000001\n"
+
+	// Pad with plain ASCII so that exactly 254 runes (254 bytes, since they're all 1-byte
+	// characters) precede the "₹", making "₹" the 255th rune; under the old `comment[:255]`
+	// byte-slice, this would cut off after the "₹" character's first byte (0xE2), producing an
+	// invalid UTF-8 tail. A few trailing characters after the "₹" push the total length past 255
+	// runes so truncation actually triggers.
+	asciiPrefixLen := 254 - utf8.RuneCountInString(base)
+	if asciiPrefixLen < 0 {
+		t.Fatalf("base SMS is already %d runes, longer than the 254 budget this test assumes", utf8.RuneCountInString(base))
+	}
+
+	text := base + strings.Repeat("A", asciiPrefixLen) + "₹" + "XYZ"
+	expectedComment := string([]rune(text)[:255])
+
+	r, err := Alerts.Ingest(ctx, uid, "XX-HDFCBK", text, time.Now())
+	assert.Nil(t, err)
+	assert.Equal(t, "added", r.Outcome)
+
+	tx, err := Transactions.GetTransactionByTransactionId(ctx, uid, r.TransactionId)
+	assert.Nil(t, err)
+	assert.True(t, utf8.ValidString(tx.Comment), "comment must be valid UTF-8, not a byte-sliced mid-character cut")
+	assert.Equal(t, 255, utf8.RuneCountInString(tx.Comment))
+	assert.Equal(t, expectedComment, tx.Comment)
+	assert.Contains(t, tx.Comment, "₹")
+	assert.NotContains(t, tx.Comment, "XYZ")
 }

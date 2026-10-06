@@ -3,6 +3,7 @@ package api
 import (
 	"fmt"
 	"time"
+	"unicode/utf8"
 
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/duplicatechecker"
@@ -28,6 +29,34 @@ const alertIngestMaxRequestsPerMinute = 30
 // multi-instance deployment each instance enforces its own ceiling rather than a shared one
 // (ponytail: the smallest correct thing, not a distributed rate limiter)
 const alertIngestRateLimitKeyPrefix = "alert-ingest:"
+
+// alertIngestMaxFutureSkew and alertIngestMaxPastSkew bound the request's receivedAt: a value
+// outside [now-30d, now+5m] is treated the same as a missing one (see resolveAlertReceivedAt).
+// This guards against a Shortcut sending milliseconds instead of seconds since epoch, which would
+// otherwise land around the year 57000 and poison Status's "last received" as well as the
+// ingest service's duplicate-detection windows, and against a near-int64-max value that would
+// overflow if ever scaled or multiplied downstream.
+const (
+	alertIngestMaxFutureSkew = 5 * time.Minute
+	alertIngestMaxPastSkew   = 30 * 24 * time.Hour
+)
+
+// resolveAlertReceivedAt returns the alert's received time, falling back to now when the
+// request's receivedAt is zero (not provided) or falls outside the accepted
+// [now-30d, now+5m] window
+func resolveAlertReceivedAt(receivedAtUnix int64, now time.Time) time.Time {
+	if receivedAtUnix == 0 {
+		return now
+	}
+
+	receivedAt := time.Unix(receivedAtUnix, 0)
+
+	if receivedAt.After(now.Add(alertIngestMaxFutureSkew)) || receivedAt.Before(now.Add(-alertIngestMaxPastSkew)) {
+		return now
+	}
+
+	return receivedAt
+}
 
 // AlertsApi represents alerts api
 type AlertsApi struct {
@@ -61,8 +90,8 @@ func (a *AlertsApi) IngestHandler(c *core.WebContext) (any, *errs.Error) {
 		return nil, errs.NewIncompleteOrIncorrectSubmissionError(err)
 	}
 
-	if len(alertIngestReq.Text) > alertIngestMaxTextLength {
-		log.Warnf(c, "[alerts.IngestHandler] text length %d exceeds the maximum allowed length %d", len(alertIngestReq.Text), alertIngestMaxTextLength)
+	if utf8.RuneCountInString(alertIngestReq.Text) > alertIngestMaxTextLength {
+		log.Warnf(c, "[alerts.IngestHandler] text length %d exceeds the maximum allowed length %d", utf8.RuneCountInString(alertIngestReq.Text), alertIngestMaxTextLength)
 		return nil, errs.ErrFormatInvalid
 	}
 
@@ -75,11 +104,7 @@ func (a *AlertsApi) IngestHandler(c *core.WebContext) (any, *errs.Error) {
 		return nil, errs.ErrTooManyRequests
 	}
 
-	receivedAt := time.Now()
-
-	if alertIngestReq.ReceivedAt > 0 {
-		receivedAt = time.Unix(alertIngestReq.ReceivedAt, 0)
-	}
+	receivedAt := resolveAlertReceivedAt(alertIngestReq.ReceivedAt, time.Now())
 
 	result, err := a.alerts.Ingest(c, uid, alertIngestReq.Sender, alertIngestReq.Text, receivedAt)
 

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/mayswind/ezbookkeeping/pkg/alerts"
 	"github.com/mayswind/ezbookkeeping/pkg/core"
@@ -532,8 +533,12 @@ func (s *AlertService) classify(c core.Context, uid int64, accountId int64, pars
 func (s *AlertService) createTransaction(c core.Context, uid int64, account *models.Account, parsed alerts.ParsedAlert, classification alerts.Classification, needsReview bool, text string, receivedAt time.Time, tagIds map[string]int64) (*models.Transaction, string, error) {
 	comment := text
 
-	if len(comment) > 255 {
-		comment = comment[:255]
+	// Truncated by rune, not by byte, so a multi-byte character (e.g. "₹") right at the boundary
+	// is never split into invalid UTF-8; this matches how the "max=255" binding tag on
+	// models.TransactionCreateRequest.Comment measures length (utf8.RuneCountInString), and the
+	// database column's VARCHAR(255) limit is likewise interpreted as 255 characters, not bytes.
+	if utf8.RuneCountInString(comment) > 255 {
+		comment = utils.SubString(comment, 0, 255)
 	}
 
 	transaction := &models.Transaction{
