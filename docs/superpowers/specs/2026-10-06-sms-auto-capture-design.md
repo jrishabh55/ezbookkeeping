@@ -76,7 +76,7 @@ The endpoint is channel-agnostic (plain text + sender), so email alerts can feed
 ### 4. Account resolver
 
 - Maps last-4 to one of the requesting user's accounts using the trailing digits of account names
-  ("HDFC Bank 1234", "Credit Card 5678") plus an optional per-account "alert last-4" field if names differ.
+  ("HDFC Bank 1234", "Credit Card 5678"). Accounts whose names do not end with their digits are renamed to do so.
 - No match → transaction is created in a per-user "Unmatched alerts" holding account, tagged
   "Needs review" (never silently dropped, never assigned to a guess).
 
@@ -117,7 +117,7 @@ same amount and direction, date within ±2 days, reference number equal when the
 | Row without match | Imported normally (missed alert, sweep, interest, charges). |
 | SMS transaction without a row in the statement period | Tagged "Not in statement". |
 
-The import summary shows the book balance next to the statement closing balance.
+The import summary shows each touched account's book balance after import, to compare with the statement's closing balance.
 
 ### 9. Setup UI (desktop + mobile settings card "SMS auto-capture")
 
@@ -135,7 +135,6 @@ The shortcut posts the message and shows a notification only on failure
 
 - New table `alert_message`: uid, sender, raw text, received time, outcome, parsed fields (JSON),
   linked transaction id. Used for "unparsed" review, debugging and reconciliation. Deleted with the user.
-- New nullable account field "alert last-4" (only needed when the account name does not end with the digits).
 
 ## Error handling
 
