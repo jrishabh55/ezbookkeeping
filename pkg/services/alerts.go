@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mayswind/ezbookkeeping/pkg/alerts"
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/datastore"
 	"github.com/mayswind/ezbookkeeping/pkg/errs"
+	"github.com/mayswind/ezbookkeeping/pkg/log"
 	"github.com/mayswind/ezbookkeeping/pkg/models"
 	"github.com/mayswind/ezbookkeeping/pkg/utils"
 	"github.com/mayswind/ezbookkeeping/pkg/uuid"
@@ -26,13 +28,20 @@ const (
 // account cannot be resolved from its last-4 digits
 const unmatchedAccountName = "Unmatched alerts"
 
-// transferCategoryName is the name of the per-user fallback category used for transfer
-// transactions created from an alert
-const transferCategoryName = "Transfer"
+// Fallback category names looked up (and created on first use) when classification does not
+// resolve a usable category; the transfer names are tried in priority order
+const (
+	categoryNameBankTransfer  = "Bank Transfer"
+	categoryNameOtherTransfer = "Other Transfer"
+	categoryNameOtherExpense  = "Other Expense"
+	categoryNameOtherIncome   = "Other Income"
+)
 
-// reAccountNameLast4 extracts the trailing 4 digits of an account name, used to build the
-// "own accounts" list passed to alerts.Classify
-var reAccountNameLast4 = regexp.MustCompile(`(\d{4})$`)
+// reAccountNameLast4 extracts the trailing 4 digits of an account name, used both to build the
+// "own accounts" list passed to alerts.Classify and to resolve an alert's account by its last-4
+// digits; the digits must be preceded by a non-digit or start of string, so "...51234" is never
+// mistaken for last-4 "1234"
+var reAccountNameLast4 = regexp.MustCompile(`(?:^|\D)(\d{4})$`)
 
 // keywordCategoryRule is a KeywordRule before its category name has been resolved to this
 // user's category id
@@ -51,6 +60,9 @@ var keywordCategoryRules = []keywordCategoryRule{
 	{regexp.MustCompile(`(?i)\b(NETFLIX|SPOTIFY|PRIME ?VIDEO|HOTSTAR|YOUTUBE ?PREMIUM|APPLE ?MUSIC)\b`), alerts.Debit, "Subscriptions"},
 	{regexp.MustCompile(`(?i)\b(PVR|INOX|BOOKMYSHOW|CINEPOLIS)\b`), alerts.Debit, "Movies & Shows"},
 }
+
+// ponytail: global lock, per-uid locks if throughput matters
+var ingestMu sync.Mutex
 
 // AlertService represents alert service
 type AlertService struct {
@@ -79,6 +91,9 @@ type AlertIngestResult struct {
 
 // Ingest turns one bank / card SMS into at most one transaction in this user's book
 func (s *AlertService) Ingest(c core.Context, uid int64, sender string, text string, receivedAt time.Time) (*AlertIngestResult, error) {
+	ingestMu.Lock()
+	defer ingestMu.Unlock()
+
 	if uid <= 0 {
 		return nil, errs.ErrUserIdInvalid
 	}
@@ -100,46 +115,57 @@ func (s *AlertService) Ingest(c core.Context, uid int64, sender string, text str
 	}
 
 	if isDuplicate, err := s.isDuplicateReference(c, uid, parsed); err != nil {
-		return nil, err
+		return nil, s.failAfterStore(c, uid, message.AlertId, err)
 	} else if isDuplicate {
 		_ = s.updateMessageOutcome(c, uid, message.AlertId, "duplicate", 0)
 		return &AlertIngestResult{Outcome: "duplicate"}, nil
 	}
 
-	if isDuplicate, err := s.isRecentDuplicate(c, uid, parsed, receivedAt); err != nil {
-		return nil, err
-	} else if isDuplicate {
-		_ = s.updateMessageOutcome(c, uid, message.AlertId, "duplicate", 0)
-		return &AlertIngestResult{Outcome: "duplicate"}, nil
-	}
-
-	account, forcedReview, err := s.resolveAccount(c, uid, parsed)
-
-	if err != nil {
-		return nil, err
-	}
-
-	tagIds, err := s.ensureTags(c, uid)
-
-	if err != nil {
-		return nil, err
-	}
-
-	if parsed.Direction == alerts.Credit {
-		isDuplicate, err := s.isOwnTransferCredit(c, uid, account.AccountId, parsed, receivedAt, tagIds[tagAutoSms])
-
-		if err != nil {
-			return nil, err
+	// A reference lets step 4 (above) resolve duplicates precisely; running the amount/direction
+	// heuristic as well would risk dropping a second, genuinely distinct payment that happens to
+	// match on amount within the same window, so it only runs when there is no reference at all.
+	if parsed.Reference == "" {
+		if isDuplicate, err := s.isRecentDuplicate(c, uid, parsed, receivedAt); err != nil {
+			return nil, s.failAfterStore(c, uid, message.AlertId, err)
 		} else if isDuplicate {
 			_ = s.updateMessageOutcome(c, uid, message.AlertId, "duplicate", 0)
 			return &AlertIngestResult{Outcome: "duplicate"}, nil
 		}
 	}
 
+	account, forcedReview, err := s.resolveAccount(c, uid, parsed)
+
+	if err != nil {
+		return nil, s.failAfterStore(c, uid, message.AlertId, err)
+	}
+
+	tagIds, err := s.ensureTags(c, uid)
+
+	if err != nil {
+		return nil, s.failAfterStore(c, uid, message.AlertId, err)
+	}
+
 	classification, err := s.classify(c, uid, account.AccountId, parsed, strings.ToUpper(text))
 
 	if err != nil {
-		return nil, err
+		return nil, s.failAfterStore(c, uid, message.AlertId, err)
+	}
+
+	if classification.IsTransfer {
+		srcAccountId, dstAccountId := account.AccountId, classification.OtherAccountId
+
+		if parsed.Direction == alerts.Credit {
+			srcAccountId, dstAccountId = classification.OtherAccountId, account.AccountId
+		}
+
+		isDuplicate, err := s.isDuplicateOwnTransfer(c, uid, srcAccountId, dstAccountId, parsed.Amount, receivedAt, tagIds[tagAutoSms])
+
+		if err != nil {
+			return nil, s.failAfterStore(c, uid, message.AlertId, err)
+		} else if isDuplicate {
+			_ = s.updateMessageOutcome(c, uid, message.AlertId, "duplicate", 0)
+			return &AlertIngestResult{Outcome: "duplicate"}, nil
+		}
 	}
 
 	needsReview := forcedReview || classification.NeedsReview
@@ -148,16 +174,18 @@ func (s *AlertService) Ingest(c core.Context, uid int64, sender string, text str
 
 	if err != nil {
 		// Server error after parsing: keep the raw message stored, marked as unparsed for review
-		_ = s.updateMessageOutcome(c, uid, message.AlertId, string(alerts.OutcomeUnparsed), 0)
+		return nil, s.failAfterStore(c, uid, message.AlertId, err)
+	}
+
+	// The transaction now exists: mark this alert "added" immediately, before the best-effort
+	// balance check below, so that a failure in that check can never leave the row behind at its
+	// placeholder outcome (which would make a client retry create a second transaction).
+	if err := s.updateMessageOutcome(c, uid, message.AlertId, "added", transaction.TransactionId); err != nil {
 		return nil, err
 	}
 
 	if err := s.checkBalance(c, uid, account.AccountId, parsed, transaction, tagIds[tagBalanceMismatch]); err != nil {
-		return nil, err
-	}
-
-	if err := s.updateMessageOutcome(c, uid, message.AlertId, "added", transaction.TransactionId); err != nil {
-		return nil, err
+		log.Errorf(c, "[alerts.Ingest] failed to tag balance mismatch for transaction \"id:%d\" of user \"uid:%d\", because %s", transaction.TransactionId, uid, err.Error())
 	}
 
 	return &AlertIngestResult{Outcome: "added", Summary: summary, TransactionId: transaction.TransactionId}, nil
@@ -244,6 +272,15 @@ func (s *AlertService) updateMessageOutcome(c core.Context, uid int64, alertId i
 	return err
 }
 
+// failAfterStore marks an already-stored alert message row "unparsed" (best-effort; its own
+// error is discarded) before returning the original error, so that a client retry after an
+// internal error is recognised as a fresh message rather than finding the row stuck at its
+// initial "parsed" placeholder forever
+func (s *AlertService) failAfterStore(c core.Context, uid int64, alertId int64, err error) error {
+	_ = s.updateMessageOutcome(c, uid, alertId, string(alerts.OutcomeUnparsed), 0)
+	return err
+}
+
 // isDuplicateReference reports whether this user already has an added alert with the same
 // reference (step 4)
 func (s *AlertService) isDuplicateReference(c core.Context, uid int64, parsed alerts.ParsedAlert) (bool, error) {
@@ -256,7 +293,9 @@ func (s *AlertService) isDuplicateReference(c core.Context, uid int64, parsed al
 
 // isRecentDuplicate reports whether this user already has an added alert for the same
 // account, amount and direction received within 120 seconds (step 5); since AlertMessage does
-// not itself store account / amount / direction, candidate rows are re-parsed for comparison
+// not itself store account / amount / direction, candidate rows are re-parsed for comparison.
+// Only called when the current alert has no reference at all (see Ingest); a candidate row that
+// itself carries a different, non-empty reference is never treated as the same payment.
 func (s *AlertService) isRecentDuplicate(c core.Context, uid int64, parsed alerts.ParsedAlert, receivedAt time.Time) (bool, error) {
 	minTime := receivedAt.Unix() - 120
 	maxTime := receivedAt.Unix() + 120
@@ -269,6 +308,10 @@ func (s *AlertService) isRecentDuplicate(c core.Context, uid int64, parsed alert
 	}
 
 	for i := 0; i < len(candidates); i++ {
+		if candidates[i].Reference != "" && candidates[i].Reference != parsed.Reference {
+			continue
+		}
+
 		candidate := alerts.Parse(candidates[i].Sender, candidates[i].Text)
 
 		if candidate.Outcome == alerts.OutcomeParsed && candidate.Last4 == parsed.Last4 && candidate.Amount == parsed.Amount && candidate.Direction == parsed.Direction {
@@ -281,7 +324,10 @@ func (s *AlertService) isRecentDuplicate(c core.Context, uid int64, parsed alert
 
 // resolveAccount finds this user's account whose name ends with the alert's last-4 digits,
 // falling back to (creating if needed) this user's "Unmatched alerts" account (step 6); the
-// bool return forces the transaction into review when the fallback account was used
+// bool return forces the transaction into review when the fallback account was used. Hidden
+// accounts and multi-sub-account parents (which cannot hold transactions) are never matched,
+// and an ambiguous match (more than one eligible account with the same last-4) also falls back
+// to "Unmatched alerts" with review forced, rather than guessing.
 func (s *AlertService) resolveAccount(c core.Context, uid int64, parsed alerts.ParsedAlert) (*models.Account, bool, error) {
 	accounts, err := Accounts.GetAllAccountsByUid(c, uid)
 
@@ -289,10 +335,20 @@ func (s *AlertService) resolveAccount(c core.Context, uid int64, parsed alerts.P
 		return nil, false, err
 	}
 
+	var matches []*models.Account
+
 	for i := 0; i < len(accounts); i++ {
-		if strings.HasSuffix(accounts[i].Name, parsed.Last4) {
-			return accounts[i], false, nil
+		if accounts[i].Hidden || accounts[i].Type == models.ACCOUNT_TYPE_MULTI_SUB_ACCOUNTS {
+			continue
 		}
+
+		if m := reAccountNameLast4.FindStringSubmatch(accounts[i].Name); m != nil && m[1] == parsed.Last4 {
+			matches = append(matches, accounts[i])
+		}
+	}
+
+	if len(matches) == 1 {
+		return matches[0], false, nil
 	}
 
 	for i := 0; i < len(accounts); i++ {
@@ -319,15 +375,19 @@ func (s *AlertService) resolveAccount(c core.Context, uid int64, parsed alerts.P
 	return account, true, nil
 }
 
-// isOwnTransferCredit reports whether a credit alert is the other side of a transfer this
-// service already recorded from this user's own debit alert (step 7)
-func (s *AlertService) isOwnTransferCredit(c core.Context, uid int64, accountId int64, parsed alerts.ParsedAlert, receivedAt time.Time, autoSmsTagId int64) (bool, error) {
+// isDuplicateOwnTransfer reports whether this user already recorded the same own-account
+// transfer (same source, same destination, same amount, tagged "Auto (SMS)") from the other
+// side's alert, within 3 days either side of this alert's received time. It is checked before
+// creating any own-account transfer, regardless of which side (debit or credit) is processed
+// first, so that whichever SMS arrives second is recognised as a duplicate rather than
+// recording the same physical transfer twice.
+func (s *AlertService) isDuplicateOwnTransfer(c core.Context, uid int64, srcAccountId int64, dstAccountId int64, amount int64, receivedAt time.Time, autoSmsTagId int64) (bool, error) {
 	minTime := utils.GetMinTransactionTimeFromUnixTime(receivedAt.Add(-3 * 24 * time.Hour).Unix())
-	maxTime := utils.GetMaxTransactionTimeFromUnixTime(receivedAt.Unix())
+	maxTime := utils.GetMaxTransactionTimeFromUnixTime(receivedAt.Add(3 * 24 * time.Hour).Unix())
 
 	var candidates []*models.Transaction
-	err := s.UserDataDB(uid).NewSession(c).Where("uid=? AND deleted=? AND type=? AND related_account_id=? AND amount=? AND transaction_time>=? AND transaction_time<=?",
-		uid, false, models.TRANSACTION_DB_TYPE_TRANSFER_OUT, accountId, parsed.Amount, minTime, maxTime).Find(&candidates)
+	err := s.UserDataDB(uid).NewSession(c).Where("uid=? AND deleted=? AND type=? AND account_id=? AND related_account_id=? AND amount=? AND transaction_time>=? AND transaction_time<=?",
+		uid, false, models.TRANSACTION_DB_TYPE_TRANSFER_OUT, srcAccountId, dstAccountId, amount, minTime, maxTime).Find(&candidates)
 
 	if err != nil {
 		return false, err
@@ -363,7 +423,9 @@ func (s *AlertService) isOwnTransferCredit(c core.Context, uid int64, accountId 
 }
 
 // classify builds the inputs alerts.Classify needs from this user's own data and delegates to
-// it (step 8)
+// it (step 8). Hidden accounts and multi-sub-account parents are excluded from the "own"
+// transfer-matching list, and hidden categories are excluded from the keyword mapping and from
+// payee history hits, since none of them can legally be used on a new transaction.
 func (s *AlertService) classify(c core.Context, uid int64, accountId int64, parsed alerts.ParsedAlert, textUpper string) (alerts.Classification, error) {
 	accounts, err := Accounts.GetAllAccountsByUid(c, uid)
 
@@ -374,8 +436,29 @@ func (s *AlertService) classify(c core.Context, uid int64, accountId int64, pars
 	own := make([]alerts.OwnAccount, 0, len(accounts))
 
 	for i := 0; i < len(accounts); i++ {
+		if accounts[i].Hidden || accounts[i].Type == models.ACCOUNT_TYPE_MULTI_SUB_ACCOUNTS {
+			continue
+		}
+
 		if m := reAccountNameLast4.FindStringSubmatch(accounts[i].Name); m != nil {
 			own = append(own, alerts.OwnAccount{ID: accounts[i].AccountId, Name: accounts[i].Name, Last4: m[1]})
+		}
+	}
+
+	categories, err := TransactionCategories.GetAllCategoriesByUid(c, uid, 0, -1)
+
+	if err != nil {
+		return alerts.Classification{}, err
+	}
+
+	categoryById := make(map[int64]*models.TransactionCategory, len(categories))
+	categoryIdByName := make(map[string]int64, len(categories))
+
+	for i := 0; i < len(categories); i++ {
+		categoryById[categories[i].CategoryId] = categories[i]
+
+		if !categories[i].Hidden && categories[i].ParentCategoryId != models.LevelOneTransactionCategoryParentId {
+			categoryIdByName[categories[i].Name] = categories[i].CategoryId
 		}
 	}
 
@@ -395,24 +478,39 @@ func (s *AlertService) classify(c core.Context, uid int64, accountId int64, pars
 
 			isTransfer := transaction.Type == models.TRANSACTION_DB_TYPE_TRANSFER_OUT || transaction.Type == models.TRANSACTION_DB_TYPE_TRANSFER_IN
 
-			return alerts.HistoryHit{IsTransfer: isTransfer, CategoryId: transaction.CategoryId, OtherAccountId: transaction.RelatedAccountId}, true
+			if isTransfer {
+				// This past transaction may have been recorded from either side of the
+				// transfer; the "other" account is whichever side isn't the resolved account.
+				otherAccountId := transaction.RelatedAccountId
+
+				if otherAccountId == accountId {
+					otherAccountId = transaction.AccountId
+				}
+
+				return alerts.HistoryHit{IsTransfer: true, OtherAccountId: otherAccountId}, true
+			}
+
+			// A non-transfer hit is only usable when its direction matches this alert's: an
+			// expense category can't classify a credit, and vice versa (e.g. a refund from the
+			// same payee that was previously an expense).
+			if parsed.Direction == alerts.Debit && transaction.Type != models.TRANSACTION_DB_TYPE_EXPENSE {
+				continue
+			}
+
+			if parsed.Direction == alerts.Credit && transaction.Type != models.TRANSACTION_DB_TYPE_INCOME {
+				continue
+			}
+
+			category := categoryById[transaction.CategoryId]
+
+			if category == nil || category.Hidden {
+				continue
+			}
+
+			return alerts.HistoryHit{CategoryId: transaction.CategoryId}, true
 		}
 
 		return alerts.HistoryHit{}, false
-	}
-
-	categories, err := TransactionCategories.GetAllCategoriesByUid(c, uid, 0, -1)
-
-	if err != nil {
-		return alerts.Classification{}, err
-	}
-
-	categoryIdByName := make(map[string]int64, len(categories))
-
-	for i := 0; i < len(categories); i++ {
-		if categories[i].ParentCategoryId != models.LevelOneTransactionCategoryParentId {
-			categoryIdByName[categories[i].Name] = categories[i].CategoryId
-		}
 	}
 
 	keywords := make([]alerts.KeywordRule, 0, len(keywordCategoryRules))
@@ -447,10 +545,9 @@ func (s *AlertService) createTransaction(c core.Context, uid int64, account *mod
 	}
 
 	var categoryLabel string
-	var otherAccountName string
 
 	if classification.IsTransfer {
-		categoryId, err := s.ensureCategory(c, uid, models.CATEGORY_TYPE_TRANSFER, transferCategoryName)
+		categoryId, err := s.ensureCategory(c, uid, models.CATEGORY_TYPE_TRANSFER, categoryNameBankTransfer, categoryNameOtherTransfer)
 
 		if err != nil {
 			return nil, "", err
@@ -465,27 +562,26 @@ func (s *AlertService) createTransaction(c core.Context, uid int64, account *mod
 		transaction.Type = models.TRANSACTION_DB_TYPE_TRANSFER_OUT
 		transaction.CategoryId = categoryId
 		transaction.RelatedAccountAmount = parsed.Amount
-		otherAccountName = otherAccount.Name
 
 		if parsed.Direction == alerts.Debit {
 			transaction.AccountId = account.AccountId
 			transaction.RelatedAccountId = classification.OtherAccountId
+			categoryLabel = fmt.Sprintf("Transfer to %s", otherAccount.Name)
 		} else {
 			transaction.AccountId = classification.OtherAccountId
 			transaction.RelatedAccountId = account.AccountId
+			categoryLabel = fmt.Sprintf("Transfer from %s", otherAccount.Name)
 		}
-
-		categoryLabel = fmt.Sprintf("Transfer to %s", otherAccountName)
 	} else {
 		categoryId := classification.CategoryId
 
 		if categoryId == 0 {
 			fallbackType := models.CATEGORY_TYPE_EXPENSE
-			fallbackName := "Uncategorized Expense"
+			fallbackName := categoryNameOtherExpense
 
 			if parsed.Direction == alerts.Credit {
 				fallbackType = models.CATEGORY_TYPE_INCOME
-				fallbackName = "Uncategorized Income"
+				fallbackName = categoryNameOtherIncome
 			}
 
 			var err error
@@ -528,23 +624,33 @@ func (s *AlertService) createTransaction(c core.Context, uid int64, account *mod
 	return transaction, summary, nil
 }
 
-// ensureCategory finds this user's sub-category with the given name and type, creating a
-// primary category and sub-category of that name on first use; it is needed because every
-// transaction (transfer or not) must reference a real sub-category, which classification alone
-// does not always provide
-func (s *AlertService) ensureCategory(c core.Context, uid int64, categoryType models.TransactionCategoryType, name string) (int64, error) {
+// ensureCategory finds this user's visible sub-category matching one of the given names (tried
+// in order) for the given type, creating a primary category and sub-category named after the
+// first name on first use; it is needed because every transaction (transfer or not) must
+// reference a real, visible sub-category, which classification alone does not always provide.
+// A hidden category of the same name is never reused, since it cannot be used on a transaction.
+func (s *AlertService) ensureCategory(c core.Context, uid int64, categoryType models.TransactionCategoryType, names ...string) (int64, error) {
 	categories, err := TransactionCategories.GetAllCategoriesByUid(c, uid, categoryType, -1)
 
 	if err != nil {
 		return 0, err
 	}
 
+	visibleIdByName := make(map[string]int64, len(categories))
+
 	for i := 0; i < len(categories); i++ {
-		if categories[i].ParentCategoryId != models.LevelOneTransactionCategoryParentId && categories[i].Name == name {
-			return categories[i].CategoryId, nil
+		if !categories[i].Hidden && categories[i].ParentCategoryId != models.LevelOneTransactionCategoryParentId {
+			visibleIdByName[categories[i].Name] = categories[i].CategoryId
 		}
 	}
 
+	for _, name := range names {
+		if categoryId, ok := visibleIdByName[name]; ok {
+			return categoryId, nil
+		}
+	}
+
+	name := names[0]
 	primary := &models.TransactionCategory{Uid: uid, Type: categoryType, Name: name, Icon: 1, Color: "000000"}
 	secondary := &models.TransactionCategory{Uid: uid, Type: categoryType, Name: name, Icon: 1, Color: "000000"}
 
@@ -583,7 +689,9 @@ func (s *AlertService) ensureTags(c core.Context, uid int64) (map[string]int64, 
 }
 
 // checkBalance tags the transaction "Balance mismatch" when the alert carried a balance that
-// does not match this account's balance after the transaction was inserted (step 10)
+// does not match this account's balance after the transaction was inserted (step 10). Called
+// only after the alert has already been marked "added" (see Ingest), so any failure here is
+// surfaced to the caller as a log, not as an Ingest error.
 func (s *AlertService) checkBalance(c core.Context, uid int64, accountId int64, parsed alerts.ParsedAlert, transaction *models.Transaction, balanceMismatchTagId int64) error {
 	if !parsed.HasBalance {
 		return nil

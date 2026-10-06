@@ -15,6 +15,19 @@ import (
 )
 
 var alertTestDbReady bool
+var alertTestDbDir string
+
+// TestMain removes the sqlite test database directory once, after every test in this package
+// has finished, instead of leaking a new temp directory on every `go test` invocation.
+func TestMain(m *testing.M) {
+	code := m.Run()
+
+	if alertTestDbDir != "" {
+		_ = os.RemoveAll(alertTestDbDir)
+	}
+
+	os.Exit(code)
+}
 
 // newAlertTestUser creates a user with the given INR accounts in a temporary sqlite database
 func newAlertTestUser(t *testing.T, accountNames ...string) (core.Context, int64) {
@@ -23,11 +36,13 @@ func newAlertTestUser(t *testing.T, accountNames ...string) (core.Context, int64
 	if !alertTestDbReady {
 		// Deliberately not t.TempDir(): that directory is removed when the *first* test that
 		// created it finishes, but this database is shared (via alertTestDbReady) by every
-		// test in the package, so its directory must outlive any single test.
+		// test in the package, so its directory must outlive any single test; TestMain above
+		// removes it once, after the whole package's tests have run.
 		dir, err := os.MkdirTemp("", "alerts-test-*")
 		if err != nil {
 			t.Fatal(err)
 		}
+		alertTestDbDir = dir
 		cfg := &settings.Config{DatabaseConfig: &settings.DatabaseConfig{DatabaseType: settings.Sqlite3DbType,
 			DatabasePath: filepath.Join(dir, "alerts.db"), MaxIdleConnection: 2, ConnectionMaxLifeTime: 14400}, UuidGeneratorType: settings.InternalUuidGeneratorType}
 		settings.SetCurrentConfig(cfg)
