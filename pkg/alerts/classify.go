@@ -2,7 +2,6 @@ package alerts
 
 import (
 	"regexp"
-	"strings"
 )
 
 type OwnAccount struct {
@@ -30,15 +29,21 @@ type KeywordRule struct {
 	CategoryId int64
 }
 
-var reAnyLast4 = regexp.MustCompile(`(?:X|\*){2,}\s*(\d{4})\b`)
+var reTransferLast4 = regexp.MustCompile(`(?i)\b(?:to|from|beneficiary|benef\.?|trf to|transferred to|credited to|credited from)\s+(?:a/?c|acct|account|card)?\s*(?:no\.?)?\s*[x*]{2,}\s*(\d{4})\b`)
 
 // Classify decides category or transfer target: own account by last-4, then payee history, then keywords, then review
 func Classify(alert ParsedAlert, accountId int64, own []OwnAccount, history func(payeeKey string) (HistoryHit, bool), keywords []KeywordRule, textUpper string) Classification {
-	for _, m := range reAnyLast4.FindAllStringSubmatch(textUpper, -1) {
+	matches := reTransferLast4.FindAllStringSubmatch(textUpper, -1)
+	for _, m := range matches {
+		last4 := m[1]
+		otherAccounts := []int64{}
 		for _, a := range own {
-			if a.Last4 == m[1] && a.ID != accountId {
-				return Classification{IsTransfer: true, OtherAccountId: a.ID}
+			if a.Last4 == last4 && a.ID != accountId {
+				otherAccounts = append(otherAccounts, a.ID)
 			}
+		}
+		if len(otherAccounts) == 1 {
+			return Classification{IsTransfer: true, OtherAccountId: otherAccounts[0]}
 		}
 	}
 
@@ -54,7 +59,7 @@ func Classify(alert ParsedAlert, accountId int64, own []OwnAccount, history func
 	}
 
 	for _, k := range keywords {
-		if k.Direction == alert.Direction && k.Pattern.MatchString(strings.ToUpper(alert.Counterparty+" "+textUpper)) {
+		if k.Direction == alert.Direction && k.Pattern.MatchString(alert.Counterparty+" "+textUpper) {
 			return Classification{CategoryId: k.CategoryId}
 		}
 	}
