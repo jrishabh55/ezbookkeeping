@@ -7,6 +7,8 @@ type AlertMessage struct {
 	Sender           string `xorm:"VARCHAR(32) NOT NULL"`
 	Text             string `xorm:"VARCHAR(2048) NOT NULL"`
 	Reference        string `xorm:"INDEX(IDX_alert_message_uid_ref) VARCHAR(32) NOT NULL"`
+	PayeeKey         string `xorm:"VARCHAR(64) NOT NULL DEFAULT ''"`
+	TextHash         string `xorm:"VARCHAR(16) NOT NULL DEFAULT ''"`
 	Outcome          string `xorm:"VARCHAR(16) NOT NULL"`
 	TransactionId    int64  `xorm:"NOT NULL DEFAULT 0"`
 	ReceivedUnixTime int64  `xorm:"INDEX(IDX_alert_message_uid_time) NOT NULL"`
@@ -39,9 +41,18 @@ type AlertTokenCreateResponse struct {
 
 // AlertStatusResponse represents the response of alert status query
 type AlertStatusResponse struct {
-	Configured     bool             `json:"configured"`
-	LastReceivedAt int64            `json:"lastReceivedAt"`
-	LastOutcome    string           `json:"lastOutcome"`
-	Counts         map[string]int64 `json:"counts"`
-	ShortcutUrl    string           `json:"shortcutUrl"`
+	Configured     bool                 `json:"configured"`
+	LastReceivedAt int64                `json:"lastReceivedAt"`
+	LastOutcome    string               `json:"lastOutcome"`
+	Counts         map[string]int64     `json:"counts"`
+	ShortcutUrl    string               `json:"shortcutUrl"`
+	RecentUnparsed []*AlertUnparsedItem `json:"recentUnparsed"`
+}
+
+// AlertUnparsedItem represents one recent alert message that could not be read, so the user can
+// add it manually
+type AlertUnparsedItem struct {
+	ReceivedAt int64  `json:"receivedAt"`
+	Sender     string `json:"sender"`
+	Text       string `json:"text"`
 }

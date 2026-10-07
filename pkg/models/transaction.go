@@ -206,7 +206,7 @@ type TransactionImportRequest struct {
 	// this row's statement date and narration; TransactionId is untrusted client input and is
 	// re-checked server-side (ownership, not deleted, carries "Auto (SMS)") before anything is
 	// touched (ruling 1).
-	MatchedTransactions []*TransactionImportMatchedItem `json:"matchedTransactions,omitempty"`
+	MatchedTransactions []*TransactionImportMatchedItem `json:"matchedTransactions,omitempty" binding:"omitempty,dive"`
 	ClientSessionId     string                          `json:"clientSessionId"`
 }
 

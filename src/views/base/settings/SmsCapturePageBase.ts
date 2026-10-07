@@ -3,7 +3,7 @@ import { ref, computed, onBeforeUnmount } from 'vue';
 import { useI18n } from '@/locales/helpers.ts';
 
 import { useAlertsStore } from '@/stores/alert.ts';
-import type { AlertTokenCreateResponse, AlertStatusResponse } from '@/models/alert.ts';
+import type { AlertTokenCreateResponse, AlertStatusResponse, AlertUnparsedItem } from '@/models/alert.ts';
 
 import { parseDateTimeFromUnixTime } from '@/lib/datetime.ts';
 
@@ -52,6 +52,12 @@ export function useSmsCapturePageBase() {
 
         return outcomeDisplayName(status.value.lastOutcome);
     });
+
+    const recentUnparsed = computed<AlertUnparsedItem[]>(() => status.value?.recentUnparsed || []);
+
+    function receivedAtDisplay(receivedAt: number): string {
+        return formatDateTimeToLongDateTime(parseDateTimeFromUnixTime(receivedAt));
+    }
 
     function outcomeDisplayName(outcome: string): string {
         if (outcome === 'added') {
@@ -187,8 +193,10 @@ export function useSmsCapturePageBase() {
         // computed states
         lastReceivedDisplay,
         lastOutcomeDisplay,
+        recentUnparsed,
         // functions
         outcomeDisplayName,
+        receivedAtDisplay,
         loadStatus,
         createToken,
         revokeToken,

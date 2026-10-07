@@ -12,6 +12,7 @@ import (
 	"github.com/mayswind/ezbookkeeping/pkg/models"
 	"github.com/mayswind/ezbookkeeping/pkg/services"
 	"github.com/mayswind/ezbookkeeping/pkg/settings"
+	"github.com/mayswind/ezbookkeeping/pkg/utils"
 )
 
 // alertIngestMaxTextLength is the maximum accepted length of an ingested SMS body; it mirrors
@@ -104,6 +105,8 @@ func (a *AlertsApi) IngestHandler(c *core.WebContext) (any, *errs.Error) {
 		return nil, errs.ErrTooManyRequests
 	}
 
+	a.updateIngestTokenLastSeen(c, uid)
+
 	receivedAt := resolveAlertReceivedAt(alertIngestReq.ReceivedAt, time.Now())
 
 	result, err := a.alerts.Ingest(c, uid, alertIngestReq.Sender, alertIngestReq.Text, receivedAt)
@@ -119,6 +122,33 @@ func (a *AlertsApi) IngestHandler(c *core.WebContext) (any, *errs.Error) {
 	}
 
 	return alertIngestResp, nil
+}
+
+// updateIngestTokenLastSeen records this request against the ingest token's last seen time, the
+// same way other authenticated token types do (see TokenRefreshHandler); a failure is only logged
+func (a *AlertsApi) updateIngestTokenLastSeen(c *core.WebContext, uid int64) {
+	tokenClaims := c.GetTokenClaims()
+
+	if tokenClaims == nil {
+		return
+	}
+
+	userTokenId, err := utils.StringToInt64(tokenClaims.UserTokenId)
+
+	if err != nil {
+		log.Warnf(c, "[alerts.IngestHandler] parse user token id failed, because %s", err.Error())
+		return
+	}
+
+	tokenRecord := &models.TokenRecord{
+		Uid:             tokenClaims.Uid,
+		UserTokenId:     userTokenId,
+		CreatedUnixTime: tokenClaims.IssuedAt,
+	}
+
+	if err := a.tokens.UpdateTokenLastSeen(c, tokenRecord); err != nil {
+		log.Warnf(c, "[alerts.IngestHandler] failed to update last seen of token \"id:%s\" for user \"uid:%d\", because %s", a.tokens.GenerateTokenId(tokenRecord), uid, err.Error())
+	}
 }
 
 // TokenCreateHandler creates (replacing any existing one) this user's SMS alert ingest token; it

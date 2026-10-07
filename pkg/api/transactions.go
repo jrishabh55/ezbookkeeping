@@ -2949,7 +2949,7 @@ func (a *TransactionsApi) TransactionImportHandler(c *core.WebContext) (any, *er
 	for i := 0; i < len(transactionImportReq.MatchedTransactions); i++ {
 		matchedItem := transactionImportReq.MatchedTransactions[i]
 
-		if matchedItem.TransactionId <= 0 || seenMatchedTransactionIds[matchedItem.TransactionId] {
+		if matchedItem == nil || matchedItem.TransactionId <= 0 || matchedItem.Time <= 0 || seenMatchedTransactionIds[matchedItem.TransactionId] {
 			log.Warnf(c, "[transactions.TransactionImportHandler] skipping invalid or duplicate matched transaction id at index %d for user \"uid:%d\"", i, uid)
 			continue
 		}
@@ -3003,14 +3003,21 @@ func (a *TransactionsApi) TransactionImportHandler(c *core.WebContext) (any, *er
 	// committed, so a failure here is logged rather than turned into an import failure - the
 	// user's data is not lost, only the SMS transaction's verification is left for the next
 	// import (or for the user to resolve manually).
+	// A matched transaction that failed to verify still carries "Auto (SMS)"; it was in the
+	// statement, so it must not be tagged "Not in statement" below.
+	var failedVerifyIds map[int64]bool
+
 	if len(matchedTransactions) > 0 {
-		if err := a.alerts.MarkStatementVerified(c, uid, matchedTransactions); err != nil {
+		var err error
+		failedVerifyIds, err = a.alerts.MarkStatementVerified(c, uid, matchedTransactions)
+
+		if err != nil {
 			log.Errorf(c, "[transactions.TransactionImportHandler] failed to mark %d matched transactions verified for user \"uid:%d\", because %s", len(matchedTransactions), uid, err.Error())
 		}
 	}
 
 	for accountId, timeRange := range touchedAccountRanges {
-		if err := a.alerts.MarkNotInStatement(c, uid, accountId, timeRange.minUnixTime, timeRange.maxUnixTime); err != nil {
+		if err := a.alerts.MarkNotInStatement(c, uid, accountId, timeRange.minUnixTime, timeRange.maxUnixTime, failedVerifyIds); err != nil {
 			log.Errorf(c, "[transactions.TransactionImportHandler] failed to mark not-in-statement transactions of account \"id:%d\" for user \"uid:%d\", because %s", accountId, uid, err.Error())
 		}
 	}

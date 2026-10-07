@@ -3027,6 +3027,7 @@
     "Turn off \"Ask Before Running\" on both automations so new bank SMS are captured automatically.": "Turn off \"Ask Before Running\" on both automations so new bank SMS are captured automatically.",
     "Send Test": "Send Test",
     "Waiting for a test SMS to arrive…": "Waiting for a test SMS to arrive…",
+    "Couldn't read — add these manually": "Couldn't read — add these manually",
     "No test SMS received within 2 minutes": "No test SMS received within 2 minutes",
     "Revoke": "Revoke",
     "Are you sure you want to revoke the SMS Auto-capture token?": "Are you sure you want to revoke the SMS Auto-capture token?",

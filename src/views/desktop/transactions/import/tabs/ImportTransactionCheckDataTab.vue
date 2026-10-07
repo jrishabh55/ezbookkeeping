@@ -1656,7 +1656,8 @@ function selectInvert(): void {
 
     for (const importTransaction of props.importTransactions) {
         if (isTransactionDisplayed(importTransaction)) {
-            importTransaction.selected = !importTransaction.selected;
+            // See selectAllValid: inverting may untick a matched row but never ticks one.
+            importTransaction.selected = !importTransaction.selected && !importTransaction.matchedTransactionId;
         }
     }
 }
@@ -1690,7 +1691,8 @@ function clearSelectedTransactionsNotDisplayed(): void {
 
 function selectInvertInThisPage(): void {
     for (const importTransaction of currentPageTransactions.value) {
-        importTransaction.selected = !importTransaction.selected;
+        // See selectInvert: a matched row is never ticked by a bulk action.
+        importTransaction.selected = !importTransaction.selected && !importTransaction.matchedTransactionId;
     }
 }
 

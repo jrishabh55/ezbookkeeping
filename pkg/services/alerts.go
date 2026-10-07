@@ -1,6 +1,9 @@
 package services
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -77,6 +80,33 @@ func reconcileTypeMatches(rowType models.TransactionDbType, transactionType mode
 // account cannot be resolved from its last-4 digits
 const unmatchedAccountName = "Unmatched alerts"
 
+// errUnmatchedAccountHidden is returned by resolveAccount when the alert's account can't be
+// resolved and this user's "Unmatched alerts" account exists but is hidden (so no transaction can
+// be created in it); Ingest turns it into an "unparsed" outcome, keeping the row for the user
+var errUnmatchedAccountHidden = errors.New("unmatched alerts account is hidden")
+
+// repeatedAlertWindowSeconds is how close in time an identical ignored / unparsed message from the
+// same sender must be to be treated as the same SMS posted again (e.g. by both the "Rs" and the
+// "INR" automations)
+const repeatedAlertWindowSeconds = 120
+
+// alertTextHash returns a short sha256 prefix of an SMS body, stored so a repeat of an ignored
+// message can be recognised without keeping its text
+func alertTextHash(text string) string {
+	sum := sha256.Sum256([]byte(text))
+	return hex.EncodeToString(sum[:])[:16]
+}
+
+// truncateComment truncates a comment to the 255 runes a transaction comment can hold, by rune
+// rather than by byte so a multi-byte character is never split
+func truncateComment(comment string) string {
+	if utf8.RuneCountInString(comment) > 255 {
+		return utils.SubString(comment, 0, 255)
+	}
+
+	return comment
+}
+
 // Fallback category names looked up (and created on first use) when classification does not
 // resolve a usable category; the transfer names are tried in priority order
 const (
@@ -148,8 +178,17 @@ func (s *AlertService) Ingest(c core.Context, uid int64, sender string, text str
 	}
 
 	parsed := alerts.Parse(sender, text)
+	textHash := alertTextHash(text)
 
-	message, err := s.storeMessage(c, uid, sender, text, receivedAt, parsed)
+	if parsed.Outcome == alerts.OutcomeIgnored || parsed.Outcome == alerts.OutcomeUnparsed {
+		if isRepeated, err := s.isRepeatedMessage(c, uid, sender, textHash, string(parsed.Outcome), receivedAt); err != nil {
+			return nil, err
+		} else if isRepeated {
+			return &AlertIngestResult{Outcome: string(parsed.Outcome)}, nil
+		}
+	}
+
+	message, err := s.storeMessage(c, uid, sender, text, textHash, receivedAt, parsed)
 
 	if err != nil {
 		return nil, err
@@ -184,11 +223,15 @@ func (s *AlertService) Ingest(c core.Context, uid int64, sender string, text str
 
 	account, forcedReview, err := s.resolveAccount(c, uid, parsed)
 
-	if err != nil {
+	if errors.Is(err, errUnmatchedAccountHidden) {
+		log.Warnf(c, "[alerts.Ingest] cannot record alert for user \"uid:%d\", because its account is unknown and the \"%s\" account is hidden", uid, unmatchedAccountName)
+		_ = s.updateMessageOutcome(c, uid, message.AlertId, string(alerts.OutcomeUnparsed), 0)
+		return &AlertIngestResult{Outcome: string(alerts.OutcomeUnparsed)}, nil
+	} else if err != nil {
 		return nil, s.failAfterStore(c, uid, message.AlertId, err)
 	}
 
-	tagIds, err := s.ensureTags(c, uid)
+	tagIds, hiddenTagIds, err := s.ensureTags(c, uid)
 
 	if err != nil {
 		return nil, s.failAfterStore(c, uid, message.AlertId, err)
@@ -215,11 +258,22 @@ func (s *AlertService) Ingest(c core.Context, uid int64, sender string, text str
 			_ = s.updateMessageOutcome(c, uid, message.AlertId, "duplicate", 0)
 			return &AlertIngestResult{Outcome: "duplicate"}, nil
 		}
+	} else {
+		// One side of an own-account transfer whose SMS doesn't name the other account (e.g. a
+		// credit "from JOHN DOE"): the other side's SMS may already have recorded the transfer.
+		isDuplicate, err := s.isDuplicateTransferSide(c, uid, account.AccountId, parsed.Direction, parsed.Amount, receivedAt, tagIds[tagAutoSms])
+
+		if err != nil {
+			return nil, s.failAfterStore(c, uid, message.AlertId, err)
+		} else if isDuplicate {
+			_ = s.updateMessageOutcome(c, uid, message.AlertId, "duplicate", 0)
+			return &AlertIngestResult{Outcome: "duplicate"}, nil
+		}
 	}
 
 	needsReview := forcedReview || classification.NeedsReview
 
-	transaction, summary, err := s.createTransaction(c, uid, account, parsed, classification, needsReview, text, receivedAt, tagIds)
+	transaction, summary, err := s.createTransaction(c, uid, account, parsed, classification, needsReview, text, receivedAt, tagIds, hiddenTagIds)
 
 	if err != nil {
 		// Server error after parsing: keep the raw message stored, marked as unparsed for review
@@ -233,7 +287,9 @@ func (s *AlertService) Ingest(c core.Context, uid int64, sender string, text str
 		return nil, err
 	}
 
-	if err := s.checkBalance(c, uid, account.AccountId, parsed, transaction, tagIds[tagBalanceMismatch]); err != nil {
+	if hiddenTagIds[tagIds[tagBalanceMismatch]] {
+		log.Warnf(c, "[alerts.Ingest] skipping balance check for transaction \"id:%d\" of user \"uid:%d\", because the \"%s\" tag is hidden", transaction.TransactionId, uid, tagBalanceMismatch)
+	} else if err := s.checkBalance(c, uid, account.AccountId, parsed, transaction, tagIds[tagBalanceMismatch]); err != nil {
 		log.Errorf(c, "[alerts.Ingest] failed to tag balance mismatch for transaction \"id:%d\" of user \"uid:%d\", because %s", transaction.TransactionId, uid, err.Error())
 	}
 
@@ -254,12 +310,21 @@ func (s *AlertService) Status(c core.Context, uid int64) (*models.AlertStatusRes
 	}
 
 	response := &models.AlertStatusResponse{
-		Counts: make(map[string]int64),
+		Counts:         make(map[string]int64),
+		RecentUnparsed: make([]*models.AlertUnparsedItem, 0),
 	}
 
 	for i := 0; i < len(messages); i++ {
 		message := messages[i]
 		response.Counts[message.Outcome]++
+
+		if message.Outcome == string(alerts.OutcomeUnparsed) && len(response.RecentUnparsed) < 10 {
+			response.RecentUnparsed = append(response.RecentUnparsed, &models.AlertUnparsedItem{
+				ReceivedAt: message.ReceivedUnixTime,
+				Sender:     message.Sender,
+				Text:       message.Text,
+			})
+		}
 
 		if i == 0 {
 			response.LastReceivedAt = message.ReceivedUnixTime
@@ -282,17 +347,28 @@ func (s *AlertService) DeleteAllAlertMessages(c core.Context, uid int64) error {
 }
 
 // storeMessage inserts an AlertMessage row for every ingest request (step 1); its outcome is
-// updated in place once the final outcome of this request is known
-func (s *AlertService) storeMessage(c core.Context, uid int64, sender string, text string, receivedAt time.Time, parsed alerts.ParsedAlert) (*models.AlertMessage, error) {
+// updated in place once the final outcome of this request is known. An ignored message (OTP,
+// promo, ...) keeps no text, only enough to count it; a parsed one keeps its payee key so later
+// alerts from the same payee can learn from the transaction it becomes (see classify).
+func (s *AlertService) storeMessage(c core.Context, uid int64, sender string, text string, textHash string, receivedAt time.Time, parsed alerts.ParsedAlert) (*models.AlertMessage, error) {
 	message := &models.AlertMessage{
 		AlertId:          s.GenerateUuid(uuid.UUID_TYPE_ALERT_MESSAGE),
 		Uid:              uid,
 		Sender:           sender,
 		Text:             text,
 		Reference:        parsed.Reference,
+		TextHash:         textHash,
 		Outcome:          string(parsed.Outcome),
 		ReceivedUnixTime: receivedAt.Unix(),
 		CreatedUnixTime:  time.Now().Unix(),
+	}
+
+	if parsed.Outcome == alerts.OutcomeIgnored {
+		message.Text = ""
+	}
+
+	if parsed.Outcome == alerts.OutcomeParsed {
+		message.PayeeKey = utils.SubString(alerts.PayeeKey(parsed.Counterparty), 0, 64)
 	}
 
 	if message.AlertId < 1 {
@@ -328,6 +404,14 @@ func (s *AlertService) updateMessageOutcome(c core.Context, uid int64, alertId i
 func (s *AlertService) failAfterStore(c core.Context, uid int64, alertId int64, err error) error {
 	_ = s.updateMessageOutcome(c, uid, alertId, string(alerts.OutcomeUnparsed), 0)
 	return err
+}
+
+// isRepeatedMessage reports whether this user already has an alert row with the same sender, text
+// hash and outcome received within 120 seconds: the same ignored / unparsed SMS posted twice (e.g.
+// a message containing both "Rs" and "INR" triggers both automations) is not stored twice
+func (s *AlertService) isRepeatedMessage(c core.Context, uid int64, sender string, textHash string, outcome string, receivedAt time.Time) (bool, error) {
+	return s.UserDataDB(uid).NewSession(c).Where("uid=? AND sender=? AND text_hash=? AND outcome=? AND received_unix_time>=? AND received_unix_time<=?",
+		uid, sender, textHash, outcome, receivedAt.Unix()-repeatedAlertWindowSeconds, receivedAt.Unix()+repeatedAlertWindowSeconds).Exist(&models.AlertMessage{})
 }
 
 // isDuplicateReference reports whether this user already has an added alert with the same
@@ -384,26 +468,25 @@ func (s *AlertService) resolveAccount(c core.Context, uid int64, parsed alerts.P
 		return nil, false, err
 	}
 
-	var matches []*models.Account
-
-	for i := 0; i < len(accounts); i++ {
-		if accounts[i].Hidden || accounts[i].Type == models.ACCOUNT_TYPE_MULTI_SUB_ACCOUNTS {
-			continue
-		}
-
-		if m := reAccountNameLast4.FindStringSubmatch(accounts[i].Name); m != nil && m[1] == parsed.Last4 {
-			matches = append(matches, accounts[i])
-		}
+	if account := uniqueAccountByLast4(accounts, parsed.Last4); account != nil {
+		return account, false, nil
 	}
 
-	if len(matches) == 1 {
-		return matches[0], false, nil
-	}
+	unmatchedHidden := false
 
 	for i := 0; i < len(accounts); i++ {
 		if accounts[i].Name == unmatchedAccountName {
+			if accounts[i].Hidden {
+				unmatchedHidden = true
+				continue
+			}
+
 			return accounts[i], true, nil
 		}
+	}
+
+	if unmatchedHidden {
+		return nil, false, errUnmatchedAccountHidden
 	}
 
 	account := &models.Account{
@@ -424,6 +507,29 @@ func (s *AlertService) resolveAccount(c core.Context, uid int64, parsed alerts.P
 	return account, true, nil
 }
 
+// uniqueAccountByLast4 returns the one account among accounts whose name ends with last4 (preceded
+// by a non-digit or the start of the name), or nil when there is no such account or more than
+// one; hidden accounts and multi-sub-account parents are never matched
+func uniqueAccountByLast4(accounts []*models.Account, last4 string) *models.Account {
+	var matches []*models.Account
+
+	for i := 0; i < len(accounts); i++ {
+		if accounts[i].Hidden || accounts[i].Type == models.ACCOUNT_TYPE_MULTI_SUB_ACCOUNTS {
+			continue
+		}
+
+		if m := reAccountNameLast4.FindStringSubmatch(accounts[i].Name); m != nil && m[1] == last4 {
+			matches = append(matches, accounts[i])
+		}
+	}
+
+	if len(matches) == 1 {
+		return matches[0]
+	}
+
+	return nil
+}
+
 // isDuplicateOwnTransfer reports whether this user already recorded the same own-account
 // transfer (same source, same destination, same amount, tagged "Auto (SMS)") from the other
 // side's alert, within 3 days either side of this alert's received time. It is checked before
@@ -431,19 +537,73 @@ func (s *AlertService) resolveAccount(c core.Context, uid int64, parsed alerts.P
 // first, so that whichever SMS arrives second is recognised as a duplicate rather than
 // recording the same physical transfer twice.
 func (s *AlertService) isDuplicateOwnTransfer(c core.Context, uid int64, srcAccountId int64, dstAccountId int64, amount int64, receivedAt time.Time, autoSmsTagId int64) (bool, error) {
-	minTime := utils.GetMinTransactionTimeFromUnixTime(receivedAt.Add(-3 * 24 * time.Hour).Unix())
-	maxTime := utils.GetMaxTransactionTimeFromUnixTime(receivedAt.Add(3 * 24 * time.Hour).Unix())
-
-	var candidates []*models.Transaction
-	err := s.UserDataDB(uid).NewSession(c).Where("uid=? AND deleted=? AND type=? AND account_id=? AND related_account_id=? AND amount=? AND transaction_time>=? AND transaction_time<=?",
-		uid, false, models.TRANSACTION_DB_TYPE_TRANSFER_OUT, srcAccountId, dstAccountId, amount, minTime, maxTime).Find(&candidates)
+	transfers, err := s.findAutoSmsTransfers(c, uid, "account_id=? AND related_account_id=?", []any{srcAccountId, dstAccountId}, amount, receivedAt, autoSmsTagId)
 
 	if err != nil {
 		return false, err
 	}
 
+	return len(transfers) > 0, nil
+}
+
+// isDuplicateTransferSide reports whether an alert that is about to become a plain income /
+// expense on accountId is in fact the other side of an own-account transfer already recorded from
+// the other account's SMS (same amount, tagged "Auto (SMS)", within 3 days either side): a credit
+// into accountId matches a transfer *to* it recorded from a debit SMS, and a debit from accountId
+// matches a transfer *from* it recorded from a credit SMS. Without this, an SMS that doesn't name
+// the other account (e.g. "credited ... by IMPS from JOHN DOE") would count the money twice.
+func (s *AlertService) isDuplicateTransferSide(c core.Context, uid int64, accountId int64, direction alerts.Direction, amount int64, receivedAt time.Time, autoSmsTagId int64) (bool, error) {
+	condition, originDirection := "related_account_id=?", alerts.Debit
+
+	if direction == alerts.Debit {
+		condition, originDirection = "account_id=?", alerts.Credit
+	}
+
+	transfers, err := s.findAutoSmsTransfers(c, uid, condition, []any{accountId}, amount, receivedAt, autoSmsTagId)
+
+	if err != nil || len(transfers) == 0 {
+		return false, err
+	}
+
+	transferIds := make([]int64, len(transfers))
+
+	for i := 0; i < len(transfers); i++ {
+		transferIds[i] = transfers[i].TransactionId
+	}
+
+	var messages []*models.AlertMessage
+	err = s.UserDataDB(uid).NewSession(c).Where("uid=? AND outcome=?", uid, "added").In("transaction_id", transferIds).Find(&messages)
+
+	if err != nil {
+		return false, err
+	}
+
+	for i := 0; i < len(messages); i++ {
+		if alerts.Parse(messages[i].Sender, messages[i].Text).Direction == originDirection {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+// findAutoSmsTransfers returns this user's transfer-out transactions tagged "Auto (SMS)" with the
+// given amount, within 3 days either side of receivedAt, that also satisfy condition (a where
+// clause over account_id / related_account_id, with its args)
+func (s *AlertService) findAutoSmsTransfers(c core.Context, uid int64, condition string, args []any, amount int64, receivedAt time.Time, autoSmsTagId int64) ([]*models.Transaction, error) {
+	minTime := utils.GetMinTransactionTimeFromUnixTime(receivedAt.Add(-3 * 24 * time.Hour).Unix())
+	maxTime := utils.GetMaxTransactionTimeFromUnixTime(receivedAt.Add(3 * 24 * time.Hour).Unix())
+
+	var candidates []*models.Transaction
+	err := s.UserDataDB(uid).NewSession(c).Where("uid=? AND deleted=? AND type=? AND amount=? AND transaction_time>=? AND transaction_time<=? AND "+condition,
+		append([]any{uid, false, models.TRANSACTION_DB_TYPE_TRANSFER_OUT, amount, minTime, maxTime}, args...)...).Find(&candidates)
+
+	if err != nil {
+		return nil, err
+	}
+
 	if len(candidates) == 0 {
-		return false, nil
+		return nil, nil
 	}
 
 	transactionIds := make([]int64, len(candidates))
@@ -455,20 +615,23 @@ func (s *AlertService) isDuplicateOwnTransfer(c core.Context, uid int64, srcAcco
 	tagIdsByTransaction, err := TransactionTags.GetAllTagIdsOfTransactions(c, uid, transactionIds)
 
 	if err != nil {
-		return false, err
+		return nil, err
 	}
+
+	var transfers []*models.Transaction
 
 	for i := 0; i < len(candidates); i++ {
 		tagIds := tagIdsByTransaction[candidates[i].TransactionId]
 
 		for j := 0; j < len(tagIds); j++ {
 			if tagIds[j] == autoSmsTagId {
-				return true, nil
+				transfers = append(transfers, candidates[i])
+				break
 			}
 		}
 	}
 
-	return false, nil
+	return transfers, nil
 }
 
 // classify builds the inputs alerts.Classify needs from this user's own data and delegates to
@@ -511,7 +674,50 @@ func (s *AlertService) classify(c core.Context, uid int64, accountId int64, pars
 		}
 	}
 
+	// usable reports whether a past transaction of the same payee can classify this alert, and how
+	usable := func(transaction *models.Transaction) (alerts.HistoryHit, bool) {
+		isTransfer := transaction.Type == models.TRANSACTION_DB_TYPE_TRANSFER_OUT || transaction.Type == models.TRANSACTION_DB_TYPE_TRANSFER_IN
+
+		if isTransfer {
+			// This past transaction may have been recorded from either side of the
+			// transfer; the "other" account is whichever side isn't the resolved account.
+			otherAccountId := transaction.RelatedAccountId
+
+			if otherAccountId == accountId {
+				otherAccountId = transaction.AccountId
+			}
+
+			return alerts.HistoryHit{IsTransfer: true, OtherAccountId: otherAccountId}, true
+		}
+
+		// A non-transfer hit is only usable when its direction matches this alert's: an
+		// expense category can't classify a credit, and vice versa (e.g. a refund from the
+		// same payee that was previously an expense).
+		if parsed.Direction == alerts.Debit && transaction.Type != models.TRANSACTION_DB_TYPE_EXPENSE {
+			return alerts.HistoryHit{}, false
+		}
+
+		if parsed.Direction == alerts.Credit && transaction.Type != models.TRANSACTION_DB_TYPE_INCOME {
+			return alerts.HistoryHit{}, false
+		}
+
+		category := categoryById[transaction.CategoryId]
+
+		if category == nil || category.Hidden {
+			return alerts.HistoryHit{}, false
+		}
+
+		return alerts.HistoryHit{CategoryId: transaction.CategoryId}, true
+	}
+
 	history := func(payeeKey string) (alerts.HistoryHit, bool) {
+		// SMS-captured transactions first: their comment is the raw SMS, so the comment search
+		// below can never find them; the alert row keeps the payee key, and the transaction's
+		// *current* category / transfer target is used, so the user's corrections are learnt.
+		if hit, ok := s.smsPayeeHistory(c, uid, payeeKey, categoryById, usable); ok {
+			return hit, true
+		}
+
 		transactions, err := Transactions.GetTransactionsByMaxTime(c, uid, 0, 0, 0, nil, nil, nil, false, "", payeeKey, core.MATCH_MODE_IGNORE_CASE, false, 1, 20, false, true)
 
 		if err != nil {
@@ -519,44 +725,13 @@ func (s *AlertService) classify(c core.Context, uid int64, accountId int64, pars
 		}
 
 		for i := 0; i < len(transactions); i++ {
-			transaction := transactions[i]
-
-			if alerts.PayeeKey(transaction.Comment) != payeeKey {
+			if alerts.PayeeKey(transactions[i].Comment) != payeeKey {
 				continue
 			}
 
-			isTransfer := transaction.Type == models.TRANSACTION_DB_TYPE_TRANSFER_OUT || transaction.Type == models.TRANSACTION_DB_TYPE_TRANSFER_IN
-
-			if isTransfer {
-				// This past transaction may have been recorded from either side of the
-				// transfer; the "other" account is whichever side isn't the resolved account.
-				otherAccountId := transaction.RelatedAccountId
-
-				if otherAccountId == accountId {
-					otherAccountId = transaction.AccountId
-				}
-
-				return alerts.HistoryHit{IsTransfer: true, OtherAccountId: otherAccountId}, true
+			if hit, ok := usable(transactions[i]); ok {
+				return hit, true
 			}
-
-			// A non-transfer hit is only usable when its direction matches this alert's: an
-			// expense category can't classify a credit, and vice versa (e.g. a refund from the
-			// same payee that was previously an expense).
-			if parsed.Direction == alerts.Debit && transaction.Type != models.TRANSACTION_DB_TYPE_EXPENSE {
-				continue
-			}
-
-			if parsed.Direction == alerts.Credit && transaction.Type != models.TRANSACTION_DB_TYPE_INCOME {
-				continue
-			}
-
-			category := categoryById[transaction.CategoryId]
-
-			if category == nil || category.Hidden {
-				continue
-			}
-
-			return alerts.HistoryHit{CategoryId: transaction.CategoryId}, true
 		}
 
 		return alerts.HistoryHit{}, false
@@ -575,10 +750,59 @@ func (s *AlertService) classify(c core.Context, uid int64, accountId int64, pars
 	return alerts.Classify(parsed, accountId, own, history, keywords, textUpper), nil
 }
 
+// smsPayeeHistory looks up this user's newest SMS-captured transactions of the same payee (by the
+// payee key stored on their alert rows) and returns the first usable one's classification. A
+// transaction still sitting in a fallback category ("Other Expense" / "Other Income") taught
+// nothing, so it is skipped rather than turning the next alert's review into a silent guess.
+func (s *AlertService) smsPayeeHistory(c core.Context, uid int64, payeeKey string, categoryById map[int64]*models.TransactionCategory, usable func(*models.Transaction) (alerts.HistoryHit, bool)) (alerts.HistoryHit, bool) {
+	var messages []*models.AlertMessage
+	err := s.UserDataDB(uid).NewSession(c).Where("uid=? AND payee_key=? AND outcome=? AND transaction_id>?", uid, payeeKey, "added", 0).OrderBy("received_unix_time desc").Limit(20).Find(&messages)
+
+	if err != nil || len(messages) == 0 {
+		return alerts.HistoryHit{}, false
+	}
+
+	transactionIds := make([]int64, len(messages))
+
+	for i := 0; i < len(messages); i++ {
+		transactionIds[i] = messages[i].TransactionId
+	}
+
+	transactions, err := Transactions.GetTransactionsByTransactionIds(c, uid, transactionIds)
+
+	if err != nil {
+		return alerts.HistoryHit{}, false
+	}
+
+	transactionById := make(map[int64]*models.Transaction, len(transactions))
+
+	for i := 0; i < len(transactions); i++ {
+		transactionById[transactions[i].TransactionId] = transactions[i]
+	}
+
+	for i := 0; i < len(messages); i++ {
+		transaction := transactionById[messages[i].TransactionId]
+
+		if transaction == nil {
+			continue
+		}
+
+		if category := categoryById[transaction.CategoryId]; category != nil && (category.Name == categoryNameOtherExpense || category.Name == categoryNameOtherIncome) {
+			continue
+		}
+
+		if hit, ok := usable(transaction); ok {
+			return hit, true
+		}
+	}
+
+	return alerts.HistoryHit{}, false
+}
+
 // createTransaction builds and saves the transaction for a parsed alert (step 9); a credit
 // into one of this user's own accounts is recorded as a transfer whose source is the other
 // account, so the resolved account ends up on the transfer's destination side
-func (s *AlertService) createTransaction(c core.Context, uid int64, account *models.Account, parsed alerts.ParsedAlert, classification alerts.Classification, needsReview bool, text string, receivedAt time.Time, tagIds map[string]int64) (*models.Transaction, string, error) {
+func (s *AlertService) createTransaction(c core.Context, uid int64, account *models.Account, parsed alerts.ParsedAlert, classification alerts.Classification, needsReview bool, text string, receivedAt time.Time, tagIds map[string]int64, hiddenTagIds map[int64]bool) (*models.Transaction, string, error) {
 	comment := text
 
 	// Truncated by rune, not by byte, so a multi-byte character (e.g. "₹") right at the boundary
@@ -662,10 +886,23 @@ func (s *AlertService) createTransaction(c core.Context, uid int64, account *mod
 		categoryLabel = category.Name
 	}
 
-	transactionTagIds := []int64{tagIds[tagAutoSms]}
+	tagNames := []string{tagAutoSms}
 
 	if needsReview {
-		transactionTagIds = append(transactionTagIds, tagIds[tagNeedsReview])
+		tagNames = append(tagNames, tagNeedsReview)
+	}
+
+	transactionTagIds := make([]int64, 0, len(tagNames))
+
+	// A tag the user has hidden can't be put on a new transaction; it's skipped (and logged)
+	// rather than failing the whole alert
+	for _, tagName := range tagNames {
+		if hiddenTagIds[tagIds[tagName]] {
+			log.Warnf(c, "[alerts.createTransaction] not tagging new transaction of user \"uid:%d\" \"%s\", because that tag is hidden", uid, tagName)
+			continue
+		}
+
+		transactionTagIds = append(transactionTagIds, tagIds[tagName])
 	}
 
 	if err := Transactions.CreateTransaction(c, transaction, transactionTagIds, nil); err != nil {
@@ -719,19 +956,53 @@ func (s *AlertService) ensureCategory(c core.Context, uid int64, categoryType mo
 	return secondary.CategoryId, nil
 }
 
-// ensureTags creates this user's "Auto (SMS)", "Needs review", "Balance mismatch", "Statement
-// verified" and "Not in statement" tags on demand, skipping any that already exist, and returns
-// their ids by name
-func (s *AlertService) ensureTags(c core.Context, uid int64) (map[string]int64, error) {
+// ensureTags creates this user's "Auto (SMS)", "Needs review" and "Balance mismatch" tags on
+// demand, skipping any that already exist, and returns their ids by name along with the set of
+// those ids the user has hidden (which can't be put on a transaction)
+func (s *AlertService) ensureTags(c core.Context, uid int64) (map[string]int64, map[int64]bool, error) {
 	tags := []*models.TransactionTag{
 		{Uid: uid, Name: tagAutoSms},
 		{Uid: uid, Name: tagNeedsReview},
 		{Uid: uid, Name: tagBalanceMismatch},
-		{Uid: uid, Name: tagStatementVerified},
-		{Uid: uid, Name: tagNotInStatement},
 	}
 
 	if err := TransactionTags.CreateTags(c, uid, tags, true); err != nil {
+		return nil, nil, err
+	}
+
+	tagIds := make(map[string]int64, len(tags))
+	hiddenTagIds := make(map[int64]bool)
+
+	for i := 0; i < len(tags); i++ {
+		tagIds[tags[i].Name] = tags[i].TagId
+
+		if tags[i].Hidden {
+			hiddenTagIds[tags[i].TagId] = true
+		}
+	}
+
+	return tagIds, hiddenTagIds, nil
+}
+
+// ensureTag creates one tag of this user on demand (skipping it if it already exists) and returns
+// its id; used by statement reconciliation only once there is something to tag
+func (s *AlertService) ensureTag(c core.Context, uid int64, name string) (int64, error) {
+	tags := []*models.TransactionTag{{Uid: uid, Name: name}}
+
+	if err := TransactionTags.CreateTags(c, uid, tags, true); err != nil {
+		return 0, err
+	}
+
+	return tags[0].TagId, nil
+}
+
+// lookupTagIds returns the ids of this user's existing tags with the given names, by name,
+// without creating any; a missing tag has no entry
+func (s *AlertService) lookupTagIds(c core.Context, uid int64, names ...string) (map[string]int64, error) {
+	var tags []*models.TransactionTag
+	err := s.UserDataDB(uid).NewSession(c).Where("uid=? AND deleted=?", uid, false).In("name", names).Find(&tags)
+
+	if err != nil {
 		return nil, err
 	}
 
@@ -747,7 +1018,9 @@ func (s *AlertService) ensureTags(c core.Context, uid int64) (map[string]int64, 
 // checkBalance tags the transaction "Balance mismatch" when the alert carried a balance that
 // does not match this account's balance after the transaction was inserted (step 10). Called
 // only after the alert has already been marked "added" (see Ingest), so any failure here is
-// surfaced to the caller as a log, not as an Ingest error.
+// surfaced to the caller as a log, not as an Ingest error. A credit card's SMS "balance" is its
+// available limit, and an overdrawn account's book balance (negative before this transaction)
+// can't be compared with the bank's available balance either, so both are skipped.
 func (s *AlertService) checkBalance(c core.Context, uid int64, accountId int64, parsed alerts.ParsedAlert, transaction *models.Transaction, balanceMismatchTagId int64) error {
 	if !parsed.HasBalance {
 		return nil
@@ -759,7 +1032,17 @@ func (s *AlertService) checkBalance(c core.Context, uid int64, accountId int64, 
 		return err
 	}
 
-	if account.Balance == parsed.Balance {
+	if account.Category == models.ACCOUNT_CATEGORY_CREDIT_CARD {
+		return nil
+	}
+
+	balanceBefore := account.Balance + parsed.Amount
+
+	if parsed.Direction == alerts.Credit {
+		balanceBefore = account.Balance - parsed.Amount
+	}
+
+	if balanceBefore < 0 || account.Balance == parsed.Balance {
 		return nil
 	}
 
@@ -792,7 +1075,15 @@ type matchCandidate struct {
 // Statement rows carry account *names*, not ids, at this point (ruling 3): a row's account is
 // resolved against this uid's accounts the same way the rest of the import flow resolves them,
 // via OriginalSourceAccountName, falling back to AccountId if that's already been resolved by
-// the caller.
+// the caller. When neither resolves it, the importer's account name (e.g. "HDFC Bank 1234") is
+// resolved by its trailing 4 digits the same way an SMS's account is (see resolveAccount), since
+// users rarely name the account exactly as the importer does; a matched row resolved this way
+// gets that account id, so the matched row the client echoes back on import names its account.
+//
+// An already "Statement verified" transaction still matches (so the other account of a transfer,
+// or the same statement imported again, is recognised); but a verified non-transfer only matches
+// a row with its exact narration on its exact (statement) day, so that a later, genuinely new
+// statement row of the same amount isn't swallowed by it.
 //
 // The returned map is row index -> matched transaction id; a row with no entry has no match.
 func (s *AlertService) MatchStatementRows(c core.Context, uid int64, rows []*models.ImportTransaction) (map[int]int64, error) {
@@ -814,13 +1105,19 @@ func (s *AlertService) MatchStatementRows(c core.Context, uid int64, rows []*mod
 
 	accountByName := Accounts.GetVisibleAccountNameMapByList(accounts)
 
-	tagIds, err := s.ensureTags(c, uid)
+	tagIds, err := s.lookupTagIds(c, uid, tagAutoSms, tagStatementVerified)
 
 	if err != nil {
 		return nil, err
 	}
 
-	autoSmsTagId := tagIds[tagAutoSms]
+	autoSmsTagId, hasAutoSmsTag := tagIds[tagAutoSms]
+
+	// no "Auto (SMS)" tag means nothing was ever captured from SMS: nothing can match
+	if !hasAutoSmsTag {
+		return result, nil
+	}
+
 	statementVerifiedTagId := tagIds[tagStatementVerified]
 
 	type rowInfo struct {
@@ -829,8 +1126,12 @@ func (s *AlertService) MatchStatementRows(c core.Context, uid int64, rows []*mod
 		amount     int64
 		dbType     models.TransactionDbType
 		unixTime   int64
+		utcOffset  int16
+		comment    string
 		references []string
 	}
+
+	resolvedByLast4 := make(map[int]int64)
 
 	infos := make([]rowInfo, 0, len(rows))
 	accountIdSet := make(map[int64]bool)
@@ -848,6 +1149,11 @@ func (s *AlertService) MatchStatementRows(c core.Context, uid int64, rows []*mod
 		if row.OriginalSourceAccountName != "" {
 			if account, ok := accountByName[row.OriginalSourceAccountName]; ok {
 				accountId = account.AccountId
+			} else if m := reAccountNameLast4.FindStringSubmatch(row.OriginalSourceAccountName); m != nil && accountId <= 0 {
+				if account := uniqueAccountByLast4(accounts, m[1]); account != nil {
+					accountId = account.AccountId
+					resolvedByLast4[i] = accountId
+				}
 			}
 		}
 
@@ -863,6 +1169,8 @@ func (s *AlertService) MatchStatementRows(c core.Context, uid int64, rows []*mod
 			amount:     row.Amount,
 			dbType:     row.Type,
 			unixTime:   unixTime,
+			utcOffset:  row.TimezoneUtcOffset,
+			comment:    truncateComment(row.Comment),
 			references: extractReferences(row.Comment),
 		})
 
@@ -962,6 +1270,16 @@ func (s *AlertService) MatchStatementRows(c core.Context, uid int64, rows []*mod
 			}
 
 			candidateUnixTime := utils.GetUnixTimeFromTransactionTime(candidate.TransactionTime)
+
+			// a verified non-transfer already took its statement row's narration and date, so it
+			// only matches that same row again, never a different row of the same amount
+			if !hasAutoSms && candidate.Type != models.TRANSACTION_DB_TYPE_TRANSFER_OUT && candidate.Type != models.TRANSACTION_DB_TYPE_TRANSFER_IN {
+				rowZone := time.FixedZone("", int(info.utcOffset)*60)
+
+				if candidate.Comment != info.comment || time.Unix(candidateUnixTime, 0).In(rowZone).Format("2006-01-02") != time.Unix(info.unixTime, 0).In(rowZone).Format("2006-01-02") {
+					continue
+				}
+			}
 			timeDiff := candidateUnixTime - info.unixTime
 
 			if timeDiff < 0 {
@@ -1016,6 +1334,10 @@ func (s *AlertService) MatchStatementRows(c core.Context, uid int64, rows []*mod
 		usedRows[pair.rowIndex] = true
 		usedTxns[pair.txnId] = true
 		result[pair.rowIndex] = pair.txnId
+
+		if accountId, ok := resolvedByLast4[pair.rowIndex]; ok {
+			rows[pair.rowIndex].AccountId = accountId
+		}
 	}
 
 	return result, nil
@@ -1030,13 +1352,19 @@ func (s *AlertService) MatchStatementRows(c core.Context, uid int64, rows []*mod
 // belong to uid, not be deleted, and carry the "Auto (SMS)" tag before anything is touched.
 // Anything else is silently skipped (and logged): a client can never make the server modify
 // another user's transaction, nor a transaction that was never an SMS capture.
-func (s *AlertService) MarkStatementVerified(c core.Context, uid int64, matches map[int64]*models.ImportTransaction) error {
+//
+// A transaction that fails to verify is logged and the rest are still verified; the returned
+// set holds the ids that failed (all of them when the error return is non-nil), so the caller
+// can keep them out of MarkNotInStatement - they were in the statement after all.
+func (s *AlertService) MarkStatementVerified(c core.Context, uid int64, matches map[int64]*models.ImportTransaction) (map[int64]bool, error) {
 	if uid <= 0 {
-		return errs.ErrUserIdInvalid
+		return nil, errs.ErrUserIdInvalid
 	}
 
+	failedIds := make(map[int64]bool)
+
 	if len(matches) == 0 {
-		return nil
+		return failedIds, nil
 	}
 
 	ids := make([]int64, 0, len(matches))
@@ -1045,10 +1373,18 @@ func (s *AlertService) MarkStatementVerified(c core.Context, uid int64, matches 
 		ids = append(ids, id)
 	}
 
+	allFailed := func(err error) (map[int64]bool, error) {
+		for _, id := range ids {
+			failedIds[id] = true
+		}
+
+		return failedIds, err
+	}
+
 	transactions, err := Transactions.GetTransactionsByTransactionIds(c, uid, ids)
 
 	if err != nil {
-		return err
+		return allFailed(err)
 	}
 
 	transactionById := make(map[int64]*models.Transaction, len(transactions))
@@ -1060,18 +1396,24 @@ func (s *AlertService) MarkStatementVerified(c core.Context, uid int64, matches 
 	tagIdsByTransaction, err := TransactionTags.GetAllTagIdsOfTransactions(c, uid, ids)
 
 	if err != nil {
-		return err
+		return allFailed(err)
 	}
 
-	tagIds, err := s.ensureTags(c, uid)
+	tagIds, err := s.lookupTagIds(c, uid, tagAutoSms, tagStatementVerified, tagNotInStatement)
 
 	if err != nil {
-		return err
+		return allFailed(err)
 	}
 
-	autoSmsTagId := tagIds[tagAutoSms]
+	autoSmsTagId, hasAutoSmsTag := tagIds[tagAutoSms]
+
+	// no "Auto (SMS)" tag means no transaction can qualify below
+	if !hasAutoSmsTag {
+		return failedIds, nil
+	}
+
 	statementVerifiedTagId := tagIds[tagStatementVerified]
-	notInStatementTagId := tagIds[tagNotInStatement]
+	notInStatementTagId, hasNotInStatementTag := tagIds[tagNotInStatement]
 
 	for id, row := range matches {
 		// This transaction either does not belong to uid, was deleted, or - since
@@ -1090,7 +1432,7 @@ func (s *AlertService) MarkStatementVerified(c core.Context, uid int64, matches 
 		for _, tagId := range tagIdsByTransaction[id] {
 			if tagId == autoSmsTagId {
 				hasAutoSms = true
-			} else if tagId == notInStatementTagId {
+			} else if hasNotInStatementTag && tagId == notInStatementTagId {
 				hasNotInStatement = true
 			}
 		}
@@ -1100,19 +1442,21 @@ func (s *AlertService) MarkStatementVerified(c core.Context, uid int64, matches 
 			continue
 		}
 
+		// "Statement verified" is only created once there is something to tag with it
+		if statementVerifiedTagId == 0 {
+			statementVerifiedTagId, err = s.ensureTag(c, uid, tagStatementVerified)
+
+			if err != nil {
+				return allFailed(err)
+			}
+		}
+
 		newTransaction := *transaction
 
 		if row != nil && row.Transaction != nil {
 			newTransaction.TransactionTime = utils.GetMinTransactionTimeFromUnixTime(utils.GetUnixTimeFromTransactionTime(row.TransactionTime))
 			newTransaction.TimezoneUtcOffset = row.TimezoneUtcOffset
-
-			comment := row.Comment
-
-			if utf8.RuneCountInString(comment) > 255 {
-				comment = utils.SubString(comment, 0, 255)
-			}
-
-			newTransaction.Comment = comment
+			newTransaction.Comment = truncateComment(row.Comment)
 		}
 
 		removeTagIds := []int64{autoSmsTagId}
@@ -1138,19 +1482,21 @@ func (s *AlertService) MarkStatementVerified(c core.Context, uid int64, matches 
 
 		if err != nil {
 			log.Errorf(c, "[alerts.MarkStatementVerified] failed to verify transaction \"id:%d\" for user \"uid:%d\", because %s", id, uid, err.Error())
-			return err
+			failedIds[id] = true
 		}
 	}
 
-	return nil
+	return failedIds, nil
 }
 
 // MarkNotInStatement tags "Not in statement" every "Auto (SMS)" transaction of uid+accountId in
 // [from, to] that isn't already "Statement verified" (design doc §8). It takes no set of
 // matched ids (ruling 5): it is always called after MarkStatementVerified has already swapped
 // the matched transactions' tags away from "Auto (SMS)", so those are naturally excluded here,
-// and a transaction already tagged "Not in statement" by a previous import is left alone.
-func (s *AlertService) MarkNotInStatement(c core.Context, uid int64, accountId int64, from int64, to int64) error {
+// and a transaction already tagged "Not in statement" by a previous import is left alone. The
+// matched ones MarkStatementVerified failed to verify still carry "Auto (SMS)", so they are
+// passed in exclude.
+func (s *AlertService) MarkNotInStatement(c core.Context, uid int64, accountId int64, from int64, to int64, exclude map[int64]bool) error {
 	if uid <= 0 {
 		return errs.ErrUserIdInvalid
 	}
@@ -1159,15 +1505,20 @@ func (s *AlertService) MarkNotInStatement(c core.Context, uid int64, accountId i
 		return errs.ErrAccountIdInvalid
 	}
 
-	tagIds, err := s.ensureTags(c, uid)
+	tagIds, err := s.lookupTagIds(c, uid, tagAutoSms, tagStatementVerified, tagNotInStatement)
 
 	if err != nil {
 		return err
 	}
 
-	autoSmsTagId := tagIds[tagAutoSms]
+	autoSmsTagId, hasAutoSmsTag := tagIds[tagAutoSms]
+
+	if !hasAutoSmsTag {
+		return nil
+	}
+
 	statementVerifiedTagId := tagIds[tagStatementVerified]
-	notInStatementTagId := tagIds[tagNotInStatement]
+	notInStatementTagId, hasNotInStatementTag := tagIds[tagNotInStatement]
 
 	minTransactionTime := utils.GetMinTransactionTimeFromUnixTime(from)
 	maxTransactionTime := utils.GetMaxTransactionTimeFromUnixTime(to)
@@ -1206,9 +1557,13 @@ func (s *AlertService) MarkNotInStatement(c core.Context, uid int64, accountId i
 				hasAutoSms = true
 			} else if tagId == statementVerifiedTagId {
 				isVerified = true
-			} else if tagId == notInStatementTagId {
+			} else if hasNotInStatementTag && tagId == notInStatementTagId {
 				isNotInStatement = true
 			}
+		}
+
+		if exclude[candidate.TransactionId] || exclude[reconcileOwnerId(candidate)] {
+			continue
 		}
 
 		if hasAutoSms && !isVerified && !isNotInStatement {
@@ -1218,6 +1573,14 @@ func (s *AlertService) MarkNotInStatement(c core.Context, uid int64, accountId i
 
 	if len(toTag) == 0 {
 		return nil
+	}
+
+	if !hasNotInStatementTag {
+		notInStatementTagId, err = s.ensureTag(c, uid, tagNotInStatement)
+
+		if err != nil {
+			return err
+		}
 	}
 
 	addTagIds := make(map[int64][]int64, len(toTag))

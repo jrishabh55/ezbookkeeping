@@ -42,9 +42,10 @@ or the environment variable `EBK_ALERTS_SHORTCUT_URL`.
 3. Shortcuts → Automation → **New** → **Message** → *Message Contains* `Rs` → **Run Immediately**
    (Ask Before Running off) → Run Shortcut **Record bank SMS**.
 4. Repeat step 3 with *Message Contains* `INR`; some banks write only INR. A message that contains
-   both is posted twice and recorded once.
+   both is posted twice and recorded (or counted) once.
 5. Back in the app, **Send Test**, then wait for the next bank SMS (or forward one to yourself).
 
-Each request answers `added`, `duplicate`, `ignored` (OTP, promotions, reminders) or `unparsed`
-(looked financial, could not be read safely; it stays visible for review). Anything missed is
-filled in by the next statement import.
+Each request answers `added`, `duplicate`, `ignored` (OTP, promotions, reminders; only counted, the
+message text is not kept) or `unparsed` (looked financial, could not be read safely). The last 10
+unparsed messages are listed on Settings → SMS Auto-capture under "Couldn't read — add these
+manually". Anything missed is filled in by the next statement import.

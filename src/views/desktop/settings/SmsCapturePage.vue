@@ -39,6 +39,20 @@
                     </v-row>
                 </v-card-text>
 
+                <template v-if="recentUnparsed.length">
+                    <v-divider/>
+
+                    <v-card-text>
+                        <div class="text-body-small mb-2">{{ tt('Couldn\'t read — add these manually') }}</div>
+                        <v-list density="compact" class="py-0">
+                            <v-list-item class="px-0" :key="idx" v-for="(item, idx) in recentUnparsed">
+                                <v-list-item-subtitle>{{ receivedAtDisplay(item.receivedAt) }}<span v-if="item.sender"> · {{ item.sender }}</span></v-list-item-subtitle>
+                                <div class="text-body-medium text-wrap">{{ item.text }}</div>
+                            </v-list-item>
+                        </v-list>
+                    </v-card-text>
+                </template>
+
                 <v-divider/>
 
                 <v-card-text class="d-flex flex-wrap align-center gap-4">
@@ -157,6 +171,8 @@ const {
     testing,
     lastReceivedDisplay,
     lastOutcomeDisplay,
+    recentUnparsed,
+    receivedAtDisplay,
     loadStatus,
     createToken,
     revokeToken,

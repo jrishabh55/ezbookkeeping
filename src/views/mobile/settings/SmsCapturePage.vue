@@ -18,6 +18,15 @@
             <f7-list-item :title="tt('Last Outcome')" :after="lastOutcomeDisplay"></f7-list-item>
         </f7-list>
 
+        <f7-block-title class="margin-top" v-if="!loading && recentUnparsed.length">{{ tt('Couldn\'t read — add these manually') }}</f7-block-title>
+        <f7-list strong inset dividers class="margin-vertical-half" v-if="!loading && recentUnparsed.length">
+            <f7-list-item media-item :key="idx"
+                          :title="item.sender || receivedAtDisplay(item.receivedAt)"
+                          :subtitle="item.sender ? receivedAtDisplay(item.receivedAt) : ''"
+                          :text="item.text"
+                          v-for="(item, idx) in recentUnparsed"></f7-list-item>
+        </f7-list>
+
         <f7-list strong inset dividers class="margin-vertical" :class="{ 'disabled': loading }">
             <f7-list-button :class="{ 'disabled': settingUp }" @click="setUp(null)">{{ tt('Set Up') }}</f7-list-button>
             <f7-list-button :class="{ 'disabled': !status || !status.shortcutUrl }" @click="installShortcut">{{ tt('Install Shortcut') }}</f7-list-button>
@@ -87,6 +96,8 @@ const {
     testing,
     lastReceivedDisplay,
     lastOutcomeDisplay,
+    recentUnparsed,
+    receivedAtDisplay,
     loadStatus,
     createToken,
     revokeToken,
