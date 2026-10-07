@@ -3022,7 +3022,7 @@
     "Install Shortcut": "Install Shortcut",
     "The shortcut link is not available yet.": "The shortcut link is not available yet.",
     "Tap \"Install Shortcut\" above and add it to your iPhone.": "Tap \"Install Shortcut\" above and add it to your iPhone.",
-    "When prompted, paste your SMS Auto-capture token as the setup code.": "When prompted, paste your SMS Auto-capture token as the setup code.",
+    "Open the shortcut and replace PASTE-SETUP-CODE-HERE in its first action with your SMS Auto-capture token.": "Open the shortcut and replace PASTE-SETUP-CODE-HERE in its first action with your SMS Auto-capture token.",
     "In the Shortcuts app, create two Automations — Message → Message Contains \"Rs\", and Message → Message Contains \"INR\" — each set to Run Immediately → Run Shortcut (\"Codeation Books Record Messages\").": "In the Shortcuts app, create two Automations — Message → Message Contains \"Rs\", and Message → Message Contains \"INR\" — each set to Run Immediately → Run Shortcut (\"Codeation Books Record Messages\").",
     "Turn off \"Ask Before Running\" on both automations so new bank SMS are captured automatically.": "Turn off \"Ask Before Running\" on both automations so new bank SMS are captured automatically.",
     "Send Test": "Send Test",
