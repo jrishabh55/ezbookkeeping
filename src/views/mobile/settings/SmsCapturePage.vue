@@ -34,11 +34,11 @@
             <f7-list-button color="red" :class="{ 'disabled': !status || !status.configured || revoking }" @click="revoke">{{ tt('Revoke') }}</f7-list-button>
         </f7-list>
 
-        <f7-block-footer class="padding-horizontal" v-if="!loading && (!status || !status.shortcutUrl)">
+        <f7-block-footer class="padding-horizontal margin-top" v-if="!loading && (!status || !status.shortcutUrl)">
             {{ tt('The shortcut link is not available yet.') }}
         </f7-block-footer>
 
-        <f7-block-footer class="padding-horizontal" v-if="testing">
+        <f7-block-footer class="padding-horizontal margin-top" v-if="testing">
             {{ tt('Waiting for a test SMS to arrive…') }}
         </f7-block-footer>
 

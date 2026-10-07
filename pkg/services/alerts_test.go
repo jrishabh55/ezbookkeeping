@@ -325,3 +325,19 @@ func TestIngestSkipsBalanceCheckOnCreditCard(t *testing.T) {
 	assert.Equal(t, "added", r.Outcome)
 	assert.NotContains(t, tagNamesOf(t, ctx, uid, r.TransactionId), "Balance mismatch")
 }
+
+// The credit SMS arrives first without naming the source and is recorded as an income needing
+// review; the debit SMS then names the destination: the income is replaced by the transfer.
+func TestIngestOwnTransferCreditFirstWithoutSourceIsReplaced(t *testing.T) {
+	ctx, uid := newAlertTestUser(t, "HDFC Bank 1234", "Savings 5678")
+	credit := "INR 5,000.00 credited to A/c XX5678 on 05-10-2026 by IMPS from JOHN DOE"
+	debit := "INR 5,000.00 debited from A/c XX1234 on 05-10-2026 IMPS to A/c XXXXXX5678 Ref 512345678905"
+	r1, err := Alerts.Ingest(ctx, uid, "XX-YESBNK", credit, time.Now())
+	assert.Nil(t, err)
+	assert.Equal(t, "added", r1.Outcome)
+	r2, err := Alerts.Ingest(ctx, uid, "XX-HDFCBK", debit, time.Now())
+	assert.Nil(t, err)
+	assert.Equal(t, "added", r2.Outcome)
+	assert.Equal(t, 1, countTransactions(t, ctx, uid))
+	assert.Equal(t, "HDFC Bank 1234", accountNameOf(t, ctx, uid, r2.TransactionId))
+}

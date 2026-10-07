@@ -71,7 +71,7 @@ export class ImportTransaction implements ImportTransactionResponse {
             time: this.time,
             utcOffset: this.utcOffset,
             sourceAccountId: this.sourceAccountId,
-            comment: this.comment
+            comment: this.comment.substring(0, TRANSACTION_MAX_COMMENT_LENGTH)
         };
     }
 

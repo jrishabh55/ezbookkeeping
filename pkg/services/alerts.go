@@ -258,6 +258,16 @@ func (s *AlertService) Ingest(c core.Context, uid int64, sender string, text str
 			_ = s.updateMessageOutcome(c, uid, message.AlertId, "duplicate", 0)
 			return &AlertIngestResult{Outcome: "duplicate"}, nil
 		}
+
+		// The other side's SMS may have arrived first without naming this account (e.g. a credit
+		// "by IMPS from JOHN DOE") and been recorded as a plain income / expense; replace it
+		conflict, err := s.replaceEarlierTransferSide(c, uid, srcAccountId, dstAccountId, parsed.Direction, parsed.Amount, receivedAt, tagIds[tagAutoSms], tagIds[tagNeedsReview])
+
+		if err != nil {
+			return nil, s.failAfterStore(c, uid, message.AlertId, err)
+		} else if conflict {
+			forcedReview = true
+		}
 	} else {
 		// One side of an own-account transfer whose SMS doesn't name the other account (e.g. a
 		// credit "from JOHN DOE"): the other side's SMS may already have recorded the transfer.
@@ -587,6 +597,76 @@ func (s *AlertService) isDuplicateTransferSide(c core.Context, uid int64, accoun
 	return false, nil
 }
 
+// replaceEarlierTransferSide handles an own-account transfer whose other side was recorded first
+// as a plain transaction: a debit SMS on src looks for an income on dst, a credit SMS on dst for an
+// expense on src (same amount, tagged "Auto (SMS)", within 3 days either side). Such a transaction
+// still tagged "Needs review" is deleted (its alert becomes "duplicate") so the transfer is the only
+// record; one the user has already categorised is kept and conflict is returned so the new transfer
+// is flagged for review instead of silently counting the money twice.
+func (s *AlertService) replaceEarlierTransferSide(c core.Context, uid int64, srcAccountId int64, dstAccountId int64, direction alerts.Direction, amount int64, receivedAt time.Time, autoSmsTagId int64, needsReviewTagId int64) (bool, error) {
+	transactionType, accountId := models.TRANSACTION_DB_TYPE_INCOME, dstAccountId
+
+	if direction == alerts.Credit {
+		transactionType, accountId = models.TRANSACTION_DB_TYPE_EXPENSE, srcAccountId
+	}
+
+	minTime := utils.GetMinTransactionTimeFromUnixTime(receivedAt.Add(-3 * 24 * time.Hour).Unix())
+	maxTime := utils.GetMaxTransactionTimeFromUnixTime(receivedAt.Add(3 * 24 * time.Hour).Unix())
+
+	var candidates []*models.Transaction
+	err := s.UserDataDB(uid).NewSession(c).Where("uid=? AND deleted=? AND type=? AND account_id=? AND amount=? AND transaction_time>=? AND transaction_time<=?",
+		uid, false, transactionType, accountId, amount, minTime, maxTime).OrderBy("transaction_time desc").Find(&candidates)
+
+	if err != nil || len(candidates) == 0 {
+		return false, err
+	}
+
+	transactionIds := make([]int64, len(candidates))
+
+	for i := 0; i < len(candidates); i++ {
+		transactionIds[i] = candidates[i].TransactionId
+	}
+
+	tagIdsByTransaction, err := TransactionTags.GetAllTagIdsOfTransactions(c, uid, transactionIds)
+
+	if err != nil {
+		return false, err
+	}
+
+	conflict := false
+
+	for i := 0; i < len(candidates); i++ {
+		hasAutoSms, needsReview := false, false
+
+		for _, tagId := range tagIdsByTransaction[candidates[i].TransactionId] {
+			if tagId == autoSmsTagId {
+				hasAutoSms = true
+			} else if tagId == needsReviewTagId {
+				needsReview = true
+			}
+		}
+
+		if !hasAutoSms {
+			continue
+		}
+
+		if !needsReview {
+			conflict = true
+			continue
+		}
+
+		if err := Transactions.DeleteTransaction(c, uid, candidates[i].TransactionId); err != nil {
+			return false, err
+		}
+
+		_, err = s.UserDataDB(uid).NewSession(c).Cols("outcome", "transaction_id").Where("uid=? AND transaction_id=?", uid, candidates[i].TransactionId).Update(&models.AlertMessage{Outcome: "duplicate", TransactionId: 0})
+
+		return false, err
+	}
+
+	return conflict, nil
+}
+
 // findAutoSmsTransfers returns this user's transfer-out transactions tagged "Auto (SMS)" with the
 // given amount, within 3 days either side of receivedAt, that also satisfy condition (a where
 // clause over account_id / related_account_id, with its args)
@@ -756,6 +836,7 @@ func (s *AlertService) classify(c core.Context, uid int64, accountId int64, pars
 // nothing, so it is skipped rather than turning the next alert's review into a silent guess.
 func (s *AlertService) smsPayeeHistory(c core.Context, uid int64, payeeKey string, categoryById map[int64]*models.TransactionCategory, usable func(*models.Transaction) (alerts.HistoryHit, bool)) (alerts.HistoryHit, bool) {
 	var messages []*models.AlertMessage
+	payeeKey = utils.SubString(payeeKey, 0, 64) // stored truncated to the column width
 	err := s.UserDataDB(uid).NewSession(c).Where("uid=? AND payee_key=? AND outcome=? AND transaction_id>?", uid, payeeKey, "added", 0).OrderBy("received_unix_time desc").Limit(20).Find(&messages)
 
 	if err != nil || len(messages) == 0 {
