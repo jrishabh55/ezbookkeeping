@@ -7,7 +7,7 @@ its owner, and creating a new one revokes the old one.
 
 ## Build the shared shortcut (once, by the server owner)
 
-Create a shortcut named **Record bank SMS**:
+Create a shortcut named **Codeation Books Record Messages**:
 
 1. **Receive** Messages input (from automation / Share Sheet). If there is no input: Stop.
 2. **Get Details of Messages** → *Sender* (saved as `Sender`).
@@ -40,7 +40,7 @@ or the environment variable `EBK_ALERTS_SHORTCUT_URL`.
 1. ezBookkeeping → Settings → **SMS Auto-capture** → **Set Up**, confirm the password, **Copy** the code.
 2. **Install Shortcut**, and paste the code when asked.
 3. Shortcuts → Automation → **New** → **Message** → *Message Contains* `Rs` → **Run Immediately**
-   (Ask Before Running off) → Run Shortcut **Record bank SMS**.
+   (Ask Before Running off) → Run Shortcut **Codeation Books Record Messages**.
 4. Repeat step 3 with *Message Contains* `INR`; some banks write only INR. A message that contains
    both is posted twice and recorded (or counted) once.
 5. Back in the app, **Send Test**, then wait for the next bank SMS (or forward one to yourself).

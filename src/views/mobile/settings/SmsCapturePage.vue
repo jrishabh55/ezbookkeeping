@@ -46,7 +46,7 @@
             <ol class="padding-inline-start no-margin">
                 <li>{{ tt('Tap "Install Shortcut" above and add it to your iPhone.') }}</li>
                 <li>{{ tt('When prompted, paste your SMS Auto-capture token as the setup code.') }}</li>
-                <li>{{ tt('In the Shortcuts app, create two Automations — Message → Message Contains "Rs", and Message → Message Contains "INR" — each set to Run Immediately → Run Shortcut ("Record bank SMS").') }}</li>
+                <li>{{ tt('In the Shortcuts app, create two Automations — Message → Message Contains "Rs", and Message → Message Contains "INR" — each set to Run Immediately → Run Shortcut ("Codeation Books Record Messages").') }}</li>
                 <li>{{ tt('Turn off "Ask Before Running" on both automations so new bank SMS are captured automatically.') }}</li>
             </ol>
         </f7-block>
