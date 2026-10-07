@@ -69,7 +69,11 @@ func newAlertTestUser(t *testing.T, accountNames ...string) (core.Context, int64
 		t.Fatal(err)
 	}
 	for _, name := range accountNames {
-		a := &models.Account{Uid: user.Uid, Name: name, Category: models.ACCOUNT_CATEGORY_SAVINGS_ACCOUNT, Type: models.ACCOUNT_TYPE_SINGLE_ACCOUNT, Icon: 1, Color: "000000", Currency: "INR"}
+		category := models.ACCOUNT_CATEGORY_SAVINGS_ACCOUNT
+		if strings.HasPrefix(name, "Credit Card") {
+			category = models.ACCOUNT_CATEGORY_CREDIT_CARD
+		}
+		a := &models.Account{Uid: user.Uid, Name: name, Category: category, Type: models.ACCOUNT_TYPE_SINGLE_ACCOUNT, Icon: 1, Color: "000000", Currency: "INR"}
 		if err := Accounts.CreateAccounts(ctx, a, 0, nil, nil, time.UTC); err != nil {
 			t.Fatal(err)
 		}

@@ -24,11 +24,12 @@ import (
 
 // Tag names created on demand for alert-ingested transactions
 const (
-	tagAutoSms           = "Auto (SMS)"
-	tagNeedsReview       = "Needs review"
-	tagBalanceMismatch   = "Balance mismatch"
-	tagStatementVerified = "Statement verified"
-	tagNotInStatement    = "Not in statement"
+	tagAutoSms            = "Auto (SMS)"
+	tagNeedsReview        = "Needs review"
+	tagBalanceMismatch    = "Balance mismatch"
+	tagCardPaymentPending = "Card payment pending"
+	tagStatementVerified  = "Statement verified"
+	tagNotInStatement     = "Not in statement"
 )
 
 // reconcileDateWindowSeconds is the ±2 days tolerance (§8 of the design doc) between a
@@ -111,6 +112,7 @@ func truncateComment(comment string) string {
 // resolve a usable category; the transfer names are tried in priority order
 const (
 	categoryNameBankTransfer  = "Bank Transfer"
+	categoryNameCardRepayment = "Credit Card Repayment"
 	categoryNameOtherTransfer = "Other Transfer"
 	categoryNameOtherExpense  = "Other Expense"
 	categoryNameOtherIncome   = "Other Income"
@@ -243,6 +245,30 @@ func (s *AlertService) Ingest(c core.Context, uid int64, sender string, text str
 		return nil, s.failAfterStore(c, uid, message.AlertId, err)
 	}
 
+	// A card bill paid through CRED arrives as two SMS that each name only one end: the bank's
+	// "to CRED" debit and the card's "payment received" credit. They become one bank → card
+	// transfer; whichever arrives first is held as a pending expense / income until its pair does.
+	var extraTags []string
+
+	// (a CRED debit is paired even when payee history says otherwise: CRED is never the destination)
+	outgoing := alerts.IsFacilitatorPayment(parsed, text)
+
+	if outgoing || (!classification.IsTransfer && alerts.IsCardPaymentReceived(parsed, text) && account.Category == models.ACCOUNT_CATEGORY_CREDIT_CARD) {
+		otherAccountId, isDuplicate, err := s.pairCardPayment(c, uid, outgoing, account.AccountId, parsed.Amount, receivedAt, tagIds)
+
+		if err != nil {
+			return nil, s.failAfterStore(c, uid, message.AlertId, err)
+		} else if isDuplicate {
+			_ = s.updateMessageOutcome(c, uid, message.AlertId, "duplicate", 0)
+			return &AlertIngestResult{Outcome: "duplicate"}, nil
+		} else if otherAccountId > 0 {
+			classification = alerts.Classification{IsTransfer: true, OtherAccountId: otherAccountId}
+		} else {
+			classification = alerts.Classification{NeedsReview: true}
+			extraTags = append(extraTags, tagCardPaymentPending)
+		}
+	}
+
 	if classification.IsTransfer {
 		srcAccountId, dstAccountId := account.AccountId, classification.OtherAccountId
 
@@ -268,7 +294,7 @@ func (s *AlertService) Ingest(c core.Context, uid int64, sender string, text str
 		} else if conflict {
 			forcedReview = true
 		}
-	} else {
+	} else if len(extraTags) == 0 {
 		// One side of an own-account transfer whose SMS doesn't name the other account (e.g. a
 		// credit "from JOHN DOE"): the other side's SMS may already have recorded the transfer.
 		isDuplicate, err := s.isDuplicateTransferSide(c, uid, account.AccountId, parsed.Direction, parsed.Amount, receivedAt, tagIds[tagAutoSms])
@@ -283,7 +309,7 @@ func (s *AlertService) Ingest(c core.Context, uid int64, sender string, text str
 
 	needsReview := forcedReview || classification.NeedsReview
 
-	transaction, summary, err := s.createTransaction(c, uid, account, parsed, classification, needsReview, text, receivedAt, tagIds, hiddenTagIds)
+	transaction, summary, err := s.createTransaction(c, uid, account, parsed, classification, needsReview, text, receivedAt, tagIds, hiddenTagIds, extraTags...)
 
 	if err != nil {
 		// Server error after parsing: keep the raw message stored, marked as unparsed for review
@@ -667,6 +693,93 @@ func (s *AlertService) replaceEarlierTransferSide(c core.Context, uid int64, src
 	return conflict, nil
 }
 
+// pairCardPayment matches one half of a card bill paid through CRED with the other half recorded
+// earlier (same amount, within 3 days either side, tagged "Card payment pending"): outgoing is the
+// bank's debit to CRED, otherwise accountId is the card that confirmed the payment. It returns the
+// other end's account when the pending half was found (and deleted, its alert marked duplicate),
+// or duplicate when this payment is already recorded: the card already received a transfer of
+// this amount, or the same half is already pending (the issuer's and CRED's copies of one SMS).
+func (s *AlertService) pairCardPayment(c core.Context, uid int64, outgoing bool, accountId int64, amount int64, receivedAt time.Time, tagIds map[string]int64) (int64, bool, error) {
+	if !outgoing {
+		transfers, err := s.findAutoSmsTransfers(c, uid, "related_account_id=?", []any{accountId}, amount, receivedAt, tagIds[tagAutoSms])
+
+		if err != nil || len(transfers) > 0 {
+			return 0, len(transfers) > 0, err
+		}
+	}
+
+	otherType, sameType := models.TRANSACTION_DB_TYPE_EXPENSE, models.TRANSACTION_DB_TYPE_INCOME
+
+	if outgoing {
+		otherType, sameType = models.TRANSACTION_DB_TYPE_INCOME, models.TRANSACTION_DB_TYPE_EXPENSE
+	}
+
+	pending, err := s.findPendingCardPayments(c, uid, otherType, 0, amount, receivedAt, tagIds[tagCardPaymentPending])
+
+	if err != nil {
+		return 0, false, err
+	}
+
+	if len(pending) > 0 {
+		if err := Transactions.DeleteTransaction(c, uid, pending[0].TransactionId); err != nil {
+			return 0, false, err
+		}
+
+		_, err = s.UserDataDB(uid).NewSession(c).Cols("outcome", "transaction_id").Where("uid=? AND transaction_id=?", uid, pending[0].TransactionId).Update(&models.AlertMessage{Outcome: "duplicate", TransactionId: 0})
+
+		return pending[0].AccountId, false, err
+	}
+
+	same, err := s.findPendingCardPayments(c, uid, sameType, accountId, amount, receivedAt, tagIds[tagCardPaymentPending])
+
+	return 0, len(same) > 0, err
+}
+
+// findPendingCardPayments returns this user's transactions of the given type and amount tagged
+// "Card payment pending" within 3 days either side of receivedAt (on accountId when it is set),
+// oldest first
+func (s *AlertService) findPendingCardPayments(c core.Context, uid int64, transactionType models.TransactionDbType, accountId int64, amount int64, receivedAt time.Time, pendingTagId int64) ([]*models.Transaction, error) {
+	minTime := utils.GetMinTransactionTimeFromUnixTime(receivedAt.Add(-3 * 24 * time.Hour).Unix())
+	maxTime := utils.GetMaxTransactionTimeFromUnixTime(receivedAt.Add(3 * 24 * time.Hour).Unix())
+
+	session := s.UserDataDB(uid).NewSession(c).Where("uid=? AND deleted=? AND type=? AND amount=? AND transaction_time>=? AND transaction_time<=?", uid, false, transactionType, amount, minTime, maxTime)
+
+	if accountId > 0 {
+		session = session.And("account_id=?", accountId)
+	}
+
+	var candidates []*models.Transaction
+
+	if err := session.OrderBy("transaction_time asc").Find(&candidates); err != nil || len(candidates) == 0 {
+		return nil, err
+	}
+
+	transactionIds := make([]int64, len(candidates))
+
+	for i := 0; i < len(candidates); i++ {
+		transactionIds[i] = candidates[i].TransactionId
+	}
+
+	tagIdsByTransaction, err := TransactionTags.GetAllTagIdsOfTransactions(c, uid, transactionIds)
+
+	if err != nil {
+		return nil, err
+	}
+
+	var pending []*models.Transaction
+
+	for i := 0; i < len(candidates); i++ {
+		for _, tagId := range tagIdsByTransaction[candidates[i].TransactionId] {
+			if tagId == pendingTagId {
+				pending = append(pending, candidates[i])
+				break
+			}
+		}
+	}
+
+	return pending, nil
+}
+
 // findAutoSmsTransfers returns this user's transfer-out transactions tagged "Auto (SMS)" with the
 // given amount, within 3 days either side of receivedAt, that also satisfy condition (a where
 // clause over account_id / related_account_id, with its args)
@@ -883,7 +996,7 @@ func (s *AlertService) smsPayeeHistory(c core.Context, uid int64, payeeKey strin
 // createTransaction builds and saves the transaction for a parsed alert (step 9); a credit
 // into one of this user's own accounts is recorded as a transfer whose source is the other
 // account, so the resolved account ends up on the transfer's destination side
-func (s *AlertService) createTransaction(c core.Context, uid int64, account *models.Account, parsed alerts.ParsedAlert, classification alerts.Classification, needsReview bool, text string, receivedAt time.Time, tagIds map[string]int64, hiddenTagIds map[int64]bool) (*models.Transaction, string, error) {
+func (s *AlertService) createTransaction(c core.Context, uid int64, account *models.Account, parsed alerts.ParsedAlert, classification alerts.Classification, needsReview bool, text string, receivedAt time.Time, tagIds map[string]int64, hiddenTagIds map[int64]bool, extraTagNames ...string) (*models.Transaction, string, error) {
 	comment := text
 
 	// Truncated by rune, not by byte, so a multi-byte character (e.g. "₹") right at the boundary
@@ -905,13 +1018,24 @@ func (s *AlertService) createTransaction(c core.Context, uid int64, account *mod
 	var categoryLabel string
 
 	if classification.IsTransfer {
-		categoryId, err := s.ensureCategory(c, uid, models.CATEGORY_TYPE_TRANSFER, categoryNameBankTransfer, categoryNameOtherTransfer)
+		otherAccount, err := Accounts.GetAccountByAccountId(c, uid, classification.OtherAccountId)
 
 		if err != nil {
 			return nil, "", err
 		}
 
-		otherAccount, err := Accounts.GetAccountByAccountId(c, uid, classification.OtherAccountId)
+		categoryNames := []string{categoryNameBankTransfer, categoryNameOtherTransfer}
+		destination := otherAccount
+
+		if parsed.Direction == alerts.Credit {
+			destination = account
+		}
+
+		if destination.Category == models.ACCOUNT_CATEGORY_CREDIT_CARD {
+			categoryNames = append([]string{categoryNameCardRepayment}, categoryNames...)
+		}
+
+		categoryId, err := s.ensureCategory(c, uid, models.CATEGORY_TYPE_TRANSFER, categoryNames...)
 
 		if err != nil {
 			return nil, "", err
@@ -967,7 +1091,7 @@ func (s *AlertService) createTransaction(c core.Context, uid int64, account *mod
 		categoryLabel = category.Name
 	}
 
-	tagNames := []string{tagAutoSms}
+	tagNames := append([]string{tagAutoSms}, extraTagNames...)
 
 	if needsReview {
 		tagNames = append(tagNames, tagNeedsReview)
@@ -1045,6 +1169,7 @@ func (s *AlertService) ensureTags(c core.Context, uid int64) (map[string]int64, 
 		{Uid: uid, Name: tagAutoSms},
 		{Uid: uid, Name: tagNeedsReview},
 		{Uid: uid, Name: tagBalanceMismatch},
+		{Uid: uid, Name: tagCardPaymentPending},
 	}
 
 	if err := TransactionTags.CreateTags(c, uid, tags, true); err != nil {

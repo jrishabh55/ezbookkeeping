@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/datastore"
 	"github.com/mayswind/ezbookkeeping/pkg/models"
 	"github.com/mayswind/ezbookkeeping/pkg/utils"
@@ -340,4 +341,55 @@ func TestIngestOwnTransferCreditFirstWithoutSourceIsReplaced(t *testing.T) {
 	assert.Equal(t, "added", r2.Outcome)
 	assert.Equal(t, 1, countTransactions(t, ctx, uid))
 	assert.Equal(t, "HDFC Bank 1234", accountNameOf(t, ctx, uid, r2.TransactionId))
+}
+
+const (
+	credDebitSms   = "Sent Rs.5000.00\nFrom HDFC Bank A/C *1234\nTo CRED\nOn 05/10/26\nRef 512345678970"
+	cardIssuerSms  = "Dear Customer, Payment of INR 5000.00 has been received towards your ICICI Bank Credit Card XX5678 on 05-OCT-26 through UPI. Thank you."
+	cardCredAppSms = "Payment of INR 5,000 was received for your ICICI Bank credit card XXXX-5678 on 05-Oct-26 and you have earned 100 CRED coins."
+)
+
+func onlyTransfer(t *testing.T, ctx core.Context, uid int64) *models.Transaction {
+	t.Helper()
+	var all []*models.Transaction
+	assert.Nil(t, datastore.Container.UserDataStore.Choose(uid).NewSession(ctx).Where("uid=? AND deleted=? AND type<>?", uid, false, models.TRANSACTION_DB_TYPE_TRANSFER_IN).Find(&all))
+	assert.Len(t, all, 1)
+	assert.Equal(t, models.TRANSACTION_DB_TYPE_TRANSFER_OUT, all[0].Type)
+	return all[0]
+}
+
+func TestIngestCredPaymentBankFirstBecomesOneTransfer(t *testing.T) {
+	ctx, uid := newAlertTestUser(t, "HDFC Bank 1234", "Credit Card 5678")
+	r1, _ := Alerts.Ingest(ctx, uid, "XX-HDFCBK", credDebitSms, time.Now())
+	assert.Equal(t, "added", r1.Outcome)
+	assert.Contains(t, tagNamesOf(t, ctx, uid, r1.TransactionId), "Card payment pending")
+	r2, _ := Alerts.Ingest(ctx, uid, "XX-ICICIB", cardIssuerSms, time.Now())
+	assert.Equal(t, "added", r2.Outcome)
+	r3, _ := Alerts.Ingest(ctx, uid, "XX-CREDIN", cardCredAppSms, time.Now())
+	assert.Equal(t, "duplicate", r3.Outcome)
+	tx := onlyTransfer(t, ctx, uid)
+	assert.Equal(t, accountIdByName(t, ctx, uid, "HDFC Bank 1234"), tx.AccountId)
+	assert.Equal(t, accountIdByName(t, ctx, uid, "Credit Card 5678"), tx.RelatedAccountId)
+	assert.NotContains(t, tagNamesOf(t, ctx, uid, tx.TransactionId), "Needs review")
+}
+
+func TestIngestCredPaymentCardFirstBecomesOneTransfer(t *testing.T) {
+	ctx, uid := newAlertTestUser(t, "HDFC Bank 1234", "Credit Card 5678")
+	r1, _ := Alerts.Ingest(ctx, uid, "XX-ICICIB", cardIssuerSms, time.Now())
+	assert.Equal(t, "added", r1.Outcome)
+	r2, _ := Alerts.Ingest(ctx, uid, "XX-CREDIN", cardCredAppSms, time.Now())
+	assert.Equal(t, "duplicate", r2.Outcome)
+	r3, _ := Alerts.Ingest(ctx, uid, "XX-HDFCBK", credDebitSms, time.Now())
+	assert.Equal(t, "added", r3.Outcome)
+	tx := onlyTransfer(t, ctx, uid)
+	assert.Equal(t, accountIdByName(t, ctx, uid, "HDFC Bank 1234"), tx.AccountId)
+	assert.Equal(t, accountIdByName(t, ctx, uid, "Credit Card 5678"), tx.RelatedAccountId)
+}
+
+func TestIngestCardCashbackStaysIncome(t *testing.T) {
+	ctx, uid := newAlertTestUser(t, "Credit Card 5678")
+	sms := "Posted | CashBack of Rs.276 to HDFC Bank Credit Card 5678 on 05/MAR/26 towards JOHN DOE posting Aug'22."
+	r, _ := Alerts.Ingest(ctx, uid, "XX-HDFCBK", sms, time.Now())
+	assert.Equal(t, "added", r.Outcome)
+	assert.NotContains(t, tagNamesOf(t, ctx, uid, r.TransactionId), "Card payment pending")
 }
