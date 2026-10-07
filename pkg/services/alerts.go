@@ -3,6 +3,7 @@ package services
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -20,10 +21,57 @@ import (
 
 // Tag names created on demand for alert-ingested transactions
 const (
-	tagAutoSms         = "Auto (SMS)"
-	tagNeedsReview     = "Needs review"
-	tagBalanceMismatch = "Balance mismatch"
+	tagAutoSms           = "Auto (SMS)"
+	tagNeedsReview       = "Needs review"
+	tagBalanceMismatch   = "Balance mismatch"
+	tagStatementVerified = "Statement verified"
+	tagNotInStatement    = "Not in statement"
 )
+
+// reconcileDateWindowSeconds is the ±2 days tolerance (§8 of the design doc) between a
+// statement row's date and a candidate "Auto (SMS)" transaction's date
+const reconcileDateWindowSeconds = 2 * 24 * 60 * 60
+
+// reReferenceRun matches any run of digits in a statement row's narration; a reference is only
+// recognised when a run is *exactly* 12 digits long (a 12-digit reference embedded in a longer
+// run of digits, e.g. inside a 16-digit card number, must never match)
+var reReferenceRun = regexp.MustCompile(`\d+`)
+
+// extractReferences returns every run of exactly 12 digits in text (UPI / IMPS / RRN references)
+func extractReferences(text string) []string {
+	var references []string
+
+	for _, run := range reReferenceRun.FindAllString(text, -1) {
+		if len(run) == 12 {
+			references = append(references, run)
+		}
+	}
+
+	return references
+}
+
+// reconcileOwnerId returns the id that carries an SMS transaction's tags and alert row: the
+// transfer-out side for a transfer, the transaction itself otherwise
+func reconcileOwnerId(transaction *models.Transaction) int64 {
+	if transaction.Type == models.TRANSACTION_DB_TYPE_TRANSFER_IN {
+		return transaction.RelatedId
+	}
+
+	return transaction.TransactionId
+}
+
+// reconcileTypeMatches reports whether a statement row type can be the given book transaction:
+// a statement only knows money out / money in, while the book may hold either side of a transfer
+func reconcileTypeMatches(rowType models.TransactionDbType, transactionType models.TransactionDbType) bool {
+	switch rowType {
+	case models.TRANSACTION_DB_TYPE_EXPENSE, models.TRANSACTION_DB_TYPE_TRANSFER_OUT:
+		return transactionType == models.TRANSACTION_DB_TYPE_EXPENSE || transactionType == models.TRANSACTION_DB_TYPE_TRANSFER_OUT
+	case models.TRANSACTION_DB_TYPE_INCOME, models.TRANSACTION_DB_TYPE_TRANSFER_IN:
+		return transactionType == models.TRANSACTION_DB_TYPE_INCOME || transactionType == models.TRANSACTION_DB_TYPE_TRANSFER_IN
+	}
+
+	return false
+}
 
 // unmatchedAccountName is the name of the per-user fallback account used when an alert's
 // account cannot be resolved from its last-4 digits
@@ -671,13 +719,16 @@ func (s *AlertService) ensureCategory(c core.Context, uid int64, categoryType mo
 	return secondary.CategoryId, nil
 }
 
-// ensureTags creates this user's "Auto (SMS)", "Needs review" and "Balance mismatch" tags on
-// demand, skipping any that already exist, and returns their ids by name
+// ensureTags creates this user's "Auto (SMS)", "Needs review", "Balance mismatch", "Statement
+// verified" and "Not in statement" tags on demand, skipping any that already exist, and returns
+// their ids by name
 func (s *AlertService) ensureTags(c core.Context, uid int64) (map[string]int64, error) {
 	tags := []*models.TransactionTag{
 		{Uid: uid, Name: tagAutoSms},
 		{Uid: uid, Name: tagNeedsReview},
 		{Uid: uid, Name: tagBalanceMismatch},
+		{Uid: uid, Name: tagStatementVerified},
+		{Uid: uid, Name: tagNotInStatement},
 	}
 
 	if err := TransactionTags.CreateTags(c, uid, tags, true); err != nil {
@@ -718,4 +769,462 @@ func (s *AlertService) checkBalance(c core.Context, uid int64, accountId int64, 
 // formatRupees renders an amount in paise as a rupee decimal string ("250.00")
 func formatRupees(paise int64) string {
 	return fmt.Sprintf("%d.%02d", paise/100, paise%100)
+}
+
+// matchCandidate is one (statement row, candidate SMS transaction) pair that satisfies every
+// hard constraint (§8: same account, same db type/direction, same amount, within ±2 days,
+// reference equal when the statement row has one); MatchStatementRows ranks these and assigns
+// greedily so that each side is used at most once (ruling 2)
+type matchCandidate struct {
+	rowIndex int
+	txnId    int64
+	refMatch bool
+	timeDiff int64
+}
+
+// MatchStatementRows matches each statement row against this user's "Auto (SMS)" transactions
+// (design doc §8): same account, same amount and direction, date within ±2 days of each other,
+// and (when the statement row's narration carries a 12-digit reference) an equal reference on
+// the SMS side. Each SMS transaction matches at most one row and vice versa (ruling 2): when
+// several candidates qualify for the same row or transaction, the reference-matching pair (if
+// any) wins, then the pair closest in time.
+//
+// Statement rows carry account *names*, not ids, at this point (ruling 3): a row's account is
+// resolved against this uid's accounts the same way the rest of the import flow resolves them,
+// via OriginalSourceAccountName, falling back to AccountId if that's already been resolved by
+// the caller.
+//
+// The returned map is row index -> matched transaction id; a row with no entry has no match.
+func (s *AlertService) MatchStatementRows(c core.Context, uid int64, rows []*models.ImportTransaction) (map[int]int64, error) {
+	result := make(map[int]int64)
+
+	if uid <= 0 {
+		return nil, errs.ErrUserIdInvalid
+	}
+
+	if len(rows) == 0 {
+		return result, nil
+	}
+
+	accounts, err := Accounts.GetAllAccountsByUid(c, uid)
+
+	if err != nil {
+		return nil, err
+	}
+
+	accountByName := Accounts.GetVisibleAccountNameMapByList(accounts)
+
+	tagIds, err := s.ensureTags(c, uid)
+
+	if err != nil {
+		return nil, err
+	}
+
+	autoSmsTagId := tagIds[tagAutoSms]
+	statementVerifiedTagId := tagIds[tagStatementVerified]
+
+	type rowInfo struct {
+		index      int
+		accountId  int64
+		amount     int64
+		dbType     models.TransactionDbType
+		unixTime   int64
+		references []string
+	}
+
+	infos := make([]rowInfo, 0, len(rows))
+	accountIdSet := make(map[int64]bool)
+	var minUnixTime, maxUnixTime int64
+
+	for i := 0; i < len(rows); i++ {
+		row := rows[i]
+
+		if row == nil || row.Transaction == nil {
+			continue
+		}
+
+		accountId := row.AccountId
+
+		if row.OriginalSourceAccountName != "" {
+			if account, ok := accountByName[row.OriginalSourceAccountName]; ok {
+				accountId = account.AccountId
+			}
+		}
+
+		if accountId <= 0 {
+			continue
+		}
+
+		unixTime := utils.GetUnixTimeFromTransactionTime(row.TransactionTime)
+
+		infos = append(infos, rowInfo{
+			index:      i,
+			accountId:  accountId,
+			amount:     row.Amount,
+			dbType:     row.Type,
+			unixTime:   unixTime,
+			references: extractReferences(row.Comment),
+		})
+
+		accountIdSet[accountId] = true
+
+		if len(infos) == 1 || unixTime < minUnixTime {
+			minUnixTime = unixTime
+		}
+
+		if len(infos) == 1 || unixTime > maxUnixTime {
+			maxUnixTime = unixTime
+		}
+	}
+
+	if len(infos) == 0 {
+		return result, nil
+	}
+
+	accountIds := make([]int64, 0, len(accountIdSet))
+
+	for accountId := range accountIdSet {
+		accountIds = append(accountIds, accountId)
+	}
+
+	windowMinTransactionTime := utils.GetMinTransactionTimeFromUnixTime(minUnixTime - reconcileDateWindowSeconds)
+	windowMaxTransactionTime := utils.GetMaxTransactionTimeFromUnixTime(maxUnixTime + reconcileDateWindowSeconds)
+
+	var candidates []*models.Transaction
+	err = s.UserDataDB(uid).NewSession(c).
+		In("account_id", accountIds).
+		Where("uid=? AND deleted=? AND transaction_time>=? AND transaction_time<=?", uid, false, windowMinTransactionTime, windowMaxTransactionTime).
+		Find(&candidates)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if len(candidates) == 0 {
+		return result, nil
+	}
+
+	candidateIds := make([]int64, len(candidates))
+
+	for i := 0; i < len(candidates); i++ {
+		candidateIds[i] = reconcileOwnerId(candidates[i])
+	}
+
+	tagIdsByTransaction, err := TransactionTags.GetAllTagIdsOfTransactions(c, uid, candidateIds)
+
+	if err != nil {
+		return nil, err
+	}
+
+	var alertMessages []*models.AlertMessage
+	err = s.UserDataDB(uid).NewSession(c).Where("uid=?", uid).In("transaction_id", candidateIds).Find(&alertMessages)
+
+	if err != nil {
+		return nil, err
+	}
+
+	referenceByTransactionId := make(map[int64]string, len(alertMessages))
+
+	for i := 0; i < len(alertMessages); i++ {
+		if alertMessages[i].TransactionId > 0 {
+			referenceByTransactionId[alertMessages[i].TransactionId] = alertMessages[i].Reference
+		}
+	}
+
+	var pairs []matchCandidate
+
+	for i := 0; i < len(infos); i++ {
+		info := infos[i]
+
+		for j := 0; j < len(candidates); j++ {
+			candidate := candidates[j]
+
+			if candidate.AccountId != info.accountId || !reconcileTypeMatches(info.dbType, candidate.Type) || candidate.Amount != info.amount {
+				continue
+			}
+
+			ownerId := reconcileOwnerId(candidate)
+			hasAutoSms, isVerified := false, false
+
+			for _, tagId := range tagIdsByTransaction[ownerId] {
+				if tagId == autoSmsTagId {
+					hasAutoSms = true
+				} else if tagId == statementVerifiedTagId {
+					isVerified = true
+				}
+			}
+
+			// an already verified transaction still matches, so the other account of a transfer
+			// (or the same statement imported again) is recognised instead of imported twice;
+			// MarkStatementVerified leaves it unchanged
+			if !hasAutoSms && !isVerified {
+				continue
+			}
+
+			candidateUnixTime := utils.GetUnixTimeFromTransactionTime(candidate.TransactionTime)
+			timeDiff := candidateUnixTime - info.unixTime
+
+			if timeDiff < 0 {
+				timeDiff = -timeDiff
+			}
+
+			if timeDiff > reconcileDateWindowSeconds {
+				continue
+			}
+
+			candidateReference := referenceByTransactionId[ownerId]
+			refMatch := false
+
+			for _, reference := range info.references {
+				if reference == candidateReference {
+					refMatch = true
+				}
+			}
+
+			// references must agree only when both sides have one
+			if candidateReference != "" && len(info.references) > 0 && !refMatch {
+				continue
+			}
+
+			pairs = append(pairs, matchCandidate{
+				rowIndex: info.index,
+				txnId:    ownerId,
+				refMatch: refMatch,
+				timeDiff: timeDiff,
+			})
+		}
+	}
+
+	sort.SliceStable(pairs, func(i, j int) bool {
+		if pairs[i].refMatch != pairs[j].refMatch {
+			return pairs[i].refMatch
+		}
+
+		return pairs[i].timeDiff < pairs[j].timeDiff
+	})
+
+	usedRows := make(map[int]bool, len(pairs))
+	usedTxns := make(map[int64]bool, len(pairs))
+
+	for i := 0; i < len(pairs); i++ {
+		pair := pairs[i]
+
+		if usedRows[pair.rowIndex] || usedTxns[pair.txnId] {
+			continue
+		}
+
+		usedRows[pair.rowIndex] = true
+		usedTxns[pair.txnId] = true
+		result[pair.rowIndex] = pair.txnId
+	}
+
+	return result, nil
+}
+
+// MarkStatementVerified swaps each matched SMS transaction's "Auto (SMS)" tag (and "Not in
+// statement", if a previous import left it tagged that way) for "Statement verified", taking
+// the statement row's date and narration while keeping its category (design doc §8).
+//
+// SECURITY (ruling 1): matches is built from client-supplied transaction ids (the matched ids
+// returned by a prior parse, echoed back on import); every id is verified server-side to
+// belong to uid, not be deleted, and carry the "Auto (SMS)" tag before anything is touched.
+// Anything else is silently skipped (and logged): a client can never make the server modify
+// another user's transaction, nor a transaction that was never an SMS capture.
+func (s *AlertService) MarkStatementVerified(c core.Context, uid int64, matches map[int64]*models.ImportTransaction) error {
+	if uid <= 0 {
+		return errs.ErrUserIdInvalid
+	}
+
+	if len(matches) == 0 {
+		return nil
+	}
+
+	ids := make([]int64, 0, len(matches))
+
+	for id := range matches {
+		ids = append(ids, id)
+	}
+
+	transactions, err := Transactions.GetTransactionsByTransactionIds(c, uid, ids)
+
+	if err != nil {
+		return err
+	}
+
+	transactionById := make(map[int64]*models.Transaction, len(transactions))
+
+	for i := 0; i < len(transactions); i++ {
+		transactionById[transactions[i].TransactionId] = transactions[i]
+	}
+
+	tagIdsByTransaction, err := TransactionTags.GetAllTagIdsOfTransactions(c, uid, ids)
+
+	if err != nil {
+		return err
+	}
+
+	tagIds, err := s.ensureTags(c, uid)
+
+	if err != nil {
+		return err
+	}
+
+	autoSmsTagId := tagIds[tagAutoSms]
+	statementVerifiedTagId := tagIds[tagStatementVerified]
+	notInStatementTagId := tagIds[tagNotInStatement]
+
+	for id, row := range matches {
+		// This transaction either does not belong to uid, was deleted, or - since
+		// GetTransactionsByTransactionIds found it but the loop below rejects it - never
+		// carried "Auto (SMS)" in the first place; either way, a client-supplied id earns no
+		// trust and is skipped rather than acted on (ruling 1).
+		transaction, exists := transactionById[id]
+
+		if !exists {
+			log.Warnf(c, "[alerts.MarkStatementVerified] skipping transaction \"id:%d\" for user \"uid:%d\", because it does not belong to this user or is deleted", id, uid)
+			continue
+		}
+
+		hasAutoSms, hasNotInStatement := false, false
+
+		for _, tagId := range tagIdsByTransaction[id] {
+			if tagId == autoSmsTagId {
+				hasAutoSms = true
+			} else if tagId == notInStatementTagId {
+				hasNotInStatement = true
+			}
+		}
+
+		if !hasAutoSms {
+			log.Warnf(c, "[alerts.MarkStatementVerified] skipping transaction \"id:%d\" for user \"uid:%d\", because it is not tagged \"Auto (SMS)\"", id, uid)
+			continue
+		}
+
+		newTransaction := *transaction
+
+		if row != nil && row.Transaction != nil {
+			newTransaction.TransactionTime = utils.GetMinTransactionTimeFromUnixTime(utils.GetUnixTimeFromTransactionTime(row.TransactionTime))
+			newTransaction.TimezoneUtcOffset = row.TimezoneUtcOffset
+
+			comment := row.Comment
+
+			if utf8.RuneCountInString(comment) > 255 {
+				comment = utils.SubString(comment, 0, 255)
+			}
+
+			newTransaction.Comment = comment
+		}
+
+		removeTagIds := []int64{autoSmsTagId}
+
+		if hasNotInStatement {
+			removeTagIds = append(removeTagIds, notInStatementTagId)
+		}
+
+		addTagIds := []int64{statementVerifiedTagId}
+		currentTagIdsCount := len(tagIdsByTransaction[id])
+
+		err = Transactions.ModifyTransaction(c, &newTransaction, false, currentTagIdsCount, addTagIds, removeTagIds, nil, nil)
+
+		// The existing service refuses to move a transaction's time before an opening-balance
+		// (MODIFY_BALANCE) transaction on the same account (ruling 4); when that happens, the
+		// transaction is still verified, just with its original time kept.
+		if err == errs.ErrCannotAddTransactionBeforeBalanceModificationTransaction {
+			log.Infof(c, "[alerts.MarkStatementVerified] keeping original time for transaction \"id:%d\" of user \"uid:%d\", because %s", id, uid, err.Error())
+			newTransaction.TransactionTime = transaction.TransactionTime
+			newTransaction.TimezoneUtcOffset = transaction.TimezoneUtcOffset
+			err = Transactions.ModifyTransaction(c, &newTransaction, false, currentTagIdsCount, addTagIds, removeTagIds, nil, nil)
+		}
+
+		if err != nil {
+			log.Errorf(c, "[alerts.MarkStatementVerified] failed to verify transaction \"id:%d\" for user \"uid:%d\", because %s", id, uid, err.Error())
+			return err
+		}
+	}
+
+	return nil
+}
+
+// MarkNotInStatement tags "Not in statement" every "Auto (SMS)" transaction of uid+accountId in
+// [from, to] that isn't already "Statement verified" (design doc §8). It takes no set of
+// matched ids (ruling 5): it is always called after MarkStatementVerified has already swapped
+// the matched transactions' tags away from "Auto (SMS)", so those are naturally excluded here,
+// and a transaction already tagged "Not in statement" by a previous import is left alone.
+func (s *AlertService) MarkNotInStatement(c core.Context, uid int64, accountId int64, from int64, to int64) error {
+	if uid <= 0 {
+		return errs.ErrUserIdInvalid
+	}
+
+	if accountId <= 0 {
+		return errs.ErrAccountIdInvalid
+	}
+
+	tagIds, err := s.ensureTags(c, uid)
+
+	if err != nil {
+		return err
+	}
+
+	autoSmsTagId := tagIds[tagAutoSms]
+	statementVerifiedTagId := tagIds[tagStatementVerified]
+	notInStatementTagId := tagIds[tagNotInStatement]
+
+	minTransactionTime := utils.GetMinTransactionTimeFromUnixTime(from)
+	maxTransactionTime := utils.GetMaxTransactionTimeFromUnixTime(to)
+
+	var candidates []*models.Transaction
+	err = s.UserDataDB(uid).NewSession(c).Where("uid=? AND deleted=? AND account_id=? AND transaction_time>=? AND transaction_time<=?", uid, false, accountId, minTransactionTime, maxTransactionTime).Find(&candidates)
+
+	if err != nil {
+		return err
+	}
+
+	if len(candidates) == 0 {
+		return nil
+	}
+
+	candidateIds := make([]int64, len(candidates))
+
+	for i := 0; i < len(candidates); i++ {
+		candidateIds[i] = candidates[i].TransactionId
+	}
+
+	tagIdsByTransaction, err := TransactionTags.GetAllTagIdsOfTransactions(c, uid, candidateIds)
+
+	if err != nil {
+		return err
+	}
+
+	toTag := make([]*models.Transaction, 0, len(candidates))
+
+	for i := 0; i < len(candidates); i++ {
+		candidate := candidates[i]
+		hasAutoSms, isVerified, isNotInStatement := false, false, false
+
+		for _, tagId := range tagIdsByTransaction[candidate.TransactionId] {
+			if tagId == autoSmsTagId {
+				hasAutoSms = true
+			} else if tagId == statementVerifiedTagId {
+				isVerified = true
+			} else if tagId == notInStatementTagId {
+				isNotInStatement = true
+			}
+		}
+
+		if hasAutoSms && !isVerified && !isNotInStatement {
+			toTag = append(toTag, candidate)
+		}
+	}
+
+	if len(toTag) == 0 {
+		return nil
+	}
+
+	addTagIds := make(map[int64][]int64, len(toTag))
+
+	for i := 0; i < len(toTag); i++ {
+		addTagIds[toTag[i].TransactionId] = []int64{notInStatementTagId}
+	}
+
+	return Transactions.BatchAddTagsToTransactions(c, uid, toTag, addTagIds)
 }

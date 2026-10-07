@@ -21,6 +21,7 @@ import { TRANSACTION_MIN_AMOUNT, TRANSACTION_MAX_AMOUNT } from '@/consts/transac
 import {
     type TransactionDraft,
     type TransactionCreateRequest,
+    type TransactionImportMatchedItem,
     type TransactionInfoResponse,
     type TransactionPageWrapper,
     type TransactionReconciliationStatementResponse,
@@ -1676,7 +1677,7 @@ export const useTransactionsStore = defineStore('transactions', () => {
         });
     }
 
-    function importTransactions({ transactions, clientSessionId }: { transactions: ImportTransaction[], clientSessionId: string }): Promise<number> {
+    function importTransactions({ transactions, matchedTransactions, clientSessionId }: { transactions: ImportTransaction[], matchedTransactions?: ImportTransaction[], clientSessionId: string }): Promise<number> {
         const submitTransactions: TransactionCreateRequest[] = [];
 
         if (transactions) {
@@ -1686,9 +1687,25 @@ export const useTransactionsStore = defineStore('transactions', () => {
             }
         }
 
+        // Rows left matched to an existing "Auto (SMS)" transaction (design doc §8): not sent
+        // as new transactions, only as the reconciliation payload so the matched transaction
+        // takes this row's statement date and narration.
+        const submitMatchedTransactions: TransactionImportMatchedItem[] = [];
+
+        if (matchedTransactions) {
+            for (const matchedTransaction of matchedTransactions) {
+                const submitMatchedTransaction = matchedTransaction.toMatchedRequest();
+
+                if (submitMatchedTransaction) {
+                    submitMatchedTransactions.push(submitMatchedTransaction);
+                }
+            }
+        }
+
         return new Promise((resolve, reject) => {
             services.importTransactions({
                 transactions: submitTransactions,
+                matchedTransactions: submitMatchedTransactions.length > 0 ? submitMatchedTransactions : undefined,
                 clientSessionId: clientSessionId
             }).then(response => {
                 const data = response.data;

@@ -53,6 +53,11 @@ type ImportTransactionResponse struct {
 	OriginalTagNames                   []string                        `json:"originalTagNames"`
 	Comment                            string                          `json:"comment"`
 	GeoLocation                        *TransactionGeoLocationResponse `json:"geoLocation,omitempty"`
+	// MatchedTransactionId is set when this row matched an existing "Auto (SMS)" transaction
+	// on the same account (design doc §8); the client shows it as "Already recorded from SMS",
+	// unticked by default, and echoes it back on import so the matched transaction is verified
+	// instead of imported again.
+	MatchedTransactionId int64 `json:"matchedTransactionId,string,omitempty"`
 }
 
 // ImportTransactionResponsePageWrapper represents a response of imported transaction which contains items and count
@@ -177,8 +182,12 @@ func (s ImportedTransactionSlice) ToTransactionTagIdsMap() (map[int][]int64, err
 	return transactionTagIdsMap, nil
 }
 
-// ToImportTransactionResponseList returns the a list of view-objects according to imported transaction data
-func (s ImportedTransactionSlice) ToImportTransactionResponseList() []*ImportTransactionResponse {
+// ToImportTransactionResponseList returns the a list of view-objects according to imported
+// transaction data. matchedTransactionIds, when non-nil, is the row index (within s, before any
+// entries are skipped below) -> existing "Auto (SMS)" transaction id map returned by
+// AlertService.MatchStatementRows (design doc §8); a matched row's response carries that id in
+// MatchedTransactionId.
+func (s ImportedTransactionSlice) ToImportTransactionResponseList(matchedTransactionIds map[int]int64) []*ImportTransactionResponse {
 	transactionResps := make([]*ImportTransactionResponse, 0, s.Len())
 
 	for i := 0; i < s.Len(); i++ {
@@ -187,6 +196,12 @@ func (s ImportedTransactionSlice) ToImportTransactionResponseList() []*ImportTra
 
 		if importedTransactionResp == nil {
 			continue
+		}
+
+		if matchedTransactionIds != nil {
+			if transactionId, ok := matchedTransactionIds[i]; ok {
+				importedTransactionResp.MatchedTransactionId = transactionId
+			}
 		}
 
 		transactionResps = append(transactionResps, importedTransactionResp)

@@ -1,7 +1,7 @@
 import { TransactionType } from '@/core/transaction.ts';
 import { TRANSACTION_MAX_COMMENT_LENGTH } from '@/consts/transaction.ts';
 
-import type { TransactionCreateRequest, TransactionGeoLocationResponse } from './transaction.ts';
+import type { TransactionCreateRequest, TransactionGeoLocationResponse, TransactionImportMatchedItem } from './transaction.ts';
 
 export class ImportTransaction implements ImportTransactionResponse {
     public type: number;
@@ -21,6 +21,10 @@ export class ImportTransaction implements ImportTransactionResponse {
     public originalTagNames: string[];
     public comment: string;
     public geoLocation?: TransactionGeoLocationResponse;
+    // matchedTransactionId is set when this row matched an existing "Auto (SMS)" transaction on
+    // the same account (design doc §8); the review table shows it as "Already recorded from
+    // SMS" and it starts unticked (selected defaults to false for every row already).
+    public matchedTransactionId?: string;
 
     public actualCategoryName: string;
     public actualSourceAccountName: string;
@@ -47,6 +51,7 @@ export class ImportTransaction implements ImportTransactionResponse {
         this.originalTagNames = response.originalTagNames || [];
         this.comment = response.comment;
         this.geoLocation = response.geoLocation;
+        this.matchedTransactionId = response.matchedTransactionId;
 
         this.actualCategoryName = response.originalCategoryName;
         this.actualSourceAccountName = response.originalSourceAccountName;
@@ -54,6 +59,20 @@ export class ImportTransaction implements ImportTransactionResponse {
         this.index = index;
         this.selected = false;
         this.valid = this.isTransactionValid();
+    }
+
+    public toMatchedRequest(): TransactionImportMatchedItem | undefined {
+        if (!this.matchedTransactionId) {
+            return undefined;
+        }
+
+        return {
+            transactionId: this.matchedTransactionId,
+            time: this.time,
+            utcOffset: this.utcOffset,
+            sourceAccountId: this.sourceAccountId,
+            comment: this.comment
+        };
     }
 
     public toCreateRequest(): TransactionCreateRequest {
@@ -144,6 +163,7 @@ export interface ImportTransactionResponse {
     readonly originalTagNames: string[];
     readonly comment: string;
     readonly geoLocation?: TransactionGeoLocationResponse;
+    readonly matchedTransactionId?: string;
 }
 
 export interface ImportTransactionResponsePageWrapper {

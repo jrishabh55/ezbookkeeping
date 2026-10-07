@@ -326,6 +326,14 @@
                         <div class="mx-4 my-4">
                             <v-alert type="success" color="success-darken-1" variant="tonal">{{ tt('Data Import Completed') }}</v-alert>
                             <div class="text-body-large my-4">{{ tt('format.misc.importTransactionResult', { count: formatNumberToLocalizedNumerals(importedCount || 0) }) }}</div>
+                            <template v-if="touchedAccountBalances.length">
+                                <div class="text-body-large mt-6 mb-2">{{ tt('Account Balances After Import') }}</div>
+                                <v-list density="compact">
+                                    <v-list-item v-for="item in touchedAccountBalances" :key="item.account.id"
+                                                 :title="item.account.name" :subtitle="item.balance">
+                                    </v-list-item>
+                                </v-list>
+                            </template>
                         </div>
                     </v-window-item>
                 </v-window>
@@ -372,6 +380,7 @@ import { useStatisticsStore } from '@/stores/statistics.ts';
 
 import { type KeyAndName, itemAndIndex } from '@/core/base.ts';
 import { TransactionType } from '@/core/transaction.ts';
+import { AccountType } from '@/core/account.ts';
 import {
     type ImportFileTypeSupportedAdditionalOptions,
     type LocalizedImportFileCategoryAndTypes,
@@ -384,6 +393,7 @@ import { ImageUploadQualityType } from '@/core/image.ts';
 import { UTF_8 } from '@/consts/file.ts';
 
 import { type ImportTransactionResponse, ImportTransaction } from '@/models/imported_transaction.ts';
+import type { Account } from '@/models/account.ts';
 
 import { isDefined, isNumber } from '@/lib/common.ts';
 import { findExtensionByType, isFileExtensionSupported, detectFileEncoding } from '@/lib/file.ts';
@@ -425,6 +435,7 @@ const {
     joinMultiText,
     getAllSupportedImportFileCagtegoryAndTypes,
     formatNumberToLocalizedNumerals,
+    formatAmountToLocalizedNumeralsWithCurrency,
     getLocalizedFileEncodingName
 } = useI18n();
 
@@ -492,10 +503,26 @@ const parsedFileColumnSeparator = ref<string | undefined>(undefined);
 const importTransactions = ref<ImportTransaction[] | undefined>(undefined);
 
 const importedCount = ref<number | null>(null);
+// touchedAccounts is populated after a successful import with every account a ticked row or a
+// reconciled matched row belongs to (design doc §8: "the import summary shows each touched
+// account's book balance after import, to compare with the statement's closing balance").
+const touchedAccounts = ref<Account[]>([]);
 const loading = ref<boolean>(true);
 const submitting = ref<boolean>(false);
 
 const allSupportedImportFileCategoryAndTypes = computed<LocalizedImportFileCategoryAndTypes[]>(() => getAllSupportedImportFileCagtegoryAndTypes(isTransactionFromAITextRecognitionEnabled(), isTransactionFromAIImageRecognitionEnabled()));
+
+const touchedAccountBalances = computed<{ account: Account, balance: string }[]>(() => {
+    const showAccountBalance = settingsStore.appSettings.showAccountBalance;
+
+    return touchedAccounts.value.map(account => {
+        const balance = accountsStore.getAccountBalance(showAccountBalance, account);
+        return {
+            account: account,
+            balance: balance !== null ? formatAmountToLocalizedNumeralsWithCurrency(balance, account.currency) : ''
+        };
+    });
+});
 const allFileSubTypes = computed<LocalizedImportFileTypeSubType[] | undefined>(() => allSupportedImportFileTypesMap.value[fileType.value]?.subTypes);
 const allSupportedEncodings = computed<LocalizedImportFileTypeSupportedEncodings[] | undefined>(() => {
     const supportedEncodings = allSupportedImportFileTypesMap.value[fileType.value]?.supportedEncodings;
@@ -709,6 +736,8 @@ function open(): Promise<void> {
     importTransactionExecuteCustomScriptTab.value?.reset();
     importTransactions.value = undefined;
     importTransactionCheckDataTab.value?.reset();
+    importedCount.value = null;
+    touchedAccounts.value = [];
     showState.value = true;
     clientSessionId.value = generateRandomUUID();
     clearImportImageFiles();
@@ -1204,6 +1233,11 @@ function submit(): void {
     }
 
     const transactions: ImportTransaction[] = [];
+    // Rows left matched to an existing "Auto (SMS)" transaction (design doc §8): the user did
+    // not tick them, so they are not imported again, only reconciled against the matched
+    // transaction. A matched row the user did tick is instead imported as a normal new row
+    // below, and is not added here - see ImportTransaction.toMatchedRequest/toCreateRequest.
+    const matchedTransactions: ImportTransaction[] = [];
 
     if (importTransactions.value) {
         for (const importTransaction of importTransactions.value) {
@@ -1212,11 +1246,13 @@ function submit(): void {
             } else if (!importTransaction.valid && importTransaction.selected) {
                 snackbar.value?.showError('Cannot import invalid transactions');
                 return;
+            } else if (!importTransaction.selected && importTransaction.matchedTransactionId) {
+                matchedTransactions.push(importTransaction);
             }
         }
     }
 
-    if (transactions.length < 1) {
+    if (transactions.length < 1 && matchedTransactions.length < 1) {
         snackbar.value?.showError('No data to import');
         return;
     }
@@ -1258,8 +1294,23 @@ function submit(): void {
             }, 2000);
         }
 
+        const touchedAccountIds = new Set<string>();
+
+        for (const transaction of transactions) {
+            touchedAccountIds.add(transaction.sourceAccountId);
+
+            if (transaction.type === TransactionType.Transfer && transaction.destinationAccountId) {
+                touchedAccountIds.add(transaction.destinationAccountId);
+            }
+        }
+
+        for (const matchedTransaction of matchedTransactions) {
+            touchedAccountIds.add(matchedTransaction.sourceAccountId);
+        }
+
         transactionsStore.importTransactions({
             transactions: transactions,
+            matchedTransactions: matchedTransactions,
             clientSessionId: clientSessionId.value
         }).then(response => {
             if (showProcessTimer) {
@@ -1275,6 +1326,19 @@ function submit(): void {
             transactionsStore.updateTransactionListInvalidState(true);
             overviewStore.updateTransactionOverviewInvalidState(true);
             statisticsStore.updateTransactionStatisticsInvalidState(true);
+
+            // Show each touched account's book balance after import (design doc §8), to
+            // compare against the statement's closing balance; the account list is reloaded
+            // first since the import above just changed these accounts' balances.
+            accountsStore.loadAllAccounts({ force: true }).then(() => {
+                touchedAccounts.value = Array.from(touchedAccountIds)
+                    .map(accountId => accountsStore.allAccountsMap[accountId])
+                    .filter((account): account is Account => !!account && account.type === AccountType.SingleAccount.type);
+            }).catch(() => {
+                touchedAccounts.value = Array.from(touchedAccountIds)
+                    .map(accountId => accountsStore.allAccountsMap[accountId])
+                    .filter((account): account is Account => !!account && account.type === AccountType.SingleAccount.type);
+            });
 
             submitting.value = false;
         }).catch(error => {

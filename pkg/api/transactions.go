@@ -39,6 +39,7 @@ type TransactionsApi struct {
 	transactionPictures   *services.TransactionPictureService
 	accounts              *services.AccountService
 	users                 *services.UserService
+	alerts                *services.AlertService
 }
 
 // Initialize a transaction api singleton instance
@@ -59,6 +60,7 @@ var (
 		transactionPictures:   services.TransactionPictures,
 		accounts:              services.Accounts,
 		users:                 services.Users,
+		alerts:                services.Alerts,
 	}
 )
 
@@ -2769,7 +2771,19 @@ func (a *TransactionsApi) TransactionParseImportFileHandler(c *core.WebContext) 
 		return nil, errs.Or(err, errs.ErrOperationFailed)
 	}
 
-	parsedTransactionRespsList := parsedTransactions.ToImportTransactionResponseList()
+	// Match each row against this user's existing "Auto (SMS)" transactions (design doc §8)
+	// before rendering the response, so a matched row is shown as already recorded instead of
+	// as a new row to import; a failure here is logged and otherwise ignored; it must never
+	// block parsing the file (worst case, a row that should have been recognised as already
+	// recorded gets imported again, which the user can still undo).
+	matchedTransactionIds, matchErr := a.alerts.MatchStatementRows(c, user.Uid, parsedTransactions)
+
+	if matchErr != nil {
+		log.Errorf(c, "[transactions.TransactionParseImportFileHandler] failed to match statement rows against SMS-captured transactions for user \"uid:%d\", because %s", user.Uid, matchErr.Error())
+		matchedTransactionIds = nil
+	}
+
+	parsedTransactionRespsList := parsedTransactions.ToImportTransactionResponseList(matchedTransactionIds)
 
 	if len(parsedTransactionRespsList) < 1 {
 		return nil, errs.ErrNoDataToImport
@@ -2781,6 +2795,39 @@ func (a *TransactionsApi) TransactionParseImportFileHandler(c *core.WebContext) 
 	}
 
 	return parsedTransactionResps, nil
+}
+
+// accountTimeRange is the [min, max] unix-time span (seconds) of the rows touching one account
+// in a single import request, used to call AlertService.MarkNotInStatement over "the imported
+// date range" (design doc §8) for every account the import touched - whether by a newly
+// imported transaction or by a row the user left matched to an existing SMS transaction.
+type accountTimeRange struct {
+	minUnixTime int64
+	maxUnixTime int64
+}
+
+// extendAccountTimeRange grows ranges[accountId] to include unixTime, creating the entry if this
+// is the first row seen for that account; a non-positive accountId (no account resolved) is a
+// no-op rather than polluting the map with an invalid key
+func extendAccountTimeRange(ranges map[int64]*accountTimeRange, accountId int64, unixTime int64) {
+	if accountId <= 0 {
+		return
+	}
+
+	r, exists := ranges[accountId]
+
+	if !exists {
+		ranges[accountId] = &accountTimeRange{minUnixTime: unixTime, maxUnixTime: unixTime}
+		return
+	}
+
+	if unixTime < r.minUnixTime {
+		r.minUnixTime = unixTime
+	}
+
+	if unixTime > r.maxUnixTime {
+		r.maxUnixTime = unixTime
+	}
 }
 
 // TransactionImportHandler imports transactions by request parameters for current user
@@ -2881,11 +2928,43 @@ func (a *TransactionsApi) TransactionImportHandler(c *core.WebContext) (any, *er
 	}
 
 	newTransactions := make([]*models.Transaction, len(transactionImportReq.Transactions))
+	touchedAccountRanges := make(map[int64]*accountTimeRange, len(transactionImportReq.Transactions)+len(transactionImportReq.MatchedTransactions))
 
 	for i := 0; i < len(transactionImportReq.Transactions); i++ {
 		transactionCreateReq := transactionImportReq.Transactions[i]
 		transaction := a.createNewTransactionModel(uid, transactionCreateReq, c.ClientIP())
 		newTransactions[i] = transaction
+		extendAccountTimeRange(touchedAccountRanges, transaction.AccountId, utils.GetUnixTimeFromTransactionTime(transaction.TransactionTime))
+	}
+
+	// Rows the user left matched to an existing "Auto (SMS)" transaction (design doc §8):
+	// not re-imported, but the matched transaction takes this row's statement date and
+	// narration and is reconciled once the import below succeeds. matchedItem.TransactionId
+	// is untrusted client input; MarkStatementVerified re-checks ownership, deletion and the
+	// "Auto (SMS)" tag server-side before touching anything (ruling 1), so a bogus or
+	// another-user's id here is simply ignored rather than acted on.
+	seenMatchedTransactionIds := make(map[int64]bool, len(transactionImportReq.MatchedTransactions))
+	matchedTransactions := make(map[int64]*models.ImportTransaction, len(transactionImportReq.MatchedTransactions))
+
+	for i := 0; i < len(transactionImportReq.MatchedTransactions); i++ {
+		matchedItem := transactionImportReq.MatchedTransactions[i]
+
+		if matchedItem.TransactionId <= 0 || seenMatchedTransactionIds[matchedItem.TransactionId] {
+			log.Warnf(c, "[transactions.TransactionImportHandler] skipping invalid or duplicate matched transaction id at index %d for user \"uid:%d\"", i, uid)
+			continue
+		}
+
+		seenMatchedTransactionIds[matchedItem.TransactionId] = true
+		matchedTransactions[matchedItem.TransactionId] = &models.ImportTransaction{
+			Transaction: &models.Transaction{
+				TransactionTime:   utils.GetMinTransactionTimeFromUnixTime(matchedItem.Time),
+				TimezoneUtcOffset: matchedItem.UtcOffset,
+				AccountId:         matchedItem.SourceAccountId,
+				Comment:           matchedItem.Comment,
+			},
+		}
+
+		extendAccountTimeRange(touchedAccountRanges, matchedItem.SourceAccountId, matchedItem.Time)
 	}
 
 	allUsedAccounts, err := a.getTransactionUsedAccounts(c, uid, newTransactions)
@@ -2919,6 +2998,22 @@ func (a *TransactionsApi) TransactionImportHandler(c *core.WebContext) (any, *er
 	log.Infof(c, "[transactions.TransactionImportHandler] user \"uid:%d\" has imported %d transactions successfully", uid, count)
 
 	a.SetSubmissionRemarkIfEnable(duplicatechecker.DUPLICATE_CHECKER_TYPE_IMPORT_TRANSACTIONS, uid, transactionImportReq.ClientSessionId, fmt.Sprintf("finished:%d", count))
+
+	// Statement reconciliation (design doc §8), best-effort: the import above has already
+	// committed, so a failure here is logged rather than turned into an import failure - the
+	// user's data is not lost, only the SMS transaction's verification is left for the next
+	// import (or for the user to resolve manually).
+	if len(matchedTransactions) > 0 {
+		if err := a.alerts.MarkStatementVerified(c, uid, matchedTransactions); err != nil {
+			log.Errorf(c, "[transactions.TransactionImportHandler] failed to mark %d matched transactions verified for user \"uid:%d\", because %s", len(matchedTransactions), uid, err.Error())
+		}
+	}
+
+	for accountId, timeRange := range touchedAccountRanges {
+		if err := a.alerts.MarkNotInStatement(c, uid, accountId, timeRange.minUnixTime, timeRange.maxUnixTime); err != nil {
+			log.Errorf(c, "[transactions.TransactionImportHandler] failed to mark not-in-statement transactions of account \"id:%d\" for user \"uid:%d\", because %s", accountId, uid, err.Error())
+		}
+	}
 
 	return count, nil
 }

@@ -605,7 +605,20 @@ export interface TransactionBatchDeleteRequest {
 
 export interface TransactionImportRequest {
     readonly transactions: TransactionCreateRequest[];
+    // Rows the user left matched to an existing "Auto (SMS)" transaction (design doc §8),
+    // i.e. not re-imported; each entry's transactionId is verified server-side (ownership, not
+    // deleted, carries the "Auto (SMS)" tag) before it is taken as this row's statement date
+    // and narration and reconciled.
+    readonly matchedTransactions?: TransactionImportMatchedItem[];
     readonly clientSessionId: string;
+}
+
+export interface TransactionImportMatchedItem {
+    readonly transactionId: string;
+    readonly time: number;
+    readonly utcOffset: number;
+    readonly sourceAccountId: string;
+    readonly comment: string;
 }
 
 export interface TransactionListByMaxTimeRequest {

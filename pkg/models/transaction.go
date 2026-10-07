@@ -199,8 +199,25 @@ type TransactionModifyRequest struct {
 
 // TransactionImportRequest represents all parameters of transaction import request
 type TransactionImportRequest struct {
-	Transactions    []*TransactionCreateRequest `json:"transactions"`
-	ClientSessionId string                      `json:"clientSessionId"`
+	Transactions []*TransactionCreateRequest `json:"transactions"`
+	// MatchedTransactions carries the rows the parse step matched to an existing "Auto (SMS)"
+	// transaction (design doc §8) that the user left unticked, i.e. is not asking to import a
+	// second time. Each entry's TransactionId is the existing transaction to verify, taking
+	// this row's statement date and narration; TransactionId is untrusted client input and is
+	// re-checked server-side (ownership, not deleted, carries "Auto (SMS)") before anything is
+	// touched (ruling 1).
+	MatchedTransactions []*TransactionImportMatchedItem `json:"matchedTransactions,omitempty"`
+	ClientSessionId     string                          `json:"clientSessionId"`
+}
+
+// TransactionImportMatchedItem represents one statement row the user is leaving matched to an
+// existing "Auto (SMS)" transaction, rather than importing again
+type TransactionImportMatchedItem struct {
+	TransactionId   int64  `json:"transactionId,string" binding:"required,min=1"`
+	Time            int64  `json:"time" binding:"required,min=1"`
+	UtcOffset       int16  `json:"utcOffset" binding:"min=-720,max=840"`
+	SourceAccountId int64  `json:"sourceAccountId,string" binding:"required,min=1"`
+	Comment         string `json:"comment" binding:"max=255"`
 }
 
 // TransactionImportProcessRequest represents all parameters of transaction import process request

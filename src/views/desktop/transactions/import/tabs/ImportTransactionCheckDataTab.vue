@@ -95,6 +95,12 @@
                 <v-chip label color="primary" variant="outlined" size="x-small" v-else-if="value === TransactionType.Transfer">{{ tt('Transfer') }}</v-chip>
                 <v-chip label color="default" variant="outlined" size="x-small" v-else>{{ tt('Unknown') }}</v-chip>
             </template>
+            <template #item.matchedTransactionId="{ item }">
+                <v-chip label color="info" variant="outlined" size="x-small" v-if="item.matchedTransactionId">
+                    {{ tt('Already recorded from SMS') }}
+                    <v-tooltip activator="parent">{{ tt('This row matches a transaction already recorded from an SMS alert. Left unticked, it is not imported again and the SMS transaction is marked as verified by the statement. Tick it only to import it as a separate transaction.') }}</v-tooltip>
+                </v-chip>
+            </template>
             <template #item.actualCategoryName="{ item }">
                 <div class="d-flex align-center" v-if="editingTransaction !== item || item.type === TransactionType.ModifyBalance">
                     <span v-if="item.type === TransactionType.ModifyBalance">-</span>
@@ -970,6 +976,7 @@ const importTransactionHeaders = computed<object[]>(() => {
         { value: 'valid', sortable: true, nowrap: true, width: 35, fixed: true },
         { value: 'time', title: tt('Transaction Time'), sortable: true, nowrap: true },
         { value: 'type', title: tt('Type'), sortable: true, nowrap: true },
+        { value: 'matchedTransactionId', title: tt('Status'), sortable: true, nowrap: true },
         { value: 'actualCategoryName', title: tt('Category'), sortable: true, nowrap: true },
         { value: 'sourceAmount', title: tt('Amount'), sortable: true, nowrap: true },
         { value: 'actualSourceAccountName', title: tt('Account'), sortable: true, nowrap: true },
@@ -1595,7 +1602,11 @@ function selectAllValid(): void {
     }
 
     for (const importTransaction of props.importTransactions) {
-        if (importTransaction.valid && isTransactionDisplayed(importTransaction)) {
+        // A row already recorded from SMS (design doc §8) is left out of a bulk "select all";
+        // importing it again would create a duplicate, so re-selecting it is a deliberate,
+        // single-row action (the checkbox in the table) rather than something a bulk action
+        // does for the user.
+        if (importTransaction.valid && !importTransaction.matchedTransactionId && isTransactionDisplayed(importTransaction)) {
             importTransaction.selected = true;
         }
     }
@@ -1619,7 +1630,8 @@ function selectAll(): void {
     }
 
     for (const importTransaction of props.importTransactions) {
-        if (isTransactionDisplayed(importTransaction)) {
+        // See selectAllValid: a matched row is excluded from this bulk action too.
+        if (!importTransaction.matchedTransactionId && isTransactionDisplayed(importTransaction)) {
             importTransaction.selected = true;
         }
     }
@@ -1651,7 +1663,10 @@ function selectInvert(): void {
 
 function selectAllInThisPage(): void {
     for (const importTransaction of currentPageTransactions.value) {
-        importTransaction.selected = true;
+        // See selectAllValid: a matched row is excluded from this bulk action too.
+        if (!importTransaction.matchedTransactionId) {
+            importTransaction.selected = true;
+        }
     }
 }
 
