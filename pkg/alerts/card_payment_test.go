@@ -11,6 +11,13 @@ func TestCardPaymentDetection(t *testing.T) {
 	assert.True(t, IsFacilitatorPayment(Parse("XX-HDFCBK", debit), debit))
 	upi := "Rs.5000.00 debited from A/c XX1234 to VPA cred.club@axisb Ref 512345678961"
 	assert.True(t, IsFacilitatorPayment(Parse("XX-HDFCBK", upi), upi))
+	for _, purchase := range []string{
+		"Rs.36320.00 debited from A/c XX1234 to VPA cred.utility@axisb Ref 512345678962",
+		"Rs.1299.00 debited from A/c XX1234 to VPA cred.store@axisb Ref 512345678963",
+		"Rs.1131.00 debited from A/c XX1234 to VPA credpay.swiggy1@axisb Ref 512345678964",
+	} {
+		assert.False(t, IsFacilitatorPayment(Parse("XX-HDFCBK", purchase), purchase), purchase)
+	}
 	credited := "INR 5,000.00 credited to A/c XX1234 by IMPS from JOHN DOE"
 	assert.False(t, IsFacilitatorPayment(Parse("XX-HDFCBK", credited), credited))
 
