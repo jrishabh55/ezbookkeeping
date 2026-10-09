@@ -29,7 +29,7 @@ type KeywordRule struct {
 	CategoryId int64
 }
 
-var reTransferLast4 = regexp.MustCompile(`(?i)\b(?:to|from|beneficiary|benef\.?|trf to|transferred to|credited to|credited from)\s+(?:a/?c|acct|account|card)?\s*(?:no\.?)?\s*[x*]{2,}\s*(\d{4})\b`)
+var reTransferLast4 = regexp.MustCompile(`(?i)\b(?:to|from|beneficiary|benef\.?|trf to|transferred to|credited to|credited from|transfer\s+(?:dr|cr)-?)\s*(?:a/?c|acct|account|card)?\s*(?:no\.?)?\s*[x*]{2,}\s*(\d{4})\b`)
 
 // Classify decides category or transfer target: own account by last-4, then payee history, then keywords, then review
 func Classify(alert ParsedAlert, accountId int64, own []OwnAccount, history func(payeeKey string) (HistoryHit, bool), keywords []KeywordRule, textUpper string) Classification {

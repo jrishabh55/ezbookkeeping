@@ -39,7 +39,7 @@ var (
 	// reHardIgnore matches messages that are never a completed transaction, regardless of
 	// whether they otherwise look like one (OTP prompts, mandate setup, future-tense
 	// reminders, collect requests, limit/statement notices).
-	reHardIgnore = regexp.MustCompile(`(?i)\botp\b|\bone time password\b|\be-mandate\b|\bmandate\b|\bis due\b|\bdue on\b|\bwill be debited\b|\blimit (?:has been )?(?:increased|enhanced)\b|\btransaction limit\b|\b(?:payment|money)\s+request\b|\brequest(?:ed)?\s+(?:money|payment)\b|\bstatement\s*:`)
+	reHardIgnore = regexp.MustCompile(`(?i)\botp\b|\bone time password\b|\be-mandate\b|\bmandate\b|\bis due\b|\bdue on\b|\bwill be debited\b|\bwill be deducted\b|\blimit (?:has been )?(?:increased|enhanced)\b|\btransaction limit\b|\b(?:payment|money)\s+request\b|\brequest(?:ed)?\s+(?:money|payment)\b|\bstatement\s*:`)
 	// reSoftIgnore matches promo-ish words that only mean "ignore" when the message does
 	// not otherwise look like a real transaction (debit/credit verb + amount + last-4).
 	reSoftIgnore = regexp.MustCompile(`(?i)\bcashback\b|\boffer\b|\bapply now\b`)
@@ -51,9 +51,9 @@ var (
 	// Bare "dr"/"cr" markers were dropped: they false-positive too easily (e.g. "Rs. 3,989
 	// cr." meaning crore, not credit) and every fixture that needs a direction already
 	// spells out debited/credited/sent/spent/etc.
-	reDebit   = regexp.MustCompile(`(?i)\b(debited|sent|spent|withdrawn|paid|purchase|transferred to)`)
+	reDebit   = regexp.MustCompile(`(?i)\b(debited|deducted|sent|spent|withdrawn|paid|purchase|transferred to|txn\s+(?:rs\.?|inr)\s*[\d,.]+\s+on\b)`)
 	reCredit  = regexp.MustCompile(`(?i)\b(credited|deposited|received|refund(ed)?|posted)`)
-	reLast4   = regexp.MustCompile(`(?i)(?:a/?c|acct|account|acc\b|card)(?:\s+(?:no\.?|number|ending(?:\s+with)?))?\s*[:\-]?\s*(?:[x*]+[\s\-]*)?(\d{4})\b`)
+	reLast4   = regexp.MustCompile(`(?i)(?:(?:a/?c|acct|account|acc\b|card)(?:\s+(?:no\.?|number|ending(?:\s+with)?))?\s*[:\-]?\s*(?:[x*]+[\s\-]*)?|\b[x*]{2,}[\s\-]*)(\d{4})\b`)
 	reRef     = regexp.MustCompile(`(?i)\b(?:ref(?:erence)?(?:\s*no\.?)?|rrn|upi(?:\s*ref)?|imps(?:\s*ref)?)\s*[:\-]?\s*(\d{6,})`)
 	reBalance = regexp.MustCompile(`(?i)\b(?:avl\.?|avail(?:able)?)?\s*bal(?:ance)?\s*(?:is)?\s*[:\-]?\s*(?:rs\.?|inr)\s*(\d[\d,]*(?:\.\d{1,2})?)`)
 	// The capture itself is deliberately case-sensitive (?-i: ...): every genuine name in
@@ -65,7 +65,7 @@ var (
 	// keyword or a currency marker; used to reject a party-regex match that actually names
 	// the account itself ("to Ac XX7664", "from VALLEY PHARMACY Acc XX6282") or restates the
 	// amount ("debited by INR 214.66") rather than naming a counterparty.
-	reRejectWord = regexp.MustCompile(`(?i)^\s*(?:a/?c|acc(?:t|ount)?|card|rs\.?|inr)\b`)
+	reRejectWord = regexp.MustCompile(`(?i)^\s*(?:(?:a/?c|acc(?:t|ount)?|card|rs\.?|inr)\b|(?:upi|imps|neft|rtgs)\s*\d)`)
 )
 
 // Parse reads one SMS; it never guesses: anything financial it cannot read fully is OutcomeUnparsed

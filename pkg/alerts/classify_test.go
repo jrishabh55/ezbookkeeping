@@ -96,3 +96,10 @@ func TestClassifyAmbiguousLast4(t *testing.T) {
 
 // Fix round 1: Issue 6 - Remove redundant ToUpper
 // This is implicitly tested by the other tests; the behavior should not change
+
+func TestClassifyIbFundsTransferDrLast4(t *testing.T) {
+	own := []OwnAccount{{ID: 1, Name: "HDFC Bank 7731", Last4: "7731"}, {ID: 2, Name: "HDFC Bank 4071", Last4: "4071"}}
+	alert := ParsedAlert{Outcome: OutcomeParsed, Direction: Debit, Amount: 20000000, Last4: "7731"}
+	c := Classify(alert, 1, own, noHistory, nil, "UPDATE: INR 2,00,000.00 DEBITED FROM HDFC BANK XX7731 ON 08-OCT-26. INFO: IB FUNDS TRANSFER DR-XXXXXXXXXX4071-RISHABH JAIN. AVL BAL:INR 46,688.05")
+	assert.Equal(t, Classification{IsTransfer: true, OtherAccountId: 2}, c)
+}
