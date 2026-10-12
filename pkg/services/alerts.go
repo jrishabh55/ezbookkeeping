@@ -137,7 +137,7 @@ type keywordCategoryRule struct {
 var keywordCategoryRules = []keywordCategoryRule{
 	{regexp.MustCompile(`(?i)\b(SWIGGY|ZOMATO|UBER ?EATS|DOMINOS?|PIZZA)\b`), alerts.Debit, "Food"},
 	{regexp.MustCompile(`(?i)\b(AIRTEL|JIO|VODAFONE|VI|BSNL)\b`), alerts.Debit, "Telephone Bill"},
-	{regexp.MustCompile(`(?i)\b(PETROL|FUEL|HPCL|BPCL|INDIAN ?OIL|IOCL|SHELL)\b`), alerts.Debit, "Personal Car Expense"},
+	{regexp.MustCompile(`(?i)\b(PETROL|FUEL|HPCL|BPCL|INDIAN ?OIL|IOCL|SHELL|FASTAG|TOLL)\b`), alerts.Debit, "Personal Car Expense"},
 	{regexp.MustCompile(`(?i)\b(NETFLIX|SPOTIFY|PRIME ?VIDEO|HOTSTAR|YOUTUBE ?PREMIUM|APPLE ?MUSIC)\b`), alerts.Debit, "Subscriptions"},
 	{regexp.MustCompile(`(?i)\b(PVR|INOX|BOOKMYSHOW|CINEPOLIS)\b`), alerts.Debit, "Movies & Shows"},
 }

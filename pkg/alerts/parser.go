@@ -65,7 +65,10 @@ var (
 	// keyword or a currency marker; used to reject a party-regex match that actually names
 	// the account itself ("to Ac XX7664", "from VALLEY PHARMACY Acc XX6282") or restates the
 	// amount ("debited by INR 214.66") rather than naming a counterparty.
-	reRejectWord = regexp.MustCompile(`(?i)^\s*(?:(?:a/?c|acc(?:t|ount)?|card|rs\.?|inr)\b|(?:upi|imps|neft|rtgs)\s*\d)`)
+	// reVehicleLast4 reads an Indian vehicle registration ("for PB23Z1100"): FASTag toll SMS name
+	// no account, so the vehicle's last four digits stand in for it (account "Kotak FASTag 1100").
+	reVehicleLast4 = regexp.MustCompile(`(?i)\bfastag\b.*\b[A-Z]{2}\s?\d{1,2}\s?[A-Z]{1,3}\s?(\d{4})\b`)
+	reRejectWord   = regexp.MustCompile(`(?i)^\s*(?:(?:a/?c|acc(?:t|ount)?|card|rs\.?|inr)\b|(?:upi|imps|neft|rtgs)\s*\d)`)
 )
 
 // Parse reads one SMS; it never guesses: anything financial it cannot read fully is OutcomeUnparsed
@@ -84,6 +87,8 @@ func Parse(sender string, text string) ParsedAlert {
 
 	last4 := ""
 	if m := reLast4.FindStringSubmatch(text); m != nil {
+		last4 = m[1]
+	} else if m := reVehicleLast4.FindStringSubmatch(text); m != nil {
 		last4 = m[1]
 	}
 

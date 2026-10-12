@@ -51,6 +51,8 @@ func TestParse(t *testing.T) {
 			ParsedAlert{Outcome: OutcomeParsed, Direction: Debit, Amount: 2900000, Last4: "7731"}},
 		{"autopay-will-be-deducted", "XX-HDFCBK", "AutoPay Alert! Your HDFC Bank Credit Card 3834 bill Total Amt: Rs.21879 will be deducted from your A/C 9260 on 09/OCT/2026. Ignore if paid",
 			ParsedAlert{Outcome: OutcomeIgnored}},
+		{"fastag-toll-vehicle-last4", "XX-KOTAKB", "Kotak FASTag:Rs.65.00 Toll paid at BSCCC Kura for PB23Z1100 on 10-10-2026@08:37 .Bal.855.00.Visit https://fastag.kotak.bank.in for disputes.",
+			ParsedAlert{Outcome: OutcomeParsed, Direction: Debit, Amount: 6500, Last4: "1100"}},
 		{"dual-verb-with-promo-word", "XX-HDFCBK", "Rs.500 cashback debited and credited to A/c XX1234 on 05-10-26",
 			ParsedAlert{Outcome: OutcomeUnparsed}},
 	}
