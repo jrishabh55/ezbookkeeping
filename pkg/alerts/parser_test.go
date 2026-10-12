@@ -53,6 +53,10 @@ func TestParse(t *testing.T) {
 			ParsedAlert{Outcome: OutcomeIgnored}},
 		{"fastag-toll-vehicle-last4", "XX-KOTAKB", "Kotak FASTag:Rs.65.00 Toll paid at BSCCC Kura for PB23Z1100 on 10-10-2026@08:37 .Bal.855.00.Visit https://fastag.kotak.bank.in for disputes.",
 			ParsedAlert{Outcome: OutcomeParsed, Direction: Debit, Amount: 6500, Last4: "1100"}},
+		{"executed-upi-mandate-is-a-debit", "XX-HDFCBK", "UPI Mandate: Sent Rs.971.40 from HDFC Bank A/c 7731 To Anomaly 06/10/26 Ref 973574662796 Not You? Call 18002586161/SMS BLOCK UPI to 7308080808",
+			ParsedAlert{Outcome: OutcomeParsed, Direction: Debit, Amount: 97140, Last4: "7731", Reference: "973574662796"}},
+		{"e-mandate-reminder", "XX-HDFCBK", "E-Mandate! Rs.10000.00 will be deducted on 15/10/26, 00:00:00 For JIO BLACKROCK MUTUAL FUND mandate UMN 407d8cb6dd67d936e0634bcee10a6d7f@pthdfc Maintain Balance -HDFC Bank",
+			ParsedAlert{Outcome: OutcomeIgnored}},
 		{"dual-verb-with-promo-word", "XX-HDFCBK", "Rs.500 cashback debited and credited to A/c XX1234 on 05-10-26",
 			ParsedAlert{Outcome: OutcomeUnparsed}},
 	}

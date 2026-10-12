@@ -364,7 +364,7 @@
   "sender": "XX-HDFCBK",
   "text": "AutoPay (E-mandate) Success!\nFor NETFLIX \nTxn Amt:INR030.04\nDt:18/12/2096\nVia:HDFC Bank CC 4822\nSI Hub ID: M6SX0Vvew0\nTnC",
   "expected": {
-   "Outcome": "ignored",
+   "Outcome": "unparsed",
    "Direction": "",
    "Amount": 0,
    "Last4": "",
