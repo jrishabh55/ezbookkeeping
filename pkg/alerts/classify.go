@@ -14,6 +14,7 @@ type HistoryHit struct {
 	IsTransfer     bool
 	CategoryId     int64
 	OtherAccountId int64
+	Business       bool // the past transaction carries the user's "Business" tag
 }
 
 type Classification struct {
@@ -21,6 +22,7 @@ type Classification struct {
 	CategoryId     int64
 	OtherAccountId int64
 	NeedsReview    bool
+	Business       bool
 }
 
 type KeywordRule struct {
@@ -53,7 +55,7 @@ func Classify(alert ParsedAlert, accountId int64, own []OwnAccount, history func
 				return Classification{IsTransfer: true, OtherAccountId: hit.OtherAccountId}
 			}
 			if !hit.IsTransfer {
-				return Classification{CategoryId: hit.CategoryId}
+				return Classification{CategoryId: hit.CategoryId, Business: hit.Business}
 			}
 		}
 	}

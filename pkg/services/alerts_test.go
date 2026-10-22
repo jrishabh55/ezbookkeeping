@@ -393,3 +393,70 @@ func TestIngestCardCashbackStaysIncome(t *testing.T) {
 	assert.Equal(t, "added", r.Outcome)
 	assert.NotContains(t, tagNamesOf(t, ctx, uid, r.TransactionId), "Card payment pending")
 }
+
+// businessTestSetup creates a "Business" tag (unless skipped) and an expense category, and
+// records a past expense from payee with that category, tagged Business when pastIsBusiness
+func businessTestSetup(t *testing.T, categoryName string, payee string, createTag bool, pastIsBusiness bool) (core.Context, int64) {
+	ctx, uid := newAlertTestUser(t, "HDFC Bank 1234")
+	accountId := accountIdByName(t, ctx, uid, "HDFC Bank 1234")
+
+	primary := &models.TransactionCategory{Uid: uid, Type: models.CATEGORY_TYPE_EXPENSE, Name: "Office", Icon: 1, Color: "000000"}
+	secondary := &models.TransactionCategory{Uid: uid, Type: models.CATEGORY_TYPE_EXPENSE, Name: categoryName, Icon: 1, Color: "000000"}
+	_, err := TransactionCategories.CreateCategories(ctx, uid, map[*models.TransactionCategory][]*models.TransactionCategory{nil: {primary}, primary: {secondary}})
+	assert.Nil(t, err)
+
+	var pastTagIds []int64
+
+	if createTag {
+		tags := []*models.TransactionTag{{Uid: uid, Name: "Business"}}
+		assert.Nil(t, TransactionTags.CreateTags(ctx, uid, tags, true))
+
+		if pastIsBusiness {
+			pastTagIds = []int64{tags[0].TagId}
+		}
+	}
+
+	past := &models.Transaction{
+		Uid: uid, Type: models.TRANSACTION_DB_TYPE_EXPENSE, CategoryId: secondary.CategoryId, AccountId: accountId,
+		Amount: 50000, TransactionTime: utils.GetMinTransactionTimeFromUnixTime(time.Now().Add(-24 * time.Hour).Unix()),
+		TimezoneUtcOffset: 330, Comment: payee,
+	}
+	assert.Nil(t, Transactions.CreateTransaction(ctx, past, pastTagIds, nil))
+
+	return ctx, uid
+}
+
+func ingestSentTo(t *testing.T, ctx core.Context, uid int64, payee string, ref string) []string {
+	r, err := Alerts.Ingest(ctx, uid, "XX-HDFCBK", "Sent Rs.500.00\nFrom HDFC Bank A/C *1234\nTo "+payee+"\nRef "+ref, time.Now())
+	assert.Nil(t, err)
+	assert.Equal(t, "added", r.Outcome)
+
+	return tagNamesOf(t, ctx, uid, r.TransactionId)
+}
+
+func TestIngestCopiesBusinessTagFromPayeeHistory(t *testing.T) {
+	ctx, uid := businessTestSetup(t, "Subscriptions", "ACME HOSTING", true, true)
+	assert.Contains(t, ingestSentTo(t, ctx, uid, "ACME HOSTING", "600000000020"), "Business")
+}
+
+func TestIngestTagsBusinessCategoryWithoutTaggedHistory(t *testing.T) {
+	ctx, uid := businessTestSetup(t, "Office Rent", "JOHN LANDLORD", true, false)
+	assert.Contains(t, ingestSentTo(t, ctx, uid, "JOHN LANDLORD", "600000000021"), "Business")
+}
+
+func TestIngestLeavesPersonalPayeeUntagged(t *testing.T) {
+	ctx, uid := businessTestSetup(t, "Food", "CORNER BAKERY", true, false)
+	assert.NotContains(t, ingestSentTo(t, ctx, uid, "CORNER BAKERY", "600000000022"), "Business")
+}
+
+func TestIngestNeverCreatesBusinessTag(t *testing.T) {
+	ctx, uid := businessTestSetup(t, "Office Rent", "JOHN LANDLORD", false, false)
+	assert.NotContains(t, ingestSentTo(t, ctx, uid, "JOHN LANDLORD", "600000000023"), "Business")
+
+	tags, err := TransactionTags.GetAllTagsByUid(ctx, uid)
+	assert.Nil(t, err)
+
+	for _, tag := range tags {
+		assert.NotEqual(t, "Business", tag.Name)
+	}
+}

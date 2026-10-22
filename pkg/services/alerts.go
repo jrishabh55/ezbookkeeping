@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -28,6 +29,7 @@ const (
 	tagNeedsReview        = "Needs review"
 	tagBalanceMismatch    = "Balance mismatch"
 	tagCardPaymentPending = "Card payment pending"
+	tagBusiness           = "Business" // user-created; never created here
 	tagStatementVerified  = "Statement verified"
 	tagNotInStatement     = "Not in statement"
 )
@@ -117,6 +119,16 @@ const (
 	categoryNameOtherExpense  = "Other Expense"
 	categoryNameOtherIncome   = "Other Income"
 )
+
+// businessCategoryNames are the expense sub-categories that are always business spend (the
+// user's agreed rules: staff, office and all car running costs)
+var businessCategoryNames = map[string]bool{
+	"Staff Salary":         true,
+	"Office Rent":          true,
+	"Meeting Expense":      true,
+	"Professional Fees":    true,
+	"Personal Car Expense": true,
+}
 
 // reAccountNameLast4 extracts the trailing 4 digits of an account name, used both to build the
 // "own accounts" list passed to alerts.Classify and to resolve an alert's account by its last-4
@@ -239,7 +251,15 @@ func (s *AlertService) Ingest(c core.Context, uid int64, sender string, text str
 		return nil, s.failAfterStore(c, uid, message.AlertId, err)
 	}
 
-	classification, err := s.classify(c, uid, account.AccountId, parsed, strings.ToUpper(text))
+	businessTagId, err := s.visibleTagId(c, uid, tagBusiness)
+
+	if err != nil {
+		return nil, s.failAfterStore(c, uid, message.AlertId, err)
+	} else if businessTagId > 0 {
+		tagIds[tagBusiness] = businessTagId
+	}
+
+	classification, err := s.classify(c, uid, account.AccountId, parsed, strings.ToUpper(text), businessTagId)
 
 	if err != nil {
 		return nil, s.failAfterStore(c, uid, message.AlertId, err)
@@ -305,6 +325,10 @@ func (s *AlertService) Ingest(c core.Context, uid int64, sender string, text str
 			_ = s.updateMessageOutcome(c, uid, message.AlertId, "duplicate", 0)
 			return &AlertIngestResult{Outcome: "duplicate"}, nil
 		}
+	}
+
+	if classification.Business && !classification.IsTransfer {
+		extraTags = append(extraTags, tagBusiness)
 	}
 
 	needsReview := forcedReview || classification.NeedsReview
@@ -831,7 +855,9 @@ func (s *AlertService) findAutoSmsTransfers(c core.Context, uid int64, condition
 // it (step 8). Hidden accounts and multi-sub-account parents are excluded from the "own"
 // transfer-matching list, and hidden categories are excluded from the keyword mapping and from
 // payee history hits, since none of them can legally be used on a new transaction.
-func (s *AlertService) classify(c core.Context, uid int64, accountId int64, parsed alerts.ParsedAlert, textUpper string) (alerts.Classification, error) {
+// An expense whose payee history carries the "Business" tag, or whose category is one of
+// businessCategoryNames, is marked Business (only when the user has a visible "Business" tag).
+func (s *AlertService) classify(c core.Context, uid int64, accountId int64, parsed alerts.ParsedAlert, textUpper string, businessTagId int64) (alerts.Classification, error) {
 	accounts, err := Accounts.GetAllAccountsByUid(c, uid)
 
 	if err != nil {
@@ -900,7 +926,17 @@ func (s *AlertService) classify(c core.Context, uid int64, accountId int64, pars
 			return alerts.HistoryHit{}, false
 		}
 
-		return alerts.HistoryHit{CategoryId: transaction.CategoryId}, true
+		business := false
+
+		if businessTagId > 0 && parsed.Direction == alerts.Debit {
+			tagIdsByTransaction, err := TransactionTags.GetAllTagIdsOfTransactions(c, uid, []int64{transaction.TransactionId})
+
+			if err == nil {
+				business = slices.Contains(tagIdsByTransaction[transaction.TransactionId], businessTagId)
+			}
+		}
+
+		return alerts.HistoryHit{CategoryId: transaction.CategoryId, Business: business}, true
 	}
 
 	history := func(payeeKey string) (alerts.HistoryHit, bool) {
@@ -940,7 +976,15 @@ func (s *AlertService) classify(c core.Context, uid int64, accountId int64, pars
 		}
 	}
 
-	return alerts.Classify(parsed, accountId, own, history, keywords, textUpper), nil
+	classification := alerts.Classify(parsed, accountId, own, history, keywords, textUpper)
+
+	if businessTagId > 0 && parsed.Direction == alerts.Debit && !classification.IsTransfer {
+		if category := categoryById[classification.CategoryId]; category != nil && businessCategoryNames[category.Name] {
+			classification.Business = true
+		}
+	}
+
+	return classification, nil
 }
 
 // smsPayeeHistory looks up this user's newest SMS-captured transactions of the same payee (by the
@@ -1200,6 +1244,19 @@ func (s *AlertService) ensureTag(c core.Context, uid int64, name string) (int64,
 	}
 
 	return tags[0].TagId, nil
+}
+
+// visibleTagId returns the id of this user's tag with the given name, or 0 when it doesn't
+// exist or is hidden (a hidden tag can't be put on a new transaction)
+func (s *AlertService) visibleTagId(c core.Context, uid int64, name string) (int64, error) {
+	tag := &models.TransactionTag{}
+	has, err := s.UserDataDB(uid).NewSession(c).Where("uid=? AND deleted=? AND hidden=? AND name=?", uid, false, false, name).Get(tag)
+
+	if err != nil || !has {
+		return 0, err
+	}
+
+	return tag.TagId, nil
 }
 
 // lookupTagIds returns the ids of this user's existing tags with the given names, by name,
