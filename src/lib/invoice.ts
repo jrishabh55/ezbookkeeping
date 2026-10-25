@@ -77,6 +77,15 @@ export function addDaysToDate(date: string, days: number): TextualYearMonthDay {
     return new Date(Date.UTC(year!, month! - 1, day! + days)).toISOString().substring(0, 10) as TextualYearMonthDay;
 }
 
+export function getDaysBetweenDates(from: string, to: string): number {
+    const toUtcTime = (date: string) => {
+        const [year, month, day] = date.split('-').map(Number);
+        return Date.UTC(year!, month! - 1, day!);
+    };
+
+    return Math.round((toUtcTime(to) - toUtcTime(from)) / 86400000);
+}
+
 export function getTodayTextualDate(): TextualYearMonthDay {
     const now = new Date();
     return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())).toISOString().substring(0, 10) as TextualYearMonthDay;

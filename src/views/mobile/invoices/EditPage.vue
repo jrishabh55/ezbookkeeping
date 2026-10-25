@@ -147,6 +147,7 @@ const {
     setInvoice,
     prepareNewInvoice,
     setInvoiceDate,
+    suggestNumber: loadSuggestedNumber,
     formatAmount,
     formatDate
 } = useInvoiceEditPageBase();
@@ -164,9 +165,7 @@ const rateSheetLineIndex = ref<number>(-1);
 const selectedCustomerName = computed<string>(() => invoicesStore.allCustomersMap[invoice.value.customerId]?.name ?? tt('None'));
 
 function suggestNumber(): void {
-    invoicesStore.getNextInvoiceNumber({ invoiceDate: invoice.value.invoiceDate }).then(number => {
-        invoice.value.number = number;
-    }).catch(error => {
+    loadSuggestedNumber().catch(error => {
         if (!error.processed) {
             showToast(error.message || error);
         }

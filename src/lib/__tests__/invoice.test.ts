@@ -11,7 +11,8 @@ import {
     formatInvoiceDocumentAmount,
     formatInvoiceDocumentDate,
     getInvoicePdfFileName,
-    addDaysToDate
+    addDaysToDate,
+    getDaysBetweenDates
 } from '@/lib/invoice.ts';
 import type { TextualYearMonthDay } from '@/core/datetime.ts';
 
@@ -96,5 +97,10 @@ describe('document formatting', () => {
     test('add days across month end', () => {
         expect(addDaysToDate('2026-04-23', 7)).toBe('2026-04-30');
         expect(addDaysToDate('2026-04-28', 7)).toBe('2026-05-05');
+    });
+
+    test('days between dates across month end', () => {
+        expect(getDaysBetweenDates('2026-04-28', '2026-05-05')).toBe(7);
+        expect(getDaysBetweenDates('2026-04-23', '2026-04-23')).toBe(0);
     });
 });

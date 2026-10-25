@@ -153,6 +153,7 @@ const {
     setInvoice,
     prepareNewInvoice,
     setInvoiceDate,
+    suggestNumber: loadSuggestedNumber,
     formatAmount
 } = useInvoiceEditPageBase();
 
@@ -171,9 +172,10 @@ const initInvoice = ref<Invoice>(Invoice.createNewInvoice());
 const isInvoiceModified = computed<boolean>(() => !isEquals(invoice.value.toCreateRequest(), initInvoice.value.toCreateRequest()));
 
 function suggestNumber(): void {
-    invoicesStore.getNextInvoiceNumber({ invoiceDate: invoice.value.invoiceDate }).then(number => {
-        invoice.value.number = number;
-        initInvoice.value.number = number;
+    loadSuggestedNumber().then(applied => {
+        if (applied) {
+            initInvoice.value.number = invoice.value.number;
+        }
     }).catch(error => {
         if (!error.processed) {
             snackbar.value?.showError(error);

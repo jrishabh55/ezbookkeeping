@@ -8,7 +8,7 @@ import type { TextualYearMonthDay } from '@/core/datetime.ts';
 import { type Customer, type InvoiceProfile, Invoice, INVOICE_CURRENCY } from '@/models/invoice.ts';
 
 import { parseBigDecimal } from '@/lib/numeral.ts';
-import { computeInvoiceTotals, addDaysToDate, getTodayTextualDate } from '@/lib/invoice.ts';
+import { computeInvoiceTotals, addDaysToDate, getDaysBetweenDates, getTodayTextualDate } from '@/lib/invoice.ts';
 
 export function useInvoiceEditPageBase() {
     const { formatAmountToLocalizedNumeralsWithCurrency, formatGregorianTextualYearMonthDayToLongDate } = useI18n();
@@ -19,6 +19,7 @@ export function useInvoiceEditPageBase() {
     const loading = ref<boolean>(false);
     const submitting = ref<boolean>(false);
     const invoice = ref<Invoice>(Invoice.createNewInvoice());
+    const lastSuggestedNumber = ref<string>('');
 
     const allCustomers = computed<Customer[]>(() => invoicesStore.allCustomers);
 
@@ -63,6 +64,7 @@ export function useInvoiceEditPageBase() {
 
     function setInvoice(source: Invoice): void {
         invoice.value = source.clone();
+        lastSuggestedNumber.value = '';
     }
 
     // a new invoice dated today with the profile's terms and notes, optionally copying another invoice
@@ -78,11 +80,36 @@ export function useInvoiceEditPageBase() {
         }
 
         invoice.value = newInvoice;
+        lastSuggestedNumber.value = '';
     }
 
+    // a new invoice applies the profile's terms; an existing one keeps its invoice-to-due gap
     function setInvoiceDate(date: TextualYearMonthDay, termsDays: number): void {
+        const days = editInvoiceId.value && invoice.value.invoiceDate && invoice.value.dueDate
+            ? getDaysBetweenDates(invoice.value.invoiceDate, invoice.value.dueDate)
+            : termsDays;
+
         invoice.value.invoiceDate = date;
-        invoice.value.dueDate = addDaysToDate(date, termsDays);
+        invoice.value.dueDate = addDaysToDate(date, Math.max(days, 0));
+    }
+
+    // the suggested number replaces the number only while it is blank or still the last suggestion; resolves whether it was applied
+    function suggestNumber(): Promise<boolean> {
+        const numberAtRequest = invoice.value.number;
+
+        if (numberAtRequest.trim() && numberAtRequest !== lastSuggestedNumber.value) {
+            return Promise.resolve(false);
+        }
+
+        return invoicesStore.getNextInvoiceNumber({ invoiceDate: invoice.value.invoiceDate }).then(number => {
+            if (invoice.value.number !== numberAtRequest) {
+                return false; // the user typed while the suggestion was loading
+            }
+
+            invoice.value.number = number;
+            lastSuggestedNumber.value = number;
+            return true;
+        });
     }
 
     function formatAmount(paise: number): string {
@@ -112,6 +139,7 @@ export function useInvoiceEditPageBase() {
         setInvoice,
         prepareNewInvoice,
         setInvoiceDate,
+        suggestNumber,
         formatAmount,
         formatDate
     };
