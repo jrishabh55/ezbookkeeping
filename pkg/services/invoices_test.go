@@ -272,6 +272,17 @@ func TestLinkPaymentValidatesTransaction(t *testing.T) {
 	assert.Equal(t, errs.ErrInvoicePaymentExceedsBalanceDue, Invoices.LinkPayment(ctx, uid, invoice.InvoiceId, tooBig.TransactionId))
 }
 
+func TestLinkPaymentRejectsNonInrAccount(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	usdAccount := &models.Account{Uid: uid, Name: "Wise USD", Category: models.ACCOUNT_CATEGORY_SAVINGS_ACCOUNT, Type: models.ACCOUNT_TYPE_SINGLE_ACCOUNT, Icon: 1, Color: "000000", Currency: "USD"}
+	assert.Nil(t, Accounts.CreateAccounts(ctx, usdAccount, 0, nil, nil, time.UTC))
+	customer := createTestCustomer(t, uid)
+	invoice := createTestInvoice(t, uid, customer.CustomerId, "CA/2026-27/01", 37000000)
+
+	usdIncome := insertTestTransaction(t, uid, usdAccount.AccountId, models.TRANSACTION_DB_TYPE_INCOME, 1000, "2026-04-28")
+	assert.Equal(t, errs.ErrInvoicePaymentTransactionInvalid, Invoices.LinkPayment(ctx, uid, invoice.InvoiceId, usdIncome.TransactionId))
+}
+
 func TestLinkPaymentRejectsOtherUsersTransaction(t *testing.T) {
 	ctx, uid := newAlertTestUser(t, "PNB Savings")
 	otherCtx, otherUid := newAlertTestUser(t, "Other Savings")
