@@ -51,8 +51,8 @@
                             <v-list-item :title="tt('Received')">
                                 <template #append><span>{{ formatAmount(invoice.received) }}</span></template>
                             </v-list-item>
-                            <v-list-item :title="tt('Bank Charges')" v-if="bankCharges > 0">
-                                <template #append><span>{{ formatAmount(bankCharges) }}</span></template>
+                            <v-list-item :title="tt(shortfallName)" v-if="shortfall > 0">
+                                <template #append><span>{{ formatAmount(shortfall) }}</span></template>
                             </v-list-item>
                             <v-list-item :title="tt('Balance Due')" v-else>
                                 <template #append><span class="font-weight-bold">{{ formatAmount(balanceDue) }}</span></template>
@@ -145,7 +145,8 @@ const {
     displayStatus,
     displayStatusName,
     balanceDue,
-    bankCharges,
+    shortfall,
+    shortfallName,
     formatAmount,
     formatPaymentDescription,
     printInvoice

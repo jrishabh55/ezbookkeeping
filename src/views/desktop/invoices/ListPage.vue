@@ -100,7 +100,7 @@
                                 <td>{{ formatDate(invoice.invoiceDate) }}</td>
                                 <td>{{ formatDate(invoice.dueDate) }}</td>
                                 <td class="text-right">{{ formatAmount(invoice.total) }}</td>
-                                <td class="text-right">{{ formatAmount(getInvoiceBalanceDue(invoice)) }}</td>
+                                <td class="text-right">{{ formatAmount(getInvoiceDisplayBalanceDue(invoice)) }}</td>
                                 <td>
                                     <v-chip size="small" variant="tonal" :color="statusColors[getDisplayStatus(invoice)]">{{ tt(getDisplayStatusName(invoice)) }}</v-chip>
                                 </td>
@@ -187,7 +187,7 @@ import { useInvoicesStore } from '@/stores/invoice.ts';
 
 import type { Customer, Invoice } from '@/models/invoice.ts';
 
-import { type InvoiceDisplayStatus, getInvoiceBalanceDue } from '@/lib/invoice.ts';
+import { type InvoiceDisplayStatus, getInvoiceDisplayBalanceDue } from '@/lib/invoice.ts';
 
 type ConfirmDialogType = InstanceType<typeof ConfirmDialog>;
 type SnackBarType = InstanceType<typeof SnackBar>;

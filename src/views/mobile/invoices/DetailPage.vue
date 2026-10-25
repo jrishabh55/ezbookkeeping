@@ -21,7 +21,7 @@
                 <f7-list-item :title="tt('Payment Due')" :after="formatDate(invoice.dueDate)"></f7-list-item>
                 <f7-list-item :title="tt('Total')" :after="formatAmount(invoice.total)"></f7-list-item>
                 <f7-list-item :title="tt('Received')" :after="formatAmount(invoice.received)"></f7-list-item>
-                <f7-list-item :title="tt('Bank Charges')" :after="formatAmount(bankCharges)" v-if="bankCharges > 0"></f7-list-item>
+                <f7-list-item :title="tt(shortfallName)" :after="formatAmount(shortfall)" v-if="shortfall > 0"></f7-list-item>
                 <f7-list-item :title="tt('Balance Due')" :after="formatAmount(balanceDue)" v-else></f7-list-item>
             </f7-list>
 
@@ -121,7 +121,8 @@ const {
     displayStatus,
     displayStatusName,
     balanceDue,
-    bankCharges,
+    shortfall,
+    shortfallName,
     formatAmount,
     formatDate,
     formatPaymentDescription,

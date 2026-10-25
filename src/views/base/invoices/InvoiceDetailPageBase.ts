@@ -11,8 +11,8 @@ import { parseBigDecimal } from '@/lib/numeral.ts';
 import { parseDateTimeFromUnixTimeWithTimezoneOffset, getTimezoneOffsetMinutes } from '@/lib/datetime.ts';
 import {
     type InvoiceDisplayStatus,
-    getInvoiceBalanceDue,
-    getInvoiceBankCharges,
+    getInvoiceDisplayBalanceDue,
+    getInvoiceShortfall,
     getInvoiceDisplayStatus,
     getInvoicePdfFileName,
     getTodayTextualDate
@@ -33,8 +33,19 @@ export function useInvoiceDetailPageBase() {
 
     const displayStatus = computed<InvoiceDisplayStatus | null>(() => invoice.value ? getInvoiceDisplayStatus(invoice.value, getTodayTextualDate()) : null);
     const displayStatusName = computed<string>(() => displayStatus.value ? getInvoiceDisplayStatusName(displayStatus.value) : '');
-    const balanceDue = computed<number>(() => invoice.value ? getInvoiceBalanceDue(invoice.value) : 0);
-    const bankCharges = computed<number>(() => invoice.value ? getInvoiceBankCharges(invoice.value) : 0);
+    const balanceDue = computed<number>(() => invoice.value ? getInvoiceDisplayBalanceDue(invoice.value) : 0);
+    const shortfall = computed<number>(() => invoice.value ? getInvoiceShortfall(invoice.value).amount : 0);
+    const shortfallName = computed<string>(() => {
+        const kind = invoice.value ? getInvoiceShortfall(invoice.value).kind : null;
+
+        if (kind === 'bankCharges') {
+            return 'Bank Charges';
+        } else if (kind === 'writtenOff') {
+            return 'Written Off';
+        }
+
+        return '';
+    });
 
     function formatAmount(paise: number): string {
         return formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(paise), INVOICE_CURRENCY);
@@ -76,7 +87,8 @@ export function useInvoiceDetailPageBase() {
         displayStatus,
         displayStatusName,
         balanceDue,
-        bankCharges,
+        shortfall,
+        shortfallName,
         // functions
         formatAmount,
         formatDate,

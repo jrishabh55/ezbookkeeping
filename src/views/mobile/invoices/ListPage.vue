@@ -26,7 +26,7 @@
             <f7-list-item swipeout
                           :id="getInvoiceDomId(invoice)"
                           :title="invoice.number"
-                          :after="formatAmount(getInvoiceBalanceDue(invoice))"
+                          :after="formatAmount(getInvoiceDisplayBalanceDue(invoice))"
                           :link="'/invoice/detail?id=' + invoice.id"
                           :key="invoice.id"
                           v-for="invoice in displayInvoices">
@@ -80,7 +80,7 @@ import { useInvoicesStore } from '@/stores/invoice.ts';
 import { TextDirection } from '@/core/text.ts';
 import type { Invoice } from '@/models/invoice.ts';
 
-import { getInvoiceBalanceDue } from '@/lib/invoice.ts';
+import { getInvoiceDisplayBalanceDue } from '@/lib/invoice.ts';
 
 const props = defineProps<{
     f7route: Router.Route;

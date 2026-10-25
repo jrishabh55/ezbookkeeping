@@ -6,7 +6,8 @@ import {
     getInvoiceStatus,
     isInvoiceOverdue,
     getInvoiceDisplayStatus,
-    getInvoiceBankCharges,
+    getInvoiceShortfall,
+    getInvoiceDisplayBalanceDue,
     formatInvoiceDocumentAmount,
     formatInvoiceDocumentDate,
     getInvoicePdfFileName,
@@ -31,23 +32,41 @@ describe('getInvoiceStatus', () => {
 
     test('paid when exactly 3% short', () => {
         expect(getInvoiceStatus(invoice(37000000, 35890000))).toBe('paid');
-        expect(getInvoiceBankCharges(invoice(37000000, 35890000))).toBe(1110000);
+        expect(getInvoiceShortfall(invoice(37000000, 35890000))).toEqual({ amount: 1110000, kind: 'bankCharges' });
     });
 
     test('partial when one paisa more than 3% short', () => {
         expect(getInvoiceStatus(invoice(37000000, 35889999))).toBe('partial');
-        expect(getInvoiceBankCharges(invoice(37000000, 35889999))).toBe(0);
+        expect(getInvoiceShortfall(invoice(37000000, 35889999))).toEqual({ amount: 0, kind: null });
     });
 
     test('paid when closed manually even with a big shortfall', () => {
         expect(getInvoiceStatus(invoice(37000000, 10000000, true))).toBe('paid');
-        expect(getInvoiceBankCharges(invoice(37000000, 10000000, true))).toBe(27000000);
+        expect(getInvoiceShortfall(invoice(37000000, 10000000, true))).toEqual({ amount: 27000000, kind: 'writtenOff' });
     });
 
     test('balance due never negative after editing the total below what was received', () => {
         expect(getInvoiceBalanceDue(invoice(30000000, 37000000))).toBe(0);
         expect(getInvoiceStatus(invoice(30000000, 37000000))).toBe('paid');
-        expect(getInvoiceBankCharges(invoice(30000000, 37000000))).toBe(0);
+        expect(getInvoiceShortfall(invoice(30000000, 37000000))).toEqual({ amount: 0, kind: null });
+    });
+});
+
+describe('getInvoiceShortfall', () => {
+    test('bank charges when a manual close is within the tolerance', () => {
+        expect(getInvoiceShortfall(invoice(37000000, 36850000, true))).toEqual({ amount: 150000, kind: 'bankCharges' });
+    });
+
+    test('none when unpaid', () => {
+        expect(getInvoiceShortfall(invoice(37000000, 0))).toEqual({ amount: 0, kind: null });
+    });
+});
+
+describe('getInvoiceDisplayBalanceDue', () => {
+    test('zero once paid, the gap otherwise', () => {
+        expect(getInvoiceDisplayBalanceDue(invoice(37000000, 36850000))).toBe(0);
+        expect(getInvoiceDisplayBalanceDue(invoice(37000000, 10000000, true))).toBe(0);
+        expect(getInvoiceDisplayBalanceDue(invoice(37000000, 10000000))).toBe(27000000);
     });
 });
 

@@ -38,9 +38,22 @@ export function getInvoiceDisplayStatus(invoice: InvoiceAmounts & { readonly due
     return isInvoiceOverdue(invoice, today) ? 'overdue' : getInvoiceStatus(invoice);
 }
 
-// the shortfall written off on a paid invoice (bank / forex charges, or a manual close)
-export function getInvoiceBankCharges(invoice: InvoiceAmounts): number {
-    return getInvoiceStatus(invoice) === 'paid' ? getInvoiceBalanceDue(invoice) : 0;
+export type InvoiceShortfallKind = 'bankCharges' | 'writtenOff';
+
+// the gap left on a paid invoice: bank / forex charges within the tolerance, otherwise written off by a manual close
+export function getInvoiceShortfall(invoice: InvoiceAmounts): { amount: number, kind: InvoiceShortfallKind | null } {
+    const balanceDue = getInvoiceBalanceDue(invoice);
+
+    if (getInvoiceStatus(invoice) !== 'paid' || balanceDue <= 0) {
+        return { amount: 0, kind: null };
+    }
+
+    return { amount: balanceDue, kind: balanceDue <= invoice.total * INVOICE_PAID_TOLERANCE ? 'bankCharges' : 'writtenOff' };
+}
+
+// what is still owed: nothing once the invoice is paid, even if a shortfall remains
+export function getInvoiceDisplayBalanceDue(invoice: InvoiceAmounts): number {
+    return getInvoiceStatus(invoice) === 'paid' ? 0 : getInvoiceBalanceDue(invoice);
 }
 
 // ponytail: the printed document is always English / en-US style like the Wave original; app screens use the i18n helpers instead
