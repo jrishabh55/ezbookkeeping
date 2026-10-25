@@ -15,36 +15,39 @@
         </f7-list>
 
         <f7-list form strong inset dividers class="margin-vertical" v-else>
-            <f7-list-item :header="tt('Logo')">
-                <template #footer>
-                    <div class="display-flex align-items-center padding-top-half">
-                        <image-box style="height: 48px; width: auto" alt="logo" :src="newProfile.logoDataUrl" v-if="newProfile.logoDataUrl"></image-box>
-                        <f7-button class="margin-left-half" :text="tt('Update Logo')" @click="logoInput?.click()"></f7-button>
-                        <f7-button class="margin-left-half" color="red" :text="tt('Remove Logo')" @click="newProfile.logoDataUrl = ''" v-if="newProfile.logoDataUrl"></f7-button>
-                    </div>
-                </template>
-            </f7-list-item>
-            <f7-list-input type="text" autocomplete="off" clear-button
-                           :label="tt('Business Name')" :placeholder="tt('Business Name')"
-                           v-model:value="newProfile.businessName"></f7-list-input>
-            <f7-list-input type="textarea" style="height: auto" autocomplete="off"
-                           :label="tt('Address')" :placeholder="tt('Address')"
-                           v-textarea-auto-size v-model:value="newProfile.addressLines"></f7-list-input>
-            <f7-list-input type="text" autocomplete="off" clear-button
-                           :label="tt('Phone')" :placeholder="tt('Phone')"
-                           v-model:value="newProfile.phone"></f7-list-input>
-            <f7-list-input type="text" autocomplete="off" clear-button
-                           :label="tt('Website')" :placeholder="tt('Website')"
-                           v-model:value="newProfile.website"></f7-list-input>
-            <f7-list-input type="text" autocomplete="off" clear-button
-                           :label="tt('Invoice Number Prefix')" :placeholder="tt('Invoice Number Prefix')"
-                           v-model:value="newProfile.numberPrefix"></f7-list-input>
-            <list-number-input :label="tt('Payment Terms (days)')" :placeholder="tt('Payment Terms (days)')"
-                               :min-value="0" :max-value="365" :max-decimal-count="0"
-                               v-model="newProfile.defaultTermsDays"></list-number-input>
-            <f7-list-input type="textarea" style="height: auto" autocomplete="off"
-                           :label="tt('Default Notes / Terms')" :placeholder="tt('Default Notes / Terms')"
-                           v-textarea-auto-size v-model:value="newProfile.defaultNotes"></f7-list-input>
+            <!-- list-number-input must go in #list (f7-list cannot scan it in the default slot), so every item goes there to keep the order -->
+            <template #list>
+                <f7-list-item :header="tt('Logo')">
+                    <template #footer>
+                        <div class="display-flex align-items-center padding-top-half">
+                            <image-box style="height: 48px; width: auto" alt="logo" :src="newProfile.logoDataUrl" v-if="newProfile.logoDataUrl"></image-box>
+                            <f7-button class="margin-left-half" :text="tt('Update Logo')" @click="logoInput?.click()"></f7-button>
+                            <f7-button class="margin-left-half" color="red" :text="tt('Remove Logo')" @click="newProfile.logoDataUrl = ''" v-if="newProfile.logoDataUrl"></f7-button>
+                        </div>
+                    </template>
+                </f7-list-item>
+                <f7-list-input type="text" autocomplete="off" clear-button
+                               :label="tt('Business Name')" :placeholder="tt('Business Name')"
+                               v-model:value="newProfile.businessName"></f7-list-input>
+                <f7-list-input type="textarea" style="height: auto" autocomplete="off"
+                               :label="tt('Address')" :placeholder="tt('Address')"
+                               v-textarea-auto-size v-model:value="newProfile.addressLines"></f7-list-input>
+                <f7-list-input type="text" autocomplete="off" clear-button
+                               :label="tt('Phone')" :placeholder="tt('Phone')"
+                               v-model:value="newProfile.phone"></f7-list-input>
+                <f7-list-input type="text" autocomplete="off" clear-button
+                               :label="tt('Website')" :placeholder="tt('Website')"
+                               v-model:value="newProfile.website"></f7-list-input>
+                <f7-list-input type="text" autocomplete="off" clear-button
+                               :label="tt('Invoice Number Prefix')" :placeholder="tt('Invoice Number Prefix')"
+                               v-model:value="newProfile.numberPrefix"></f7-list-input>
+                <list-number-input :label="tt('Payment Terms (days)')" :placeholder="tt('Payment Terms (days)')"
+                                   :min-value="0" :max-value="365" :max-decimal-count="0"
+                                   v-model="newProfile.defaultTermsDays"></list-number-input>
+                <f7-list-input type="textarea" style="height: auto" autocomplete="off"
+                               :label="tt('Default Notes / Terms')" :placeholder="tt('Default Notes / Terms')"
+                               v-textarea-auto-size v-model:value="newProfile.defaultNotes"></f7-list-input>
+            </template>
         </f7-list>
 
         <input ref="logoInput" type="file" style="display: none" accept="image/png,image/jpeg" @change="onLogoChosen($event)" />

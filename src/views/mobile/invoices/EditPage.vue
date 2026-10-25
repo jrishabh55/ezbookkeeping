@@ -59,32 +59,35 @@
             <f7-block class="no-padding no-margin">
                 <f7-list strong inset dividers class="margin-vertical"
                          :key="index" v-for="(line, index) in invoice.lines">
-                    <f7-list-item group-title>
-                        <small>{{ tt('Line') + ' #' + (index + 1) }}</small>
-                        <f7-button rasied fill color="red" icon-f7="trash" icon-size="16px" :aria-label="tt('Remove')"
-                                   :class="{ 'disabled': invoice.lines.length <= 1 }"
-                                   @click="removeLine(index)"></f7-button>
-                    </f7-list-item>
-                    <f7-list-input type="text" autocomplete="off" clear-button
-                                   :label="tt('Item')" :placeholder="tt('Item')"
-                                   v-model:value="line.itemName"></f7-list-input>
-                    <f7-list-input type="textarea" style="height: auto" autocomplete="off"
-                                   :label="tt('Description')" :placeholder="tt('Description (optional)')"
-                                   v-textarea-auto-size v-model:value="line.description"></f7-list-input>
-                    <list-number-input :label="tt('Qty')" :placeholder="tt('Qty')"
-                                       :min-value="1" :max-value="10000" :max-decimal-count="0"
-                                       v-model="line.quantity"></list-number-input>
-                    <f7-list-item link="#" no-chevron class="list-item-with-header-and-title"
-                                  :header="tt('Rate')"
-                                  :title="formatAmount(line.rate)"
-                                  @click="rateSheetLineIndex = index">
-                        <number-pad-sheet :min-value="0"
-                                          :max-value="TRANSACTION_MAX_AMOUNT"
-                                          :currency="invoice.currency"
-                                          :show="rateSheetLineIndex === index"
-                                          @update:show="rateSheetLineIndex = $event ? index : -1"
-                                          v-model="line.rate"></number-pad-sheet>
-                    </f7-list-item>
+                    <!-- list-number-input must go in #list (f7-list cannot scan it in the default slot), so the whole line goes there to keep its order -->
+                    <template #list>
+                        <f7-list-item group-title>
+                            <small>{{ tt('Line') + ' #' + (index + 1) }}</small>
+                            <f7-button rasied fill color="red" icon-f7="trash" icon-size="16px" :aria-label="tt('Remove')"
+                                       :class="{ 'disabled': invoice.lines.length <= 1 }"
+                                       @click="removeLine(index)"></f7-button>
+                        </f7-list-item>
+                        <f7-list-input type="text" autocomplete="off" clear-button
+                                       :label="tt('Item')" :placeholder="tt('Item')"
+                                       v-model:value="line.itemName"></f7-list-input>
+                        <f7-list-input type="textarea" style="height: auto" autocomplete="off"
+                                       :label="tt('Description')" :placeholder="tt('Description (optional)')"
+                                       v-textarea-auto-size v-model:value="line.description"></f7-list-input>
+                        <list-number-input :label="tt('Qty')" :placeholder="tt('Qty')"
+                                           :min-value="1" :max-value="10000" :max-decimal-count="0"
+                                           v-model="line.quantity"></list-number-input>
+                        <f7-list-item link="#" no-chevron class="list-item-with-header-and-title"
+                                      :header="tt('Rate')"
+                                      :title="formatAmount(line.rate)"
+                                      @click="rateSheetLineIndex = index">
+                            <number-pad-sheet :min-value="0"
+                                              :max-value="TRANSACTION_MAX_AMOUNT"
+                                              :currency="invoice.currency"
+                                              :show="rateSheetLineIndex === index"
+                                              @update:show="rateSheetLineIndex = $event ? index : -1"
+                                              v-model="line.rate"></number-pad-sheet>
+                        </f7-list-item>
+                    </template>
                 </f7-list>
             </f7-block>
 
