@@ -9,7 +9,6 @@ import (
 	"github.com/extrame/xls"
 
 	"github.com/mayswind/ezbookkeeping/pkg/converters/converter"
-	"github.com/mayswind/ezbookkeeping/pkg/converters/csv"
 	"github.com/mayswind/ezbookkeeping/pkg/converters/datatable"
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/errs"
@@ -156,5 +155,5 @@ func createNewHdfcBankTransactionBasicDataTable(ctx core.Context, allRows [][]st
 		accountName = accountName + " " + accountNumber[len(accountNumber)-4:]
 	}
 
-	return csv.CreateNewCustomCsvBasicDataTable(allLines, true), accountName, currency, nil
+	return datatable.CreateNewPlainTextDataTableWithoutLineNumbers(allLines, true), accountName, currency, nil
 }

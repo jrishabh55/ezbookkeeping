@@ -11,7 +11,6 @@ import (
 	"golang.org/x/text/transform"
 
 	"github.com/mayswind/ezbookkeeping/pkg/converters/converter"
-	ebkcsv "github.com/mayswind/ezbookkeeping/pkg/converters/csv"
 	"github.com/mayswind/ezbookkeeping/pkg/converters/datatable"
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/errs"
@@ -112,7 +111,7 @@ func createNewPnbOneTransactionBasicDataTable(ctx core.Context, content string) 
 		accountName = accountName + " " + accountNumber[len(accountNumber)-4:]
 	}
 
-	return ebkcsv.CreateNewCustomCsvBasicDataTable(allLines, true), accountName, nil
+	return datatable.CreateNewPlainTextDataTableWithoutLineNumbers(allLines, true), accountName, nil
 }
 
 func parsePnbOneCsvLine(line string) ([]string, error) {

@@ -621,6 +621,12 @@ export interface TransactionImportMatchedItem {
     readonly comment: string;
 }
 
+export interface TransactionImportResponse {
+    readonly finished: boolean;
+    readonly importedCount: number;
+    readonly totalCount: number;
+}
+
 export interface TransactionListByMaxTimeRequest {
     readonly maxTime: number;
     readonly minTime: number;

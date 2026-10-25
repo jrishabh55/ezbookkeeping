@@ -2,7 +2,7 @@
     <v-dialog :persistent="!!persistent || loading || submitting" v-model="showState">
         <one-column-dialog-layout :class="{ 'import-transaction-dialog-layout': currentStep === 'defineColumn' || currentStep === 'checkData' }"
                                   :content-class="currentStep === 'defineColumn' || currentStep === 'checkData' ? 'pa-0 import-transaction-dialog-content' : 'pa-0'"
-                                  :title="tt('Import Transactions')" :cancel-button-title="tt('Cancel')"
+                                  :title="tt('Import Transactions')" :cancel-button-title="currentStep === 'finalResult' ? tt('Close') : tt('Cancel')"
                                   :disabled="loading || submitting"
                                   :loading="currentStep !== 'checkData' && loading"
                                   @cancel="close(currentStep === 'finalResult')">
@@ -215,9 +215,11 @@
                                         </template>
 
                                         <template #no-data>
-                                            <v-list class="py-0">
+                                            <v-list class="py-0" select-strategy="classic"
+                                                    :selected="objectFieldWithValueToArrayItem(importAdditionalOptions, true as (boolean | undefined))"
+                                                    @keydown.up.stop @keydown.down.stop>
                                                 <template v-for="item in allSupportedAdditionalOptions">
-                                                    <v-list-item :key="item.key"
+                                                    <v-list-item class="text-body-medium" :key="item.key" :value="item.key"
                                                                  :append-icon="importAdditionalOptions[item.key] ? mdiCheck : undefined"
                                                                  @click="importAdditionalOptions[item.key] = !importAdditionalOptions[item.key]"
                                                                  v-if="isDefined(supportedAdditionalOptions[item.key])">{{ tt(item.name) }}</v-list-item>
@@ -324,8 +326,18 @@
                     </v-window-item>
                     <v-window-item value="finalResult">
                         <div class="mx-4 my-4">
-                            <v-alert type="success" color="success-darken-1" variant="tonal">{{ tt('Data Import Completed') }}</v-alert>
-                            <div class="text-body-large my-4">{{ tt('format.misc.importTransactionResult', { count: formatNumberToLocalizedNumerals(importedCount || 0) }) }}</div>
+                            <v-alert class="my-4" type="warning" variant="tonal"
+                                     v-if="importResultUnknown">{{ tt('The import result could not be confirmed. Check the result before importing again to avoid duplicate transactions.') }}</v-alert>
+                            <v-alert class="my-4" type="error" variant="tonal"
+                                     v-else-if="importErrorMessage">{{ tt('format.misc.importTransactionStoppedWithCause', { cause: importErrorMessage }) }}</v-alert>
+                            <v-alert class="my-4" type="success" color="success-darken-1" variant="tonal"
+                                     v-else-if="!importResultUnknown && !importErrorMessage">{{ tt('Data Import Completed') }}</v-alert>
+
+                            <div class="text-body-large"
+                                 v-if="!importResultUnknown">{{ tt('format.misc.importTransactionBatchResult', { count: formatNumberToLocalizedNumerals(importedCount || 0), totalCount: formatNumberToLocalizedNumerals(totalImportCount) }) }}</div>
+                            <div class="text-body-large"
+                                 v-if="!importResultUnknown && remainingTransactions.length">{{ tt('Would you like to view the transactions that have not been imported? Transactions already imported will be kept.') }}</div>
+
                             <template v-if="touchedAccountBalances.length">
                                 <div class="text-body-large mt-6 mb-2">{{ tt('Account Balances After Import') }}</div>
                                 <v-list density="compact">
@@ -334,6 +346,24 @@
                                     </v-list-item>
                                 </v-list>
                             </template>
+
+                            <div class="mt-4">
+                                <v-btn class="me-2" color="primary" variant="tonal"
+                                       :loading="submitting" :disabled="submitting"
+                                       @click="checkImportResult(true)"
+                                       v-if="importResultUnknown">
+                                    <template #loader>
+                                        <v-progress-circular indeterminate size="20"/>
+                                    </template>
+                                    {{ tt('Check Import Result') }}
+                                </v-btn>
+                                <v-btn class="me-2" color="primary" variant="tonal"
+                                       @click="showRemainingTransactions"
+                                       v-else-if="remainingTransactions.length">{{ tt('View Transactions Not Imported') }}</v-btn>
+                                <v-btn color="secondary" variant="tonal"
+                                       :disabled="submitting"
+                                       @click="close(true)">{{ tt('Close') }}</v-btn>
+                            </div>
                         </div>
                     </v-window-item>
                 </v-window>
@@ -390,12 +420,14 @@ import {
     KnownFileType
 } from '@/core/file.ts';
 import { ImageUploadQualityType } from '@/core/image.ts';
+import type { ErrorResponse } from '@/core/api.ts';
 import { UTF_8 } from '@/consts/file.ts';
 
+import type { TransactionImportResponse } from '@/models/transaction.ts';
 import { type ImportTransactionResponse, ImportTransaction } from '@/models/imported_transaction.ts';
 import type { Account } from '@/models/account.ts';
 
-import { isDefined, isNumber } from '@/lib/common.ts';
+import { isDefined, isInteger, objectFieldWithValueToArrayItem } from '@/lib/common.ts';
 import { findExtensionByType, isFileExtensionSupported, detectFileEncoding } from '@/lib/file.ts';
 import { generateRandomUUID } from '@/lib/misc.ts';
 import { isTransactionFromAITextRecognitionEnabled, isTransactionFromAIImageRecognitionEnabled } from '@/lib/server_settings.ts';
@@ -507,6 +539,12 @@ const importedCount = ref<number | null>(null);
 // reconciled matched row belongs to (design doc §8: "the import summary shows each touched
 // account's book balance after import, to compare with the statement's closing balance").
 const touchedAccounts = ref<Account[]>([]);
+const totalImportCount = ref<number>(0);
+const importErrorMessage = ref<string>('');
+const importResultUnknown = ref<boolean>(false);
+const submittedTransactions = ref<ImportTransaction[]>([]);
+const remainingTransactions = ref<ImportTransaction[]>([]);
+const hasImportedTransactions = ref<boolean>(false);
 const loading = ref<boolean>(true);
 const submitting = ref<boolean>(false);
 
@@ -726,6 +764,13 @@ function open(): Promise<void> {
     processCustomFileFormatMethod.value = ImportCustomFileFormatProcessMethod.ColumnMapping;
     currentStep.value = 'uploadFile';
     importProcess.value = 0;
+    importedCount.value = null;
+    totalImportCount.value = 0;
+    importErrorMessage.value = '';
+    importResultUnknown.value = false;
+    submittedTransactions.value = [];
+    remainingTransactions.value = [];
+    hasImportedTransactions.value = false;
     importFile.value = null;
     importData.value = '';
     importAdditionalOptions.value = Object.assign({}, supportedAdditionalOptions.value ?? {});
@@ -817,6 +862,13 @@ function setImportFile(event: Event): void {
             });
         }
     }
+}
+
+function invalidateImportedData(): void {
+    accountsStore.updateAccountListInvalidState(true);
+    transactionsStore.updateTransactionListInvalidState(true);
+    overviewStore.updateTransactionOverviewInvalidState(true);
+    statisticsStore.updateTransactionStatisticsInvalidState(true);
 }
 
 function removeImportImageFile(index: number): void {
@@ -1261,36 +1313,34 @@ function submit(): void {
         count: formatNumberToLocalizedNumerals(transactions.length)
     }).then(() => {
         submitting.value = true;
+        clientSessionId.value = generateRandomUUID();
+        submittedTransactions.value = transactions;
+        totalImportCount.value = transactions.length;
+        importedCount.value = null;
+        importErrorMessage.value = '';
+        importResultUnknown.value = false;
+        importProcess.value = 0;
+        remainingTransactions.value = [];
 
         let showProcessTimer : number | undefined = undefined;
 
         if (transactions.length > 100) {
-            setTimeout(() => {
-                if (!submitting.value) {
-                    logger.warn('transaction import is not submitting');
-                    return;
-                }
+            const sessionId = clientSessionId.value;
 
-                // @ts-expect-error the return value of setInterval is number, but lint shows it as NodeJS.Timer
-                showProcessTimer = setInterval(() => {
-                    if (submitting.value) {
-                        transactionsStore.getImportTransactionsProcess({
-                            clientSessionId: clientSessionId.value
-                        }).then(response => {
-                            if (isNumber(response) && 0 <= response && response < 100) {
-                                importProcess.value = response;
-                            } else {
-                                importProcess.value = 0;
-                                clearInterval(showProcessTimer);
-                                showProcessTimer = undefined;
-                            }
-                        }).catch(() => {
-                            importProcess.value = 0;
-                            clearInterval(showProcessTimer);
-                            showProcessTimer = undefined;
-                        });
+            showProcessTimer = window.setInterval(() => {
+                transactionsStore.getImportTransactionsProcess({
+                    clientSessionId: sessionId
+                }).then(response => {
+                    if (submitting.value && clientSessionId.value === sessionId && response && isInteger(response.importedCount)
+                        && response.totalCount === transactions.length
+                        && 0 <= response.importedCount && response.importedCount < response.totalCount) {
+                        importProcess.value = response.importedCount / response.totalCount * 100;
                     }
-                }, 2000);
+                }).catch(() => {
+                    importProcess.value = 0;
+                    clearInterval(showProcessTimer);
+                    showProcessTimer = undefined;
+                });
             }, 2000);
         }
 
@@ -1319,26 +1369,23 @@ function submit(): void {
                 showProcessTimer = undefined;
             }
 
-            importedCount.value = response;
-            currentStep.value = 'finalResult';
+            showImportResult(response);
 
-            accountsStore.updateAccountListInvalidState(true);
-            transactionsStore.updateTransactionListInvalidState(true);
-            overviewStore.updateTransactionOverviewInvalidState(true);
-            statisticsStore.updateTransactionStatisticsInvalidState(true);
+            if (!importResultUnknown.value) {
+                // matched-only imports create nothing but still reconcile SMS transactions
+                invalidateImportedData();
 
-            // Show each touched account's book balance after import (design doc §8), to
-            // compare against the statement's closing balance; the account list is reloaded
-            // first since the import above just changed these accounts' balances.
-            accountsStore.loadAllAccounts({ force: true }).then(() => {
-                touchedAccounts.value = Array.from(touchedAccountIds)
-                    .map(accountId => accountsStore.allAccountsMap[accountId])
-                    .filter((account): account is Account => !!account && account.type === AccountType.SingleAccount.type);
-            }).catch(() => {
-                touchedAccounts.value = Array.from(touchedAccountIds)
-                    .map(accountId => accountsStore.allAccountsMap[accountId])
-                    .filter((account): account is Account => !!account && account.type === AccountType.SingleAccount.type);
-            });
+                // Show each touched account's book balance after import (design doc §8), to
+                // compare against the statement's closing balance; the account list is reloaded
+                // first since the import above just changed these accounts' balances.
+                const showTouchedAccounts = () => {
+                    touchedAccounts.value = Array.from(touchedAccountIds)
+                        .map(accountId => accountsStore.allAccountsMap[accountId])
+                        .filter((account): account is Account => !!account && account.type === AccountType.SingleAccount.type);
+                };
+
+                accountsStore.loadAllAccounts({ force: true }).then(showTouchedAccounts).catch(showTouchedAccounts);
+            }
 
             submitting.value = false;
         }).catch(error => {
@@ -1350,15 +1397,86 @@ function submit(): void {
 
             submitting.value = false;
 
-            if (!error.processed) {
-                snackbar.value?.showError(error);
+            if (error.resultUnknown === false && error.error) {
+                showImportResult({
+                    finished: true,
+                    importedCount: error.error.context?.importedCount ?? 0,
+                    totalCount: error.error.context?.totalCount ?? submittedTransactions.value.length
+                }, error.error);
+            } else {
+                importResultUnknown.value = true;
+                currentStep.value = 'finalResult';
+                invalidateImportedData();
+                checkImportResult(false);
             }
         });
     });
 }
 
+function showImportResult(result: TransactionImportResponse, error?: ErrorResponse): void {
+    currentStep.value = 'finalResult';
+
+    if (!result.finished || result.totalCount !== submittedTransactions.value.length || !isInteger(result.importedCount) || result.importedCount < 0 || result.importedCount > result.totalCount || (!error && result.importedCount !== result.totalCount)) {
+        importResultUnknown.value = true;
+        invalidateImportedData();
+        return;
+    }
+
+    importResultUnknown.value = false;
+    importedCount.value = result.importedCount;
+    totalImportCount.value = result.totalCount;
+    remainingTransactions.value = submittedTransactions.value.slice(result.importedCount);
+    importErrorMessage.value = error ? te({ error: error }) : '';
+
+    if (result.importedCount > 0) {
+        hasImportedTransactions.value = true;
+        invalidateImportedData();
+    }
+}
+
+function checkImportResult(force: boolean): void {
+    submitting.value = true;
+
+    transactionsStore.getImportTransactionsProcess({
+        clientSessionId: clientSessionId.value,
+        force: force
+    }).then(response => {
+        if (response && response.finished) {
+            showImportResult(response);
+        }
+    }).catch(error => {
+        logger.error('failed to confirm transaction import result', error);
+
+        if (error.processed) {
+            return;
+        }
+
+        if (isDefined(error.error?.context?.importedCount) && isDefined(error.error?.context?.totalCount)) {
+            showImportResult({
+                finished: true,
+                importedCount: error.error.context?.importedCount ?? 0,
+                totalCount: error.error.context?.totalCount ?? submittedTransactions.value.length
+            }, error.error);
+        } else if (force) {
+            snackbar.value?.showError(error);
+        }
+    }).finally(() => {
+        submitting.value = false;
+    });
+}
+
+function showRemainingTransactions(): void {
+    importTransactions.value = remainingTransactions.value;
+    importTransactionCheckDataTab.value?.reset();
+    currentStep.value = 'checkData';
+}
+
 function close(completed: boolean): void {
-    if (completed) {
+    if (importResultUnknown.value) {
+        invalidateImportedData();
+    }
+
+    if (completed || hasImportedTransactions.value || importResultUnknown.value) {
         if (resolveFunc) {
             resolveFunc();
         }
