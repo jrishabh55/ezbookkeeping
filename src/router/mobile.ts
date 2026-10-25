@@ -55,6 +55,13 @@ import TemplateListPage from '@/views/mobile/templates/ListPage.vue';
 import BudgetListPage from '@/views/mobile/budgets/ListPage.vue';
 import BucketListPage from '@/views/mobile/buckets/ListPage.vue';
 
+import InvoiceListPage from '@/views/mobile/invoices/ListPage.vue';
+import InvoiceEditPage from '@/views/mobile/invoices/EditPage.vue';
+import InvoiceDetailPage from '@/views/mobile/invoices/DetailPage.vue';
+import InvoiceCustomerListPage from '@/views/mobile/invoices/CustomerListPage.vue';
+import InvoiceCustomerEditPage from '@/views/mobile/invoices/CustomerEditPage.vue';
+import InvoiceProfilePage from '@/views/mobile/invoices/ProfilePage.vue';
+
 function asyncResolve(component: unknown): (ctx: Router.RouteCallbackCtx) => void {
     return function({ resolve }: { resolve: ({ component }: { component: unknown }) => void }): void {
         return resolve({
@@ -385,6 +392,46 @@ const routes: Router.RouteParameters[] = [
     {
         path: '/bucket/list',
         async: asyncResolve(BucketListPage),
+        beforeEnter: [checkLogin]
+    },
+    {
+        path: '/invoice/list',
+        async: asyncResolve(InvoiceListPage),
+        beforeEnter: [checkLogin]
+    },
+    {
+        path: '/invoice/add',
+        async: asyncResolve(InvoiceEditPage),
+        beforeEnter: [checkLogin]
+    },
+    {
+        path: '/invoice/edit',
+        async: asyncResolve(InvoiceEditPage),
+        beforeEnter: [checkLogin]
+    },
+    {
+        path: '/invoice/detail',
+        async: asyncResolve(InvoiceDetailPage),
+        beforeEnter: [checkLogin]
+    },
+    {
+        path: '/invoice/customer/list',
+        async: asyncResolve(InvoiceCustomerListPage),
+        beforeEnter: [checkLogin]
+    },
+    {
+        path: '/invoice/customer/add',
+        async: asyncResolve(InvoiceCustomerEditPage),
+        beforeEnter: [checkLogin]
+    },
+    {
+        path: '/invoice/customer/edit',
+        async: asyncResolve(InvoiceCustomerEditPage),
+        beforeEnter: [checkLogin]
+    },
+    {
+        path: '/invoice/profile',
+        async: asyncResolve(InvoiceProfilePage),
         beforeEnter: [checkLogin]
     },
     {
