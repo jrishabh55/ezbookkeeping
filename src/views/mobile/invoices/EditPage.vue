@@ -102,7 +102,7 @@
         <f7-actions close-by-outside-click close-on-escape :opened="showMoreActionSheet" @actions:closed="showMoreActionSheet = false">
             <f7-actions-group>
                 <f7-actions-button @click="addLine">{{ tt('Add Line') }}</f7-actions-button>
-                <f7-actions-button @click="f7router.navigate('/invoice/customer/add')">{{ tt('Add Customer') }}</f7-actions-button>
+                <f7-actions-button @click="addCustomer">{{ tt('Add Customer') }}</f7-actions-button>
             </f7-actions-group>
             <f7-actions-group>
                 <f7-actions-button bold close>{{ tt('Cancel') }}</f7-actions-button>
@@ -161,6 +161,7 @@ const showCustomerPopup = ref<boolean>(false);
 const showInvoiceDateSheet = ref<boolean>(false);
 const showDueDateSheet = ref<boolean>(false);
 const rateSheetLineIndex = ref<number>(-1);
+const customerIdsBeforeAdding = ref<Set<string> | null>(null);
 
 const selectedCustomerName = computed<string>(() => invoicesStore.allCustomersMap[invoice.value.customerId]?.name ?? tt('None'));
 
@@ -223,6 +224,29 @@ function onDueDateChanged(date: TextualYearMonthDay | ''): void {
     invoice.value.dueDate = date;
 }
 
+function addCustomer(): void {
+    customerIdsBeforeAdding.value = new Set(allCustomers.value.map(customer => customer.id));
+    props.f7router.navigate('/invoice/customer/add');
+}
+
+// back from Add Customer: select the customer just added when none is selected yet
+function selectAddedCustomer(): void {
+    const knownIds = customerIdsBeforeAdding.value;
+    customerIdsBeforeAdding.value = null;
+
+    if (!knownIds || invoice.value.customerId) {
+        return;
+    }
+
+    // ids grow over time, so the longest / greatest id is the newest
+    const addedIds = allCustomers.value.map(customer => customer.id).filter(id => !knownIds.has(id))
+        .sort((a, b) => a.length - b.length || a.localeCompare(b));
+
+    if (addedIds.length) {
+        invoice.value.customerId = addedIds[addedIds.length - 1]!;
+    }
+}
+
 function save(): void {
     const router = props.f7router;
     const problemMessage = inputEmptyProblemMessage.value;
@@ -235,11 +259,16 @@ function save(): void {
     submitting.value = true;
     showLoading(() => submitting.value);
 
-    invoicesStore.saveInvoice({ invoice: invoice.value, isEdit: !!editInvoiceId.value }).then(() => {
+    invoicesStore.saveInvoice({ invoice: invoice.value, isEdit: !!editInvoiceId.value }).then(saved => {
         submitting.value = false;
         hideLoading();
         showToast(editInvoiceId.value ? 'You have saved this invoice' : 'You have added a new invoice');
-        router.back();
+
+        if (props.f7route.query['duplicateFrom']) {
+            router.navigate(`/invoice/detail?id=${saved.id}`, { reloadCurrent: true }); // open the copy in place of this page
+        } else {
+            router.back();
+        }
     }).catch(error => {
         submitting.value = false;
         hideLoading();
@@ -251,6 +280,7 @@ function save(): void {
 }
 
 function onPageAfterIn(): void {
+    selectAddedCustomer();
     routeBackOnError(props.f7router, loadingError);
 }
 
