@@ -41,7 +41,7 @@ All tables carry `Uid`, `Deleted`, `CreatedUnixTime`, `UpdatedUnixTime`, `Delete
 | `BusinessName` | "Rishabh Jain" |
 | `AddressLines` | multi-line text |
 | `Phone`, `Website` | optional |
-| `LogoExtension` | optional; empty = no logo. The logo file is saved through `pkg/storage` (same object storage as user custom icons) under a per-user key, served by `invoice_profile/logo.json` |
+| `LogoDataUrl` | optional; a `data:image/png;base64,…` or `data:image/jpeg;base64,…` string (≤ 350,000 chars, about 250KB image) stored in the row and returned with the profile. No storage plumbing or authenticated image fetch needed for one small logo |
 | `DefaultNotes` | multi-line; prefilled into each new invoice (bank details block) |
 | `NumberPrefix` | "CA" |
 | `DefaultTermsDays` | default 7 |
@@ -77,7 +77,7 @@ and a deleted transaction drops out of "received".
 
 ## Core logic (single source of truth)
 
-Implemented once in Go (`pkg/services/invoices.go`) and mirrored once in TS (`src/lib/invoice.ts`), both unit-tested.
+Totals are computed in Go when an invoice is saved (`Invoice.Total` and `InvoiceLine.Amount` are stored). Status is computed only in TS (`src/lib/invoice.ts`), because only the UI needs it. Both are unit-tested.
 
 - `computeInvoiceTotals(lines) → { subtotal, total }`. Every total (API, print page, status) goes through this.
   GST later adds `taxes[]` here.
@@ -98,16 +98,17 @@ Implemented once in Go (`pkg/services/invoices.go`) and mirrored once in TS (`sr
 Files, following the buckets/budgets pattern:
 
 - `pkg/models/invoice.go`: models, request/response structs, validation tags
-- `pkg/services/invoices.go`: CRUD, totals, status, numbering, suggestions, link/unlink
+- `pkg/services/invoices.go`: CRUD, totals, numbering, received amounts, suggestions, link/unlink
 - `pkg/api/invoices.go`: handlers
 - `pkg/errs/invoice.go`: error codes
 - `cmd/webserver.go`: routes; `cmd/database.go`: `SyncStructs` for the five tables
+- `pkg/uuid/uuid_type.go`: `UUID_TYPE_INVOICE = 15`. Only 4 bits exist for UUID types and 15 is the last free value, so customers, invoices, lines and payments all share it (sequence numbers are per type, so IDs stay unique).
 
 Endpoints (`/api/v1/...`):
 
 | Endpoint | Purpose |
 |---|---|
-| `GET invoices/list.json?status=&customer_id=` | list with computed totals, received, balance due, status |
+| `GET invoices/list.json` | all invoices with total and received (filtering by status/customer happens in the page; one user's invoices are a small list) |
 | `GET invoices/get.json?id=` | invoice, lines, payments (with transaction summary) |
 | `POST invoices/add.json`, `modify.json`, `delete.json` | CRUD (delete is soft, and removes its payment links) |
 | `GET invoices/next_number.json?invoice_date=` | suggested number |
@@ -116,13 +117,12 @@ Endpoints (`/api/v1/...`):
 | `POST invoices/close.json`, `reopen.json` | set/clear `ClosedManually` |
 | `customers/list.json`, `add.json`, `modify.json`, `delete.json` | customers (delete refused if used by a non-deleted invoice) |
 | `GET invoice_profile/get.json`, `POST invoice_profile/update.json` | profile |
-| `POST invoice_profile/logo/upload.json`, `GET invoice_profile/logo.json` | logo (PNG/JPEG, size-limited like custom icons) |
 
 ### Validation (at the API boundary)
 
 - Number required and unique per user. At least one line. Quantity and rate > 0. `DueDate >= InvoiceDate`. Customer belongs to the user.
 - Link: the transaction belongs to the user, is an income, is not deleted, is in an INR account, and is not already linked.
-  Amount > current balance due is refused with "exceeds balance due by ₹X" (an overpayment is almost always a wrong pick).
+  Amount > current balance due is refused with "payment exceeds the invoice balance due" (an overpayment is almost always a wrong pick).
 - Concurrent links of the same transaction are stopped by the unique constraint and reported as "already linked".
 
 ### Payment suggestions
@@ -137,7 +137,7 @@ Top 10.
 
 - `src/components/desktop/MainPageLayout.vue` top header gets three icon buttons after Accounts, with tooltip and active state like the existing ones:
   **Budgets** (`mdiWalletOutline`, `/budget/list`), **Buckets** (`mdiPiggyBankOutline`, `/bucket/list`), **Invoices** (`mdiFileDocumentOutline`, `/invoice/list`).
-- Budgets and Buckets are removed from the desktop Settings sidebar ("Planning" section in `SettingsPageLayout.vue`).
+- Budgets and Buckets are removed from the desktop Settings sidebar ("Planning" section in `SettingsPageLayout.vue`). Their routes move out from under `SettingsPageLayout` into a new parent route using `src/views/desktop/common/NoNavbarPageLayout.vue` (`<main-page-layout no-navbar>` + `<router-view/>`), alongside the invoice routes.
 - Invoice profile lives in Settings (new "Invoice Profile" item); the Invoices page toolbar also links to it.
 - Mobile: no navigation change.
 
@@ -183,9 +183,9 @@ Top 10.
 
 ## Testing
 
-- Go: table tests for totals; status at the 3% boundary, partial payments and manual close; numbering across the April FY rollover and gaps;
+- Go: tests for totals; numbering across the April FY rollover and gaps; received amounts with partial payments and deleted transactions; suggestion ranking;
   link validation (ownership, type, currency, already linked, overpayment). API tests for cross-user access.
-- Vitest: `src/lib/invoice.ts` totals, status, number formatting.
+- Vitest: `src/lib/invoice.ts` totals, status at the 3% boundary, partial payments, manual close, overdue, amount/date/file-name formatting.
 - Manual: recreate `CA/2026-27/01` and compare the saved PDF against the Wave sample side by side;
   link a short payment (e.g. ₹3,68,500) and confirm Paid with ₹1,500 bank charges.
 
