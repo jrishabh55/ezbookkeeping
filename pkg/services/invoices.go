@@ -727,6 +727,14 @@ func (s *InvoiceService) LinkPayment(c core.Context, uid int64, invoiceId int64,
 	}
 
 	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+		alreadyLinked, err := sess.Where("transaction_id=?", transactionId).Exist(&models.InvoicePayment{})
+
+		if err != nil {
+			return err
+		} else if alreadyLinked {
+			return errs.ErrInvoicePaymentAlreadyLinked
+		}
+
 		// the unique index on transaction_id is the backstop for two concurrent links
 		_, err = sess.Insert(payment)
 		return err
