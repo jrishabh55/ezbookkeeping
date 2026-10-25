@@ -20,4 +20,8 @@ const (
 	UUID_TYPE_BUDGET        UuidType = 12
 	UUID_TYPE_BUCKET        UuidType = 13
 	UUID_TYPE_ALERT_MESSAGE UuidType = 14
+	// UUID_TYPE_INVOICE is shared by customers, invoices, invoice lines and invoice payments:
+	// the type field is only 4 bits wide and 15 is the last free value. Sequence numbers are
+	// kept per type, so ids generated for different invoice tables never collide.
+	UUID_TYPE_INVOICE UuidType = 15
 )

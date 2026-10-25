@@ -237,5 +237,15 @@ func updateAllDatabaseTablesStructure(c *core.CliContext) error {
 
 	log.BootInfof(c, "[database.updateAllDatabaseTablesStructure] alert message table maintained successfully")
 
+	for _, invoiceTable := range []any{new(models.InvoiceProfile), new(models.Customer), new(models.Invoice), new(models.InvoiceLine), new(models.InvoicePayment)} {
+		err = datastore.Container.UserDataStore.SyncStructs(invoiceTable)
+
+		if err != nil {
+			return err
+		}
+	}
+
+	log.BootInfof(c, "[database.updateAllDatabaseTablesStructure] invoice tables maintained successfully")
+
 	return nil
 }
