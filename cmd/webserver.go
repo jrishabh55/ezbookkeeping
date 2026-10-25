@@ -549,6 +549,25 @@ func startWebServer(c *core.CliContext) error {
 			apiV1Route.GET("/buckets/transactions/list.json", bindApi(api.Buckets.BucketTransactionListHandler, config))
 			apiV1Route.POST("/buckets/transactions/delete.json", bindApi(api.Buckets.BucketTransactionDeleteHandler, config))
 
+			// Invoices
+			apiV1Route.GET("/invoice_profile/get.json", bindApi(api.Invoices.InvoiceProfileGetHandler, config))
+			apiV1Route.POST("/invoice_profile/update.json", bindApi(api.Invoices.InvoiceProfileUpdateHandler, config))
+			apiV1Route.GET("/customers/list.json", bindApi(api.Invoices.CustomerListHandler, config))
+			apiV1Route.POST("/customers/add.json", bindApi(api.Invoices.CustomerCreateHandler, config))
+			apiV1Route.POST("/customers/modify.json", bindApi(api.Invoices.CustomerModifyHandler, config))
+			apiV1Route.POST("/customers/delete.json", bindApi(api.Invoices.CustomerDeleteHandler, config))
+			apiV1Route.GET("/invoices/list.json", bindApi(api.Invoices.InvoiceListHandler, config))
+			apiV1Route.GET("/invoices/get.json", bindApi(api.Invoices.InvoiceGetHandler, config))
+			apiV1Route.POST("/invoices/add.json", bindApi(api.Invoices.InvoiceCreateHandler, config))
+			apiV1Route.POST("/invoices/modify.json", bindApi(api.Invoices.InvoiceModifyHandler, config))
+			apiV1Route.POST("/invoices/delete.json", bindApi(api.Invoices.InvoiceDeleteHandler, config))
+			apiV1Route.POST("/invoices/close.json", bindApi(api.Invoices.InvoiceCloseHandler, config))
+			apiV1Route.POST("/invoices/reopen.json", bindApi(api.Invoices.InvoiceReopenHandler, config))
+			apiV1Route.GET("/invoices/next_number.json", bindApi(api.Invoices.InvoiceNextNumberHandler, config))
+			apiV1Route.GET("/invoices/payment/suggestions.json", bindApi(api.Invoices.InvoicePaymentSuggestionsHandler, config))
+			apiV1Route.POST("/invoices/payment/link.json", bindApi(api.Invoices.InvoicePaymentLinkHandler, config))
+			apiV1Route.POST("/invoices/payment/unlink.json", bindApi(api.Invoices.InvoicePaymentUnlinkHandler, config))
+
 			// System
 			apiV1Route.GET("/systems/version.json", bindApi(api.Systems.VersionHandler, config))
 		}
