@@ -100,7 +100,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, useTemplateRef } from 'vue';
+import { ref, watch, useTemplateRef } from 'vue';
 
 import {
     mdiPencilOutline,
@@ -166,6 +166,14 @@ let rejectFunc: ((reason?: unknown) => void) | null = null;
 const showState = ref<boolean>(false);
 const invoiceId = ref<string>('');
 const changed = ref<boolean>(false);
+
+// resolves open()'s promise on every dismissal (X/Close, Escape, backdrop click), not just the explicit close() call
+watch(showState, value => {
+    if (!value) {
+        resolveFunc?.({ changed: changed.value });
+        resolveFunc = null;
+    }
+});
 
 function load(): void {
     loading.value = true;
@@ -294,7 +302,6 @@ function remove(): void {
 }
 
 function close(): void {
-    resolveFunc?.({ changed: changed.value });
     showState.value = false;
 }
 
