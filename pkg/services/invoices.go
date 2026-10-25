@@ -548,8 +548,15 @@ func (s *InvoiceService) GetInvoicePayments(c core.Context, uid int64, invoiceId
 		return result, nil
 	}
 
+	return s.getInvoicePayments(s.UserDataDB(uid).NewSession(c), uid, invoiceIds)
+}
+
+// getInvoicePayments reads the linked, non-deleted transactions of the invoices with the given session
+func (s *InvoiceService) getInvoicePayments(sess *xorm.Session, uid int64, invoiceIds []int64) (map[int64][]*models.Transaction, error) {
+	result := make(map[int64][]*models.Transaction, len(invoiceIds))
+
 	var links []*models.InvoicePayment
-	err := s.UserDataDB(uid).NewSession(c).Where("uid=?", uid).In("invoice_id", invoiceIds).Find(&links)
+	err := sess.Where("uid=?", uid).In("invoice_id", invoiceIds).Find(&links)
 
 	if err != nil || len(links) < 1 {
 		return result, err
@@ -564,7 +571,7 @@ func (s *InvoiceService) GetInvoicePayments(c core.Context, uid int64, invoiceId
 	}
 
 	var transactions []*models.Transaction
-	err = s.UserDataDB(uid).NewSession(c).Where("uid=? AND deleted=?", uid, false).In("transaction_id", transactionIds).OrderBy("transaction_time asc").Find(&transactions)
+	err = sess.Where("uid=? AND deleted=?", uid, false).In("transaction_id", transactionIds).OrderBy("transaction_time asc").Find(&transactions)
 
 	if err != nil {
 		return nil, err
@@ -579,8 +586,8 @@ func (s *InvoiceService) GetInvoicePayments(c core.Context, uid int64, invoiceId
 }
 
 // invoiceBalanceDue returns total minus the amounts of the invoice's linked, non-deleted transactions
-func (s *InvoiceService) invoiceBalanceDue(c core.Context, uid int64, invoice *models.Invoice) (int64, error) {
-	payments, err := s.GetInvoicePayments(c, uid, []int64{invoice.InvoiceId})
+func (s *InvoiceService) invoiceBalanceDue(sess *xorm.Session, uid int64, invoice *models.Invoice) (int64, error) {
+	payments, err := s.getInvoicePayments(sess, uid, []int64{invoice.InvoiceId})
 
 	if err != nil {
 		return 0, err
@@ -603,7 +610,7 @@ func (s *InvoiceService) GetPaymentSuggestions(c core.Context, uid int64, invoic
 		return nil, err
 	}
 
-	balanceDue, err := s.invoiceBalanceDue(c, uid, invoice)
+	balanceDue, err := s.invoiceBalanceDue(s.UserDataDB(uid).NewSession(c), uid, invoice)
 
 	if err != nil {
 		return nil, err
@@ -704,16 +711,6 @@ func (s *InvoiceService) LinkPayment(c core.Context, uid int64, invoiceId int64,
 		return errs.ErrInvoicePaymentTransactionInvalid
 	}
 
-	balanceDue, err := s.invoiceBalanceDue(c, uid, invoice)
-
-	if err != nil {
-		return err
-	}
-
-	if transaction.Amount > balanceDue {
-		return errs.ErrInvoicePaymentExceedsBalanceDue
-	}
-
 	payment := &models.InvoicePayment{
 		PaymentId:      s.GenerateUuid(uuid.UUID_TYPE_INVOICE),
 		InvoiceId:      invoiceId,
@@ -726,7 +723,7 @@ func (s *InvoiceService) LinkPayment(c core.Context, uid int64, invoiceId int64,
 		return errs.ErrSystemIsBusy
 	}
 
-	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	err = s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
 		alreadyLinked, err := sess.Where("transaction_id=?", transactionId).Exist(&models.InvoicePayment{})
 
 		if err != nil {
@@ -735,10 +732,27 @@ func (s *InvoiceService) LinkPayment(c core.Context, uid int64, invoiceId int64,
 			return errs.ErrInvoicePaymentAlreadyLinked
 		}
 
-		// the unique index on transaction_id is the backstop for two concurrent links
+		// read the balance due in the same transaction as the insert, so a concurrent link is counted
+		balanceDue, err := s.invoiceBalanceDue(sess, uid, invoice)
+
+		if err != nil {
+			return err
+		} else if transaction.Amount > balanceDue {
+			return errs.ErrInvoicePaymentExceedsBalanceDue
+		}
+
 		_, err = sess.Insert(payment)
 		return err
 	})
+
+	if err != nil && !errs.IsCustomError(err) {
+		// the unique index on transaction_id is the backstop for two concurrent links of the same transaction
+		if alreadyLinked, existErr := s.UserDataDB(uid).NewSession(c).Where("transaction_id=?", transactionId).Exist(&models.InvoicePayment{}); existErr == nil && alreadyLinked {
+			return errs.ErrInvoicePaymentAlreadyLinked
+		}
+	}
+
+	return err
 }
 
 // UnlinkPayment removes a transaction from an invoice's payments
