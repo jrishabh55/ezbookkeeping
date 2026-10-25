@@ -2,6 +2,7 @@ package services
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/mayswind/ezbookkeeping/pkg/datastore"
 	"github.com/mayswind/ezbookkeeping/pkg/errs"
 	"github.com/mayswind/ezbookkeeping/pkg/models"
+	"github.com/mayswind/ezbookkeeping/pkg/utils"
 	"github.com/mayswind/ezbookkeeping/pkg/uuid"
 )
 
@@ -502,4 +504,250 @@ func (s *InvoiceService) NextInvoiceNumber(c core.Context, uid int64, invoiceDat
 	}
 
 	return fmt.Sprintf("%s%02d", base, nextInvoiceSequence(numbers, base)), nil
+}
+
+// rankInvoicePaymentSuggestions orders candidates: exact balance due first, then within the paid
+// tolerance below it, then smaller (part-payments); oldest first inside each group; top N only
+func rankInvoicePaymentSuggestions(transactions []*models.Transaction, balanceDue int64) []*models.Transaction {
+	rank := func(amount int64) int {
+		if amount == balanceDue {
+			return 0
+		} else if float64(amount) >= float64(balanceDue)*(1-models.InvoicePaidTolerance) {
+			return 1
+		}
+
+		return 2
+	}
+
+	sort.SliceStable(transactions, func(i, j int) bool {
+		rankI, rankJ := rank(transactions[i].Amount), rank(transactions[j].Amount)
+
+		if rankI != rankJ {
+			return rankI < rankJ
+		}
+
+		return transactions[i].TransactionTime < transactions[j].TransactionTime
+	})
+
+	if len(transactions) > models.InvoicePaymentSuggestionMaxCount {
+		transactions = transactions[:models.InvoicePaymentSuggestionMaxCount]
+	}
+
+	return transactions
+}
+
+// GetInvoicePayments returns the linked, non-deleted transactions of each invoice, oldest first
+func (s *InvoiceService) GetInvoicePayments(c core.Context, uid int64, invoiceIds []int64) (map[int64][]*models.Transaction, error) {
+	result := make(map[int64][]*models.Transaction, len(invoiceIds))
+
+	if uid <= 0 {
+		return nil, errs.ErrUserIdInvalid
+	}
+
+	if len(invoiceIds) < 1 {
+		return result, nil
+	}
+
+	var links []*models.InvoicePayment
+	err := s.UserDataDB(uid).NewSession(c).Where("uid=?", uid).In("invoice_id", invoiceIds).Find(&links)
+
+	if err != nil || len(links) < 1 {
+		return result, err
+	}
+
+	invoiceIdByTransactionId := make(map[int64]int64, len(links))
+	transactionIds := make([]int64, 0, len(links))
+
+	for _, link := range links {
+		invoiceIdByTransactionId[link.TransactionId] = link.InvoiceId
+		transactionIds = append(transactionIds, link.TransactionId)
+	}
+
+	var transactions []*models.Transaction
+	err = s.UserDataDB(uid).NewSession(c).Where("uid=? AND deleted=?", uid, false).In("transaction_id", transactionIds).OrderBy("transaction_time asc").Find(&transactions)
+
+	if err != nil {
+		return nil, err
+	}
+
+	for _, transaction := range transactions {
+		invoiceId := invoiceIdByTransactionId[transaction.TransactionId]
+		result[invoiceId] = append(result[invoiceId], transaction)
+	}
+
+	return result, nil
+}
+
+// invoiceBalanceDue returns total minus the amounts of the invoice's linked, non-deleted transactions
+func (s *InvoiceService) invoiceBalanceDue(c core.Context, uid int64, invoice *models.Invoice) (int64, error) {
+	payments, err := s.GetInvoicePayments(c, uid, []int64{invoice.InvoiceId})
+
+	if err != nil {
+		return 0, err
+	}
+
+	balanceDue := invoice.Total
+
+	for _, payment := range payments[invoice.InvoiceId] {
+		balanceDue -= payment.Amount
+	}
+
+	return balanceDue, nil
+}
+
+// GetPaymentSuggestions returns unlinked income transactions in the invoice currency that could pay the invoice
+func (s *InvoiceService) GetPaymentSuggestions(c core.Context, uid int64, invoiceId int64) ([]*models.Transaction, error) {
+	invoice, _, err := s.GetInvoice(c, uid, invoiceId)
+
+	if err != nil {
+		return nil, err
+	}
+
+	balanceDue, err := s.invoiceBalanceDue(c, uid, invoice)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if balanceDue <= 0 {
+		return []*models.Transaction{}, nil
+	}
+
+	invoiceDate, _ := time.Parse(invoiceDateLayout, invoice.InvoiceDate)
+	dueDate, _ := time.Parse(invoiceDateLayout, invoice.DueDate)
+	// ponytail: one day of padding on each side instead of per-user timezone math
+	minTime := utils.GetMinTransactionTimeFromUnixTime(invoiceDate.Add(-24 * time.Hour).Unix())
+	maxTime := utils.GetMaxTransactionTimeFromUnixTime(dueDate.Add(time.Duration(models.InvoicePaymentSuggestionDaysAfterDue+1) * 24 * time.Hour).Unix())
+
+	var candidates []*models.Transaction
+	err = s.UserDataDB(uid).NewSession(c).
+		Where("uid=? AND deleted=? AND type=? AND transaction_time>=? AND transaction_time<=? AND amount>? AND amount<=?",
+			uid, false, models.TRANSACTION_DB_TYPE_INCOME, minTime, maxTime, 0, balanceDue).
+		Find(&candidates)
+
+	if err != nil || len(candidates) < 1 {
+		return []*models.Transaction{}, err
+	}
+
+	transactionIds := make([]int64, len(candidates))
+	accountIds := make([]int64, len(candidates))
+
+	for idx, candidate := range candidates {
+		transactionIds[idx] = candidate.TransactionId
+		accountIds[idx] = candidate.AccountId
+	}
+
+	var linked []*models.InvoicePayment
+	if err = s.UserDataDB(uid).NewSession(c).Where("uid=?", uid).In("transaction_id", transactionIds).Find(&linked); err != nil {
+		return nil, err
+	}
+
+	linkedIds := make(map[int64]bool, len(linked))
+
+	for _, link := range linked {
+		linkedIds[link.TransactionId] = true
+	}
+
+	accounts, err := Accounts.GetAccountsByAccountIds(c, uid, accountIds)
+
+	if err != nil {
+		return nil, err
+	}
+
+	suggestions := make([]*models.Transaction, 0, len(candidates))
+
+	for _, candidate := range candidates {
+		account := accounts[candidate.AccountId]
+
+		if linkedIds[candidate.TransactionId] || account == nil || account.Currency != invoice.Currency {
+			continue
+		}
+
+		suggestions = append(suggestions, candidate)
+	}
+
+	return rankInvoicePaymentSuggestions(suggestions, balanceDue), nil
+}
+
+// LinkPayment links an existing income transaction of user to an invoice
+func (s *InvoiceService) LinkPayment(c core.Context, uid int64, invoiceId int64, transactionId int64) error {
+	invoice, _, err := s.GetInvoice(c, uid, invoiceId)
+
+	if err != nil {
+		return err
+	}
+
+	transaction, err := Transactions.GetTransactionByTransactionId(c, uid, transactionId)
+
+	if err != nil {
+		return err
+	}
+
+	// Check if already linked before other validations
+	alreadyLinked, err := s.UserDataDB(uid).NewSession(c).Where("transaction_id=?", transactionId).Exist(&models.InvoicePayment{})
+
+	if err != nil {
+		return err
+	} else if alreadyLinked {
+		return errs.ErrInvoicePaymentAlreadyLinked
+	}
+
+	accounts, err := Accounts.GetAccountsByAccountIds(c, uid, []int64{transaction.AccountId})
+
+	if err != nil {
+		return err
+	}
+
+	account := accounts[transaction.AccountId]
+
+	if transaction.Type != models.TRANSACTION_DB_TYPE_INCOME || account == nil || account.Currency != invoice.Currency {
+		return errs.ErrInvoicePaymentTransactionInvalid
+	}
+
+	balanceDue, err := s.invoiceBalanceDue(c, uid, invoice)
+
+	if err != nil {
+		return err
+	}
+
+	if transaction.Amount > balanceDue {
+		return errs.ErrInvoicePaymentExceedsBalanceDue
+	}
+
+	payment := &models.InvoicePayment{
+		PaymentId:      s.GenerateUuid(uuid.UUID_TYPE_INVOICE),
+		InvoiceId:      invoiceId,
+		Uid:            uid,
+		TransactionId:  transactionId,
+		LinkedUnixTime: time.Now().Unix(),
+	}
+
+	if payment.PaymentId < 1 {
+		return errs.ErrSystemIsBusy
+	}
+
+	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+		// the unique index on transaction_id is the backstop for two concurrent links
+		_, err = sess.Insert(payment)
+		return err
+	})
+}
+
+// UnlinkPayment removes a transaction from an invoice's payments
+func (s *InvoiceService) UnlinkPayment(c core.Context, uid int64, invoiceId int64, transactionId int64) error {
+	if uid <= 0 {
+		return errs.ErrUserIdInvalid
+	}
+
+	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+		deletedRows, err := sess.Where("uid=? AND invoice_id=? AND transaction_id=?", uid, invoiceId, transactionId).Delete(&models.InvoicePayment{})
+
+		if err != nil {
+			return err
+		} else if deletedRows < 1 {
+			return errs.ErrInvoicePaymentNotFound
+		}
+
+		return nil
+	})
 }
