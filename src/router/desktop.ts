@@ -49,6 +49,7 @@ import ExchangeRatesListPage from '@/views/desktop/exchangerates/ListPage.vue';
 
 import BudgetListPage from '@/views/desktop/budgets/ListPage.vue';
 import BucketListPage from '@/views/desktop/buckets/ListPage.vue';
+import InvoiceListPage from '@/views/desktop/invoices/ListPage.vue';
 
 function checkLogin(): NavigationGuardReturn {
     if (!isUserLogined()) {
@@ -166,6 +167,11 @@ const router = createRouter({
         {
             path: '/account/list',
             component: AccountListPage,
+            beforeEnter: checkLogin
+        },
+        {
+            path: '/invoice/list',
+            component: InvoiceListPage,
             beforeEnter: checkLogin
         },
         {
