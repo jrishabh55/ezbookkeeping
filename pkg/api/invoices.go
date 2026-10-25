@@ -258,6 +258,7 @@ func (a *InvoicesApi) InvoiceCreateHandler(c *core.WebContext) (any, *errs.Error
 	resp, err := a.getInvoiceResponse(c, uid, invoice.InvoiceId)
 
 	if err != nil {
+		log.Errorf(c, "[invoices.InvoiceCreateHandler] failed to get invoice \"id:%d\" after creating it for user \"uid:%d\", because %s", invoice.InvoiceId, uid, err.Error())
 		return nil, errs.Or(err, errs.ErrOperationFailed)
 	}
 
@@ -284,6 +285,7 @@ func (a *InvoicesApi) InvoiceModifyHandler(c *core.WebContext) (any, *errs.Error
 	resp, err := a.getInvoiceResponse(c, uid, invoice.InvoiceId)
 
 	if err != nil {
+		log.Errorf(c, "[invoices.InvoiceModifyHandler] failed to get invoice \"id:%d\" after modifying it for user \"uid:%d\", because %s", invoice.InvoiceId, uid, err.Error())
 		return nil, errs.Or(err, errs.ErrOperationFailed)
 	}
 
