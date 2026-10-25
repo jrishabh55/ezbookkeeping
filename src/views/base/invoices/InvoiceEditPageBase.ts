@@ -32,6 +32,8 @@ export function useInvoiceEditPageBase() {
             return 'Customer cannot be blank';
         } else if (!invoice.value.number.trim()) {
             return 'Invoice number cannot be blank';
+        } else if (!invoice.value.invoiceDate || !invoice.value.dueDate) {
+            return 'Invoice date cannot be blank';
         } else if (invoice.value.dueDate < invoice.value.invoiceDate) {
             return 'Due date cannot be before the invoice date';
         } else if (invoice.value.lines.length < 1) {

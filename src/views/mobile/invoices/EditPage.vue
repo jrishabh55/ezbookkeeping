@@ -50,7 +50,8 @@
                               :title="formatDate(invoice.dueDate)"
                               @click="showDueDateSheet = true">
                     <date-selection-sheet v-model:show="showDueDateSheet"
-                                          v-model="invoice.dueDate">
+                                          :model-value="invoice.dueDate"
+                                          @update:model-value="onDueDateChanged">
                     </date-selection-sheet>
                 </f7-list-item>
             </f7-list>
@@ -200,12 +201,24 @@ function init(): void {
     });
 }
 
-function onInvoiceDateChanged(date: TextualYearMonthDay): void {
+function onInvoiceDateChanged(date: TextualYearMonthDay | ''): void {
+    if (!date) {
+        return;
+    }
+
     setInvoiceDate(date, profile.value?.defaultTermsDays ?? 7);
 
     if (!editInvoiceId.value) {
         suggestNumber();
     }
+}
+
+function onDueDateChanged(date: TextualYearMonthDay | ''): void {
+    if (!date) {
+        return;
+    }
+
+    invoice.value.dueDate = date;
 }
 
 function save(): void {
