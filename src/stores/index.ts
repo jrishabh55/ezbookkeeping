@@ -13,6 +13,7 @@ import { useStatisticsStore } from './statistics.ts';
 import { useExplorersStore } from './explorer.ts';
 import { useUserCustomIconsStore } from './userCustomIcon.ts';
 import { useExchangeRatesStore } from './exchangeRates.ts';
+import { useInvoicesStore } from '@/stores/invoice.ts';
 
 import type { AuthResponse, RegisterResponse } from '@/models/auth_response.ts';
 import type {
@@ -55,6 +56,7 @@ export const useRootStore = defineStore('root', () => {
     const explorersStore = useExplorersStore();
     const exchangeRatesStore = useExchangeRatesStore();
     const userCustomIconsStore = useUserCustomIconsStore();
+    const invoicesStore = useInvoicesStore();
 
     const currentNotification = ref<string | null>(null);
 
@@ -65,6 +67,7 @@ export const useRootStore = defineStore('root', () => {
 
         setNotificationContent(null);
 
+        invoicesStore.resetInvoices();
         userCustomIconsStore.resetCustomIcons();
         explorersStore.resetTransactionExplorers();
         statisticsStore.resetTransactionStatistics();

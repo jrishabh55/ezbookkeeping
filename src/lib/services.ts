@@ -211,6 +211,17 @@ import type {
     BucketWithdrawRequest,
     BucketTransactionInfoResponse
 } from '@/models/bucket.ts';
+import type {
+    InvoiceProfileInfoResponse,
+    InvoiceProfileUpdateRequest,
+    CustomerInfoResponse,
+    CustomerCreateRequest,
+    CustomerModifyRequest,
+    InvoiceInfoResponse,
+    InvoiceCreateRequest,
+    InvoiceModifyRequest,
+    InvoicePayment
+} from '@/models/invoice.ts';
 
 import {
     getCurrentToken,
@@ -1029,6 +1040,57 @@ export default {
     },
     deleteBucketTransaction: (req: { id: string }): ApiResponsePromise<boolean> => {
         return axios.post<ApiResponse<boolean>>('v1/buckets/transactions/delete.json', req);
+    },
+    getInvoiceProfile: (): ApiResponsePromise<InvoiceProfileInfoResponse> => {
+        return axios.get<ApiResponse<InvoiceProfileInfoResponse>>('v1/invoice_profile/get.json');
+    },
+    updateInvoiceProfile: (req: InvoiceProfileUpdateRequest): ApiResponsePromise<InvoiceProfileInfoResponse> => {
+        return axios.post<ApiResponse<InvoiceProfileInfoResponse>>('v1/invoice_profile/update.json', req);
+    },
+    getAllCustomers: (): ApiResponsePromise<CustomerInfoResponse[]> => {
+        return axios.get<ApiResponse<CustomerInfoResponse[]>>('v1/customers/list.json');
+    },
+    addCustomer: (req: CustomerCreateRequest): ApiResponsePromise<CustomerInfoResponse> => {
+        return axios.post<ApiResponse<CustomerInfoResponse>>('v1/customers/add.json', req);
+    },
+    modifyCustomer: (req: CustomerModifyRequest): ApiResponsePromise<CustomerInfoResponse> => {
+        return axios.post<ApiResponse<CustomerInfoResponse>>('v1/customers/modify.json', req);
+    },
+    deleteCustomer: ({ id }: { id: string }): ApiResponsePromise<boolean> => {
+        return axios.post<ApiResponse<boolean>>('v1/customers/delete.json', { id });
+    },
+    getAllInvoices: (): ApiResponsePromise<InvoiceInfoResponse[]> => {
+        return axios.get<ApiResponse<InvoiceInfoResponse[]>>('v1/invoices/list.json');
+    },
+    getInvoice: ({ id }: { id: string }): ApiResponsePromise<InvoiceInfoResponse> => {
+        return axios.get<ApiResponse<InvoiceInfoResponse>>('v1/invoices/get.json?id=' + id);
+    },
+    addInvoice: (req: InvoiceCreateRequest): ApiResponsePromise<InvoiceInfoResponse> => {
+        return axios.post<ApiResponse<InvoiceInfoResponse>>('v1/invoices/add.json', req);
+    },
+    modifyInvoice: (req: InvoiceModifyRequest): ApiResponsePromise<InvoiceInfoResponse> => {
+        return axios.post<ApiResponse<InvoiceInfoResponse>>('v1/invoices/modify.json', req);
+    },
+    deleteInvoice: ({ id }: { id: string }): ApiResponsePromise<boolean> => {
+        return axios.post<ApiResponse<boolean>>('v1/invoices/delete.json', { id });
+    },
+    closeInvoice: ({ id }: { id: string }): ApiResponsePromise<boolean> => {
+        return axios.post<ApiResponse<boolean>>('v1/invoices/close.json', { id });
+    },
+    reopenInvoice: ({ id }: { id: string }): ApiResponsePromise<boolean> => {
+        return axios.post<ApiResponse<boolean>>('v1/invoices/reopen.json', { id });
+    },
+    getNextInvoiceNumber: ({ invoiceDate }: { invoiceDate: string }): ApiResponsePromise<string> => {
+        return axios.get<ApiResponse<string>>('v1/invoices/next_number.json?invoice_date=' + invoiceDate);
+    },
+    getInvoicePaymentSuggestions: ({ id }: { id: string }): ApiResponsePromise<InvoicePayment[]> => {
+        return axios.get<ApiResponse<InvoicePayment[]>>('v1/invoices/payment/suggestions.json?id=' + id);
+    },
+    linkInvoicePayment: (req: { invoiceId: string, transactionId: string }): ApiResponsePromise<boolean> => {
+        return axios.post<ApiResponse<boolean>>('v1/invoices/payment/link.json', req);
+    },
+    unlinkInvoicePayment: (req: { invoiceId: string, transactionId: string }): ApiResponsePromise<boolean> => {
+        return axios.post<ApiResponse<boolean>>('v1/invoices/payment/unlink.json', req);
     },
     getServerVersion: (): ApiResponsePromise<VersionInfo> => {
         return axios.get<ApiResponse<VersionInfo>>('v1/systems/version.json');
