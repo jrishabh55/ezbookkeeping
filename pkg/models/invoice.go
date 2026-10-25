@@ -25,7 +25,7 @@ type InvoiceProfile struct {
 	AddressLines     string `xorm:"VARCHAR(512) NOT NULL"`
 	Phone            string `xorm:"VARCHAR(32) NOT NULL"`
 	Website          string `xorm:"VARCHAR(128) NOT NULL"`
-	LogoDataUrl      string `xorm:"TEXT"`
+	LogoDataUrl      string `xorm:"MEDIUMTEXT"`
 	DefaultNotes     string `xorm:"VARCHAR(2048) NOT NULL"`
 	NumberPrefix     string `xorm:"VARCHAR(16) NOT NULL"`
 	DefaultTermsDays int32  `xorm:"NOT NULL"`
