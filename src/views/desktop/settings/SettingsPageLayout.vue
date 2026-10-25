@@ -121,6 +121,12 @@
                 </router-link>
             </li>
             <li class="nav-link">
+                <router-link to="/settings/invoice_profile">
+                    <v-icon class="nav-item-icon" :icon="mdiFileDocumentEditOutline"/>
+                    <span class="nav-item-title">{{ tt('Invoice Profile') }}</span>
+                </router-link>
+            </li>
+            <li class="nav-link">
                 <router-link to="/exchange_rate">
                     <v-icon class="nav-item-icon" :icon="mdiSwapHorizontal"/>
                     <span class="nav-item-title">{{ tt('Exchange Rates Data') }}</span>
@@ -177,7 +183,8 @@ import {
     mdiCodeBraces,
     mdiWalletOutline,
     mdiPiggyBankOutline,
-    mdiMessageTextOutline
+    mdiMessageTextOutline,
+    mdiFileDocumentEditOutline
 } from '@mdi/js';
 
 const route = useRoute();

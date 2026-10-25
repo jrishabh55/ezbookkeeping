@@ -88,6 +88,39 @@
                                     </v-btn>
                                 </router-link>
 
+                                <router-link to="/budget/list"
+                                             :aria-current="isTopNavigationActive('/budget/list') ? 'page' : undefined">
+                                    <v-btn class="top-navigation-button ms-1" density="comfortable" variant="text"
+                                           :aria-label="tt('Budgets')" :icon="true"
+                                           :active="isTopNavigationActive('/budget/list')"
+                                           :color="isTopNavigationActive('/budget/list') ? 'primary' : 'default'">
+                                        <v-icon :icon="isTopNavigationActive('/budget/list') ? mdiWallet : mdiWalletOutline" size="24" />
+                                        <v-tooltip activator="parent">{{ tt('Budgets') }}</v-tooltip>
+                                    </v-btn>
+                                </router-link>
+
+                                <router-link to="/bucket/list"
+                                             :aria-current="isTopNavigationActive('/bucket/list') ? 'page' : undefined">
+                                    <v-btn class="top-navigation-button ms-1" density="comfortable" variant="text"
+                                           :aria-label="tt('Buckets')" :icon="true"
+                                           :active="isTopNavigationActive('/bucket/list')"
+                                           :color="isTopNavigationActive('/bucket/list') ? 'primary' : 'default'">
+                                        <v-icon :icon="isTopNavigationActive('/bucket/list') ? mdiPiggyBank : mdiPiggyBankOutline" size="24" />
+                                        <v-tooltip activator="parent">{{ tt('Buckets') }}</v-tooltip>
+                                    </v-btn>
+                                </router-link>
+
+                                <router-link to="/invoice/list"
+                                             :aria-current="isTopNavigationActive('/invoice/list') ? 'page' : undefined">
+                                    <v-btn class="top-navigation-button ms-1" density="comfortable" variant="text"
+                                           :aria-label="tt('Invoices')" :icon="true"
+                                           :active="isTopNavigationActive('/invoice/list')"
+                                           :color="isTopNavigationActive('/invoice/list') ? 'primary' : 'default'">
+                                        <v-icon :icon="isTopNavigationActive('/invoice/list') ? mdiFileDocument : mdiFileDocumentOutline" size="24" />
+                                        <v-tooltip activator="parent">{{ tt('Invoices') }}</v-tooltip>
+                                    </v-btn>
+                                </router-link>
+
                                 <router-link class="d-inline-flex align-center" to="/transaction/list?pageType=0&dateType=7"
                                              v-if="showAddTransactionButtonInDesktopNavbar">
                                     <v-btn class="add-transaction-button ms-2" color="primary" density="comfortable" variant="flat"
@@ -212,6 +245,12 @@ import {
     mdiChartPieOutline,
     mdiCompass,
     mdiCompassOutline,
+    mdiWallet,
+    mdiWalletOutline,
+    mdiPiggyBank,
+    mdiPiggyBankOutline,
+    mdiFileDocument,
+    mdiFileDocumentOutline,
     mdiPlus,
     mdiCellphone,
     mdiThemeLightDark,
