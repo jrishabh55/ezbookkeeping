@@ -24,7 +24,7 @@ Success means:
   Foreign remittances can arrive slightly short (bank/forex charges).
 - **Matching is suggested, never automatic.** The user always clicks to link.
 - **PDF = browser print** of a print-styled page (`@media print`, "Save as PDF"). No PDF library.
-- **Desktop UI only** in this phase. Invoices get no mobile pages; mobile navigation is unchanged.
+- **Desktop and mobile**, both built on the project's existing UI structure and components.
 - ezBookkeeping is multi-user: every table and query is scoped by `uid`.
 - Amounts are `int64` minor units (paise), like `Transaction.Amount`.
 - Schema changes go through xorm `Sync2` (`UserDataStore.SyncStructs` in `cmd/database.go`), which adds
@@ -131,36 +131,37 @@ Candidates: income transactions in INR accounts, not linked, not deleted, dated 
 Ranked: exact `balanceDue` first, then amounts in `[97%, 100%)` of balance due, then smaller amounts (possible part-payments).
 Top 10.
 
-## Frontend (desktop)
+## Frontend (desktop and mobile)
+
+The frontend follows the project's existing UI structure; nothing is reinvented where something exists.
+
+- **Layers:** model classes in `src/models/invoice.ts` (`of`, `clone`, `fillFrom`, request builders), a Pinia store `src/stores/invoice.ts` (reset on logout via `src/stores/index.ts`), pure helpers in `src/lib/invoice.ts` (status, document formatting), and shared page logic in `src/views/base/invoices/*PageBase.ts` used by both platforms, like `views/base/accounts`.
+- **Reference patterns:** desktop list = `desktop/templates/ListPage.vue` inside a sidebar `main-page-layout` like `desktop/accounts/ListPage.vue`; desktop dialogs = `desktop/categories/list/dialogs/EditDialog.vue` (`one-column-dialog-layout`, `open()` Promise); desktop settings = `desktop/users/UserBasicSettingPage.vue`; mobile list = `mobile/templates/ListPage.vue`; mobile edit = `mobile/accounts/EditPage.vue`; mobile settings form = `mobile/users/UserProfilePage.vue`. The branch's Budgets/Buckets pages do not follow conventions and are not used as patterns.
+- **Inputs reused:** `AmountInput`, `NumberInput`, `DateSelect`, `v-autocomplete` (desktop); `NumberPadSheet`, `ListNumberInput`, `DateSelectionSheet`, `ListItemSelectionPopup`, `image-box` (mobile). Amounts stay in paise end to end; app screens format with `formatAmountToLocalizedNumeralsWithCurrency`.
 
 ### Navigation
 
-- `src/components/desktop/MainPageLayout.vue` top header gets three icon buttons after Accounts, with tooltip and active state like the existing ones:
-  **Budgets** (`mdiWalletOutline`, `/budget/list`), **Buckets** (`mdiPiggyBankOutline`, `/bucket/list`), **Invoices** (`mdiFileDocumentOutline`, `/invoice/list`).
-- Budgets and Buckets are removed from the desktop Settings sidebar ("Planning" section in `SettingsPageLayout.vue`). Their routes move out from under `SettingsPageLayout` into a new parent route using `src/views/desktop/common/NoNavbarPageLayout.vue` (`<main-page-layout no-navbar>` + `<router-view/>`), alongside the invoice routes.
-- Invoice profile lives in Settings (new "Invoice Profile" item); the Invoices page toolbar also links to it.
-- Mobile: no navigation change.
+- Desktop header (`MainPageLayout.vue`) gets Budgets, Buckets and Invoices buttons after Accounts, same markup as the existing buttons. Budgets and Buckets keep their existing routes and Settings sidebar entries; the buttons link to them.
+- Desktop Settings sidebar gets an "Invoice Profile" item (`/settings/invoice_profile`).
+- Mobile Settings gets an "Invoices" item after Buckets; customers and the invoice profile are reached from the invoice list's ellipsis menu.
 
-### Pages and components
+### Desktop
 
-- `src/views/desktop/invoices/ListPage.vue`: table (number, customer, invoice date, due date, total, received, balance due, status chip);
-  filter tabs All / Outstanding / Paid; customer filter; header strip with **Outstanding total** and **Overdue total**.
-- `src/views/desktop/invoices/dialogs/InvoiceEditDialog.vue`: customer picker with "+ Add customer"; number (prefilled from `next_number`);
-  invoice date (today); due date (invoice date + default terms); line grid (item, multi-line description, qty, rate, computed amount; add/remove);
-  notes (prefilled from profile); live totals. **Duplicate** action on existing invoices.
-- `src/views/desktop/invoices/dialogs/CustomerEditDialog.vue`
-- `src/views/desktop/invoices/InvoiceViewPage.vue` (`/invoice/view?id=`): toolbar (Edit, Print / Save PDF, Duplicate, Mark as paid / Reopen, Delete),
-  the document, and a **Payments panel** (linked transactions with unlink; received / balance due / bank charges; suggested matches with one-click link;
-  "Search transactions…" to pick any income transaction).
-- `src/components/desktop/InvoiceDocument.vue`: the print layout, a pure component taking a plain invoice + profile object.
-  Matches the sample: logo and business block top-right; double-rule "Invoice" banner; bill-to left; number/date/due/amount-due box right;
-  Services / Rate / Amount table with dotted rules (qty column shown only if any line has qty ≠ 1); totals; Notes / Terms.
-  Uses a font with the ₹ glyph.
-- `@media print` hides everything except the document. `document.title` is set to `Invoice_{number with / → _}_{dueDate}` while printing
-  so the saved file is named like `Invoice_CA_2026-27_01_2026-04-30.pdf`.
-- `src/views/desktop/settings/tabs/InvoiceProfileSettingTab.vue` (or page, following existing settings structure): profile fields and logo upload.
-- `src/models/invoice.ts`, `src/stores/invoice.ts`, `src/lib/invoice.ts`, `src/lib/services.ts` additions, `src/router/desktop.ts` routes,
-  `src/locales/en.json` strings.
+- `/invoice/list` (`desktop/invoices/ListPage.vue`): `main-page-layout` with a sidebar like Accounts (Outstanding and Overdue totals; Invoices / Customers items). The content card has the standard title toolbar (Add, Refresh, More menu with Show/Hide Paid Invoices and Invoice Profile) and a `v-table` of invoices (number, customer, dates, total, balance due, status chip) or customers (hover Edit/Delete).
+- `InvoiceEditDialog`: customer autocomplete with an add-customer button (opens `CustomerEditDialog`), number (suggested), invoice and due dates, line rows (item, description, qty, rate, remove), Add Line, live total, notes.
+- `InvoiceDetailDialog`: toolbar Edit, Duplicate, Mark as Paid / Reopen, Delete, Print; content is the `InvoiceDocument` plus a payments column (total / received / bank charges or balance due, linked payments with Unlink, suggested matches with Link).
+- `InvoiceProfileSettingPage`: logo avatar with Update/Remove menu and hidden file input, setting rows for each profile field, Save Changes + Reset.
+
+### Mobile
+
+- `/invoice/list`: summary (Outstanding, Overdue), invoice rows (number, balance due, "customer · status · due date") linking to detail, swipeout Edit/Delete, pull to refresh, ellipsis (Show/Hide Paid, Customers, Invoice Profile).
+- `/invoice/add`, `/invoice/edit`, `/invoice/add?duplicateFrom=`: customer popup, number, date sheets, one list per line (group title + delete button; item, description, qty, rate via number pad), Add Line / Add Customer in the ellipsis, total, notes.
+- `/invoice/detail`: status and amounts, payments (swipe to Unlink), suggested matches (Link button), the `InvoiceDocument` (scrolls horizontally on narrow screens), ellipsis Edit / Duplicate / Mark as Paid / Print / Delete.
+- `/invoice/customer/list`, `/invoice/customer/add|edit`, `/invoice/profile`.
+
+### Printable document (the one new component)
+
+`src/components/common/InvoiceDocument.vue`: plain HTML (no Vuetify / Framework7 tags) shared by both platforms, a pure props-in component matching the Wave layout, always white paper and English text. Its non-scoped `@media print` CSS hides the rest of the app. Printing sets `document.title` to `Invoice_{number with / → _}_{dueDate}` so the saved file is named like `Invoice_CA_2026-27_01_2026-04-30.pdf`. Nothing in the app printed before, so there was nothing to reuse.
 
 ## Error handling
 
@@ -178,7 +179,6 @@ Top 10.
 | Emailing | server-side renderer mirroring `InvoiceDocument`; existing `pkg/mail` mailer; a "sent" timestamp |
 | Recurring | `RecurringInvoice` template table + cron job (`pkg/cron`) calling `CreateInvoice` |
 | Quotes / credit notes | new `Invoice.Kind` values |
-| Mobile pages | reuse store, models and `src/lib/invoice.ts` |
 | Linked-invoice badge on transactions | join via `InvoicePayment.TransactionId` |
 
 ## Testing
@@ -191,4 +191,4 @@ Top 10.
 
 ## Out of scope
 
-GST, other currencies, emailing, recurring invoices, quotes, mobile invoice pages, PDF libraries, automatic linking.
+GST, other currencies, emailing, recurring invoices, quotes, PDF libraries, automatic linking.

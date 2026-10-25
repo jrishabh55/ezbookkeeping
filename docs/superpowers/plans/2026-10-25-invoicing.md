@@ -2,74 +2,67 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Create customer invoices in ezBookkeeping, print them to PDF in the Wave layout, and track each one until it is paid by linking existing income transactions.
+**Goal:** Create customer invoices in ezBookkeeping on desktop and mobile, print them to PDF in the Wave layout, and track each one until it is paid by linking existing income transactions.
 
-**Architecture:** Five new tables (profile, customer, invoice, invoice line, invoice payment) behind a new `InvoiceService` and `InvoicesApi`, following the existing buckets pattern (`pkg/models/bucket.go`, `pkg/services/buckets.go`, `pkg/api/buckets.go`). The desktop frontend gets a thin store, pure helpers in `src/lib/invoice.ts` (status, formatting), a list page, an edit dialog, a view page that renders a print-styled `InvoiceDocument` component, and an invoice profile settings page. Budgets, Buckets and Invoices move into the desktop top header.
+**Architecture:** Five new tables (profile, customer, invoice, invoice line, invoice payment) behind a new `InvoiceService` and `InvoicesApi`, following the buckets backend pattern. The frontend follows the project's existing three-layer UI structure exactly: model classes (`src/models/`), a caching Pinia store (`src/stores/`), shared page logic composables (`src/views/base/invoices/`), then a Vuetify desktop UI (`src/views/desktop/invoices/`) and a Framework7 mobile UI (`src/views/mobile/invoices/`) that both consume the same composables. The only genuinely new component is the printable `InvoiceDocument`, because nothing in the app prints today.
 
-**Tech Stack:** Go 1.x + gin + xorm (sqlite/mysql/postgres), Vue 3 + Vuetify 3 + Pinia + TypeScript, vitest, testify.
+**Tech Stack:** Go + gin + xorm (sqlite/mysql/postgres), Vue 3 + TypeScript + Pinia, Vuetify 3 (desktop), Framework7 (mobile), vitest, testify.
 
 **Spec:** `docs/superpowers/specs/2026-10-25-invoicing-design.md`
 
 ## Global Constraints
 
 - INR only, no GST. `Invoice.Currency` is always `"INR"` and `Invoice.Kind` is always `"invoice"` in this phase.
-- Amounts are `int64` paise (₹1 = 100), same as `Transaction.Amount`.
-- Every table and query is scoped by `uid`; a user can never read or link another user's data.
-- Invoicing never creates or modifies transactions.
-- Matching is suggested, never automatic.
-- Paid tolerance is `0.03` (3%): an invoice is Paid when `closedManually` or `total - received <= total * 0.03`.
-- Payment suggestions: income transactions, same currency account, not linked, not deleted, dated from invoice date to due date + 60 days, amount ≤ balance due; ranked exact, then `[97%, 100%)`, then smaller; top 10.
-- A transaction links to at most one invoice (DB unique constraint on `invoice_payment.transaction_id`).
-- PDF is produced by the browser's print dialog; no PDF library. No new npm or Go dependencies at all.
-- Invoice number format suggestion: `{NumberPrefix}/{FY}/{seq:02}`, FY April–March, e.g. `CA/2026-27/01`.
-- Desktop UI only. No mobile pages.
-- Commit with `git commit --no-verify` (repo convention; the pre-commit hook is slow and unrelated).
-- UI strings go through `tt('...')` and every new string is added to `src/locales/en.json` (top-level flat keys); every new backend error message is added under `"error"` in `en.json`.
+- Amounts are integer paise (₹1 = 100) everywhere: database, API, models, `AmountInput` / `NumberPadSheet` v-models. Never divide by 100 in app UI; format with `formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(paise), 'INR')`. Only the printed `InvoiceDocument` uses its own fixed English formatter (it is a document sent to a UK customer, independent of app language).
+- Every table and query is scoped by `uid`; invoicing never creates or modifies transactions; matching is suggested, never automatic.
+- Paid tolerance `0.03`: an invoice is Paid when `closedManually` or `total - received <= total * 0.03`.
+- Suggestions: income, same-currency account, not linked, not deleted, invoice date to due date + 60 days, amount ≤ balance due; ranked exact, `[97%, 100%)`, smaller; top 10.
+- A transaction links to at most one invoice (unique index).
+- Number suggestion `{NumberPrefix}/{FY}/{seq:02}`, FY April–March.
+- No new npm or Go dependencies.
+- **UI conventions (from the user):** reuse existing structure, components and logic; build new UI only where nothing fits. Concretely, mirror these reference files and never the branch's Budgets/Buckets pages (they do not follow conventions):
+  - shared logic: `src/views/base/accounts/AccountEditPageBase.ts`, `src/views/base/categories/CategoryEditPageBase.ts`, `src/views/base/users/UserProfilePageBase.ts` (state + computed + English message keys; no snackbar/toast inside base)
+  - desktop list: `src/views/desktop/templates/ListPage.vue` (card title toolbar, `v-table`, skeleton rows, hover row actions) inside a `main-page-layout` with a sidebar like `src/views/desktop/accounts/ListPage.vue`
+  - desktop dialogs: `src/views/desktop/categories/list/dialogs/EditDialog.vue` (`v-dialog` + `one-column-dialog-layout`, `open()` returning a Promise, `persistent` when modified, footer save button with problem-message tooltip, `defineExpose({ open })`)
+  - desktop settings page: `src/views/desktop/users/UserBasicSettingPage.vue` (`setting-items` card, avatar menu with hidden file input, `setting-item` rows, Save Changes + Reset)
+  - mobile list: `src/views/mobile/templates/ListPage.vue` (`f7-page :ptr`, navbar back/ellipsis/plus, skeleton list, swipeout Edit/Delete, delete action sheet, `onPageAfterIn` reload)
+  - mobile edit: `src/views/mobile/accounts/EditPage.vue` (checkmark save, `f7-list form strong inset dividers`, `NumberPadSheet` for amounts, `DateSelectionSheet` for dates, `ListItemSelectionPopup` for pickers, per-child `f7-list` with group title + red delete button, `showAlert(problemMessage)`, `router.back()`)
+  - mobile settings form: `src/views/mobile/users/UserProfilePage.vue`; mobile image picker: hidden input + `image-box` as in `src/views/mobile/transactions/EditPage.vue:397-426, 518`
+  - i18n: `useI18n` from `@/locales/helpers.ts` (`tt`, `te`, `formatAmountToLocalizedNumeralsWithCurrency`, `formatGregorianTextualYearMonthDayToLongDate`, `formatDateTimeToLongDate`); mobile UI helpers from `@/lib/ui/mobile.ts` (`useI18nUIComponents`, `showLoading`, `hideLoading`, `onSwipeoutDeleted`)
+- Strings: English keys passed to `tt`/`showMessage`/`showToast`; every new key added to `src/locales/en.json` as a flat top-level key; backend errors under `"error"`.
+- Commit with `git commit --no-verify` (repo convention).
 
 ## Review Focus
 
-1. **Short payment exactly at the 3% boundary** (₹3,70,000 invoice, ₹3,58,900 received = exactly 3% short) must show Paid with ₹11,100 bank charges, while ₹3,58,899 must show Partially paid. Pinned in Task 6 vitest.
-2. **A linked transaction is later deleted** in the transactions page: the invoice's received amount must drop and the invoice must go back to Unpaid/Partially paid, not error. Pinned in Task 4 Go test `TestInvoiceReceivedIgnoresDeletedTransaction`.
-3. **Linking another user's transaction ID** (crafted request) must be refused as not found, never linked. Pinned in Task 4 Go test `TestLinkPaymentRejectsOtherUsersTransaction`.
-4. **Invoice dated in March vs April** must get the right financial year (`2025-26` vs `2026-27`), and a gap in numbering (01, 03) must suggest 04. Pinned in Task 3 Go tests.
-5. **Editing an invoice down below what was already received** (₹3,70,000 invoice fully paid, edited to ₹3,00,000) must still load and show Paid with no negative bank charges. Pinned in Task 6 vitest (`balance due never negative`).
+1. **Short payment exactly at the 3% boundary** (₹3,70,000 invoice, ₹3,58,900 received) must show Paid with ₹11,100 bank charges; ₹3,58,899 must show Partially Paid. Pinned in Task 6 vitest.
+2. **A linked transaction is later deleted**: received drops and the invoice goes back to Unpaid/Partially Paid without errors. Pinned in Task 4 Go test `TestInvoiceReceivedIgnoresDeletedTransaction`; the store never caches the invoice list (Task 6), so the next visit shows it.
+3. **Linking another user's transaction ID** is refused as not found. Pinned in Task 4 Go test `TestLinkPaymentRejectsOtherUsersTransaction`.
+4. **March vs April invoice dates** get `2025-26` vs `2026-27`, and a numbering gap (01, 03) suggests 04. Pinned in Task 3 Go tests.
+5. **Editing a fully paid invoice's total below what was received** shows Paid with no negative balance or bank charges. Pinned in Task 6 vitest (`balance due never negative`).
 
 ---
 
 ## File map
 
-Backend (create):
-- `pkg/models/invoice.go`: table structs, request/response structs, `ToInfoResponse` converters, `InvoicePaidTolerance`.
-- `pkg/errs/invoice.go`: error values.
-- `pkg/services/invoices.go`: `InvoiceService` (profile, customers, invoices, numbering, payments).
-- `pkg/services/invoices_test.go`: service tests (uses the shared sqlite helper in `alerts_testutil_test.go`).
-- `pkg/api/invoices.go`: `InvoicesApi` handlers.
+Backend (Tasks 1–5):
+- Create `pkg/models/invoice.go`, `pkg/errs/invoice.go`, `pkg/services/invoices.go`, `pkg/services/invoices_test.go`, `pkg/api/invoices.go`, `pkg/api/invoices_test.go`
+- Modify `pkg/errs/error.go`, `pkg/uuid/uuid_type.go`, `cmd/database.go`, `cmd/webserver.go`, `pkg/services/alerts_testutil_test.go`
 
-Backend (modify):
-- `pkg/errs/error.go`: add `NormalSubcategoryInvoice = 23`.
-- `pkg/uuid/uuid_type.go`: add `UUID_TYPE_INVOICE UuidType = 15`.
-- `cmd/database.go`: `SyncStructs` for the five tables.
-- `cmd/webserver.go`: routes.
-- `pkg/services/alerts_testutil_test.go`: sync invoice tables in the shared test DB.
+Frontend shared (Tasks 6–8):
+- Create `src/models/invoice.ts`, `src/lib/invoice.ts`, `src/lib/__tests__/invoice.test.ts`, `src/stores/invoice.ts`
+- Create `src/views/base/invoices/InvoiceListPageBase.ts`, `InvoiceEditPageBase.ts`, `InvoiceDetailPageBase.ts`, `CustomerEditPageBase.ts`, `InvoiceProfilePageBase.ts`
+- Create `src/components/common/InvoiceDocument.vue` (new: the only printable component; shared by both platforms)
+- Modify `src/lib/services.ts`, `src/stores/index.ts` (reset on logout)
 
-Frontend (create):
-- `src/models/invoice.ts`: types.
-- `src/lib/invoice.ts` + `src/lib/__tests__/invoice.test.ts`: pure helpers and tests.
-- `src/stores/invoice.ts`: API wrappers.
-- `src/views/desktop/common/NoNavbarPageLayout.vue`: route wrapper for header-only pages.
-- `src/views/desktop/invoices/ListPage.vue`
-- `src/views/desktop/invoices/ViewPage.vue`
-- `src/views/desktop/invoices/dialogs/InvoiceEditDialog.vue`
-- `src/views/desktop/invoices/dialogs/CustomerEditDialog.vue`
-- `src/components/desktop/InvoiceDocument.vue`
-- `src/views/desktop/settings/InvoiceProfileSettingsPage.vue`
+Desktop (Tasks 9–11):
+- Create `src/views/desktop/invoices/ListPage.vue`, `src/views/desktop/invoices/dialogs/InvoiceEditDialog.vue`, `InvoiceDetailDialog.vue`, `CustomerEditDialog.vue`, `src/views/desktop/settings/InvoiceProfileSettingPage.vue`
+- Modify `src/router/desktop.ts`, `src/components/desktop/MainPageLayout.vue` (header buttons), `src/views/desktop/settings/SettingsPageLayout.vue` (Invoice Profile item)
 
-Frontend (modify):
-- `src/lib/services.ts`: API calls.
-- `src/router/desktop.ts`: routes.
-- `src/components/desktop/MainPageLayout.vue`: three header buttons.
-- `src/views/desktop/settings/SettingsPageLayout.vue`: remove Planning section, add Invoice Profile item.
-- `src/locales/en.json`: strings and errors.
+Mobile (Tasks 12–13):
+- Create `src/views/mobile/invoices/ListPage.vue`, `EditPage.vue`, `DetailPage.vue`, `CustomerListPage.vue`, `CustomerEditPage.vue`, `ProfilePage.vue`
+- Modify `src/router/mobile.ts`, `src/views/mobile/SettingsPage.vue`
+
+Strings (Task 14): `src/locales/en.json`
 
 ---
 
@@ -2195,43 +2188,52 @@ git commit --no-verify -m "invoices: API handlers and routes"
 
 **Files:**
 - Create: `src/models/invoice.ts`, `src/lib/invoice.ts`, `src/lib/__tests__/invoice.test.ts`, `src/stores/invoice.ts`
-- Modify: `src/lib/services.ts` (imports near line 213; methods after `getAllBuckets` block near line 1015)
+- Modify: `src/lib/services.ts` (type imports near the bucket imports ~line 206-213; methods after the bucket methods ~line 1015), `src/stores/index.ts` (import, instantiate in `useRootStore`, call reset in `resetAllStates` lines 61-81)
 
 **Interfaces:**
 - Consumes: Task 5 endpoints.
 - Produces:
-  - Types: `InvoiceProfile`, `Customer`, `CustomerSaveRequest`, `InvoiceLine`, `InvoicePayment`, `Invoice`, `InvoiceLineRequest`, `InvoiceSaveRequest`, `InvoiceStatus`.
-  - Helpers in `src/lib/invoice.ts`: `INVOICE_PAID_TOLERANCE`, `computeInvoiceTotals(lines)`, `getInvoiceBalanceDue(invoice)`, `getInvoiceStatus(invoice)`, `isInvoiceOverdue(invoice, today)`, `getInvoiceBankCharges(invoice)`, `formatInvoiceAmount(paise)`, `formatInvoiceDate(date)`, `getInvoicePdfFileName(number, dueDate)`, `addDaysToDate(date, days)`, `getTodayDateString()`, `rupeesToPaise(value)`, `paiseToRupees(value)`.
-  - Store `useInvoicesStore()` with methods named exactly like the service calls below.
+  - `src/models/invoice.ts`: classes `InvoiceProfile`, `Customer`, `Invoice` (each with `static of(response)`, `clone()`, `fillFrom(other)`, request builders), interfaces `InvoiceLine`, `InvoicePayment`, response/request interfaces, `INVOICE_CURRENCY = 'INR'`.
+  - `src/lib/invoice.ts`: `INVOICE_PAID_TOLERANCE`, `InvoiceDisplayStatus`, `computeInvoiceTotals`, `getInvoiceBalanceDue`, `getInvoiceStatus`, `isInvoiceOverdue`, `getInvoiceDisplayStatus`, `getInvoiceBankCharges`, `formatInvoiceDocumentAmount`, `formatInvoiceDocumentDate`, `getInvoicePdfFileName`, `addDaysToDate`, `getTodayTextualDate`.
+  - `useInvoicesStore()` state `allInvoices`, `allInvoicesMap`, `allCustomers`, `allCustomersMap`, `customerListStateInvalid`, `invoiceProfile`; functions listed in Step 7.
 
 - [ ] **Step 1: Create `src/models/invoice.ts`**
 
 ```ts
-export interface InvoiceProfile {
-    businessName: string;
-    addressLines: string;
-    phone: string;
-    website: string;
-    logoDataUrl: string;
-    defaultNotes: string;
-    numberPrefix: string;
-    defaultTermsDays: number;
+import type { TextualYearMonthDay } from '@/core/datetime.ts';
+
+export const INVOICE_CURRENCY: string = 'INR';
+
+export interface InvoiceProfileInfoResponse {
+    readonly businessName: string;
+    readonly addressLines: string;
+    readonly phone: string;
+    readonly website: string;
+    readonly logoDataUrl: string;
+    readonly defaultNotes: string;
+    readonly numberPrefix: string;
+    readonly defaultTermsDays: number;
 }
 
-export interface Customer {
-    id: string;
-    name: string;
-    contactName: string;
-    addressLines: string;
-    email: string;
+export type InvoiceProfileUpdateRequest = InvoiceProfileInfoResponse;
+
+export interface CustomerInfoResponse {
+    readonly id: string;
+    readonly name: string;
+    readonly contactName: string;
+    readonly addressLines: string;
+    readonly email: string;
 }
 
-export interface CustomerSaveRequest {
-    id?: string;
-    name: string;
-    contactName: string;
-    addressLines: string;
-    email: string;
+export interface CustomerCreateRequest {
+    readonly name: string;
+    readonly contactName: string;
+    readonly addressLines: string;
+    readonly email: string;
+}
+
+export interface CustomerModifyRequest extends CustomerCreateRequest {
+    readonly id: string;
 }
 
 export interface InvoiceLine {
@@ -2243,51 +2245,247 @@ export interface InvoiceLine {
 }
 
 export interface InvoicePayment {
-    transactionId: string;
-    amount: number;
-    transactionTime: number;
-    accountId: string;
-    comment: string;
+    readonly transactionId: string;
+    readonly amount: number;
+    readonly transactionTime: number;
+    readonly accountId: string;
+    readonly comment: string;
 }
 
-export interface Invoice {
-    id: string;
-    kind: string;
-    number: string;
-    customerId: string;
-    billToName: string;
-    billToContactName: string;
-    billToAddressLines: string;
-    billToEmail: string;
-    currency: string;
-    invoiceDate: string;
-    dueDate: string;
-    notes: string;
-    total: number;
-    received: number;
-    closedManually: boolean;
-    lines?: InvoiceLine[];
-    payments?: InvoicePayment[];
+export interface InvoiceInfoResponse {
+    readonly id: string;
+    readonly kind: string;
+    readonly number: string;
+    readonly customerId: string;
+    readonly billToName: string;
+    readonly billToContactName: string;
+    readonly billToAddressLines: string;
+    readonly billToEmail: string;
+    readonly currency: string;
+    readonly invoiceDate: TextualYearMonthDay;
+    readonly dueDate: TextualYearMonthDay;
+    readonly notes: string;
+    readonly total: number;
+    readonly received: number;
+    readonly closedManually: boolean;
+    readonly lines?: InvoiceLine[];
+    readonly payments?: InvoicePayment[];
 }
 
 export interface InvoiceLineRequest {
-    itemName: string;
-    description: string;
-    quantity: number;
-    rate: number;
+    readonly itemName: string;
+    readonly description: string;
+    readonly quantity: number;
+    readonly rate: number;
 }
 
-export interface InvoiceSaveRequest {
-    id?: string;
-    number: string;
-    customerId: string;
-    invoiceDate: string;
-    dueDate: string;
-    notes: string;
-    lines: InvoiceLineRequest[];
+export interface InvoiceCreateRequest {
+    readonly number: string;
+    readonly customerId: string;
+    readonly invoiceDate: string;
+    readonly dueDate: string;
+    readonly notes: string;
+    readonly lines: InvoiceLineRequest[];
 }
 
-export type InvoiceStatus = 'unpaid' | 'partial' | 'paid';
+export interface InvoiceModifyRequest extends InvoiceCreateRequest {
+    readonly id: string;
+}
+
+export class InvoiceProfile implements InvoiceProfileInfoResponse {
+    public businessName: string = '';
+    public addressLines: string = '';
+    public phone: string = '';
+    public website: string = '';
+    public logoDataUrl: string = '';
+    public defaultNotes: string = '';
+    public numberPrefix: string = 'INV';
+    public defaultTermsDays: number = 7;
+
+    public fillFrom(other: InvoiceProfileInfoResponse): void {
+        this.businessName = other.businessName;
+        this.addressLines = other.addressLines;
+        this.phone = other.phone;
+        this.website = other.website;
+        this.logoDataUrl = other.logoDataUrl;
+        this.defaultNotes = other.defaultNotes;
+        this.numberPrefix = other.numberPrefix;
+        this.defaultTermsDays = other.defaultTermsDays;
+    }
+
+    public toUpdateRequest(): InvoiceProfileUpdateRequest {
+        return {
+            businessName: this.businessName,
+            addressLines: this.addressLines,
+            phone: this.phone,
+            website: this.website,
+            logoDataUrl: this.logoDataUrl,
+            defaultNotes: this.defaultNotes,
+            numberPrefix: this.numberPrefix.trim(),
+            defaultTermsDays: this.defaultTermsDays
+        };
+    }
+
+    public clone(): InvoiceProfile {
+        return InvoiceProfile.of(this);
+    }
+
+    public static of(response: InvoiceProfileInfoResponse): InvoiceProfile {
+        const profile = new InvoiceProfile();
+        profile.fillFrom(response);
+        return profile;
+    }
+
+    public static createNewProfile(): InvoiceProfile {
+        return new InvoiceProfile();
+    }
+}
+
+export class Customer implements CustomerInfoResponse {
+    public id: string = '';
+    public name: string = '';
+    public contactName: string = '';
+    public addressLines: string = '';
+    public email: string = '';
+
+    public fillFrom(other: CustomerInfoResponse): void {
+        this.id = other.id;
+        this.name = other.name;
+        this.contactName = other.contactName;
+        this.addressLines = other.addressLines;
+        this.email = other.email;
+    }
+
+    public toCreateRequest(): CustomerCreateRequest {
+        return {
+            name: this.name.trim(),
+            contactName: this.contactName,
+            addressLines: this.addressLines,
+            email: this.email
+        };
+    }
+
+    public toModifyRequest(): CustomerModifyRequest {
+        return {
+            id: this.id,
+            ...this.toCreateRequest()
+        };
+    }
+
+    public clone(): Customer {
+        return Customer.of(this);
+    }
+
+    public static of(response: CustomerInfoResponse): Customer {
+        const customer = new Customer();
+        customer.fillFrom(response);
+        return customer;
+    }
+
+    public static ofMulti(responses: CustomerInfoResponse[]): Customer[] {
+        return responses.map(response => Customer.of(response));
+    }
+
+    public static createNewCustomer(): Customer {
+        return new Customer();
+    }
+}
+
+export class Invoice implements InvoiceInfoResponse {
+    public id: string = '';
+    public kind: string = 'invoice';
+    public number: string = '';
+    public customerId: string = '';
+    public billToName: string = '';
+    public billToContactName: string = '';
+    public billToAddressLines: string = '';
+    public billToEmail: string = '';
+    public currency: string = INVOICE_CURRENCY;
+    public invoiceDate: TextualYearMonthDay = '0-0-0';
+    public dueDate: TextualYearMonthDay = '0-0-0';
+    public notes: string = '';
+    public total: number = 0;
+    public received: number = 0;
+    public closedManually: boolean = false;
+    public lines: InvoiceLine[] = [];
+    public payments: InvoicePayment[] = [];
+
+    public fillFrom(other: InvoiceInfoResponse): void {
+        this.id = other.id;
+        this.kind = other.kind;
+        this.number = other.number;
+        this.customerId = other.customerId;
+        this.billToName = other.billToName;
+        this.billToContactName = other.billToContactName;
+        this.billToAddressLines = other.billToAddressLines;
+        this.billToEmail = other.billToEmail;
+        this.currency = other.currency;
+        this.invoiceDate = other.invoiceDate;
+        this.dueDate = other.dueDate;
+        this.notes = other.notes;
+        this.total = other.total;
+        this.received = other.received;
+        this.closedManually = other.closedManually;
+        this.lines = (other.lines ?? []).map(line => ({ ...line }));
+        this.payments = (other.payments ?? []).map(payment => ({ ...payment }));
+    }
+
+    public toCreateRequest(): InvoiceCreateRequest {
+        return {
+            number: this.number.trim(),
+            customerId: this.customerId,
+            invoiceDate: this.invoiceDate,
+            dueDate: this.dueDate,
+            notes: this.notes,
+            lines: this.lines.map(line => ({
+                itemName: line.itemName.trim(),
+                description: line.description,
+                quantity: line.quantity,
+                rate: line.rate
+            }))
+        };
+    }
+
+    public toModifyRequest(): InvoiceModifyRequest {
+        return {
+            id: this.id,
+            ...this.toCreateRequest()
+        };
+    }
+
+    public clone(): Invoice {
+        return Invoice.of(this);
+    }
+
+    // a new unsaved invoice with this invoice's customer, lines and notes (the "Duplicate" action)
+    public duplicate(): Invoice {
+        const invoice = Invoice.createNewInvoice();
+        invoice.customerId = this.customerId;
+        invoice.notes = this.notes;
+        invoice.lines = this.lines.map(line => ({ ...line }));
+        return invoice;
+    }
+
+    public static of(response: InvoiceInfoResponse): Invoice {
+        const invoice = new Invoice();
+        invoice.fillFrom(response);
+        return invoice;
+    }
+
+    public static ofMulti(responses: InvoiceInfoResponse[]): Invoice[] {
+        return responses.map(response => Invoice.of(response));
+    }
+
+    public static createNewInvoice(): Invoice {
+        const invoice = new Invoice();
+        invoice.lines = [Invoice.createNewLine()];
+        return invoice;
+    }
+
+    public static createNewLine(): InvoiceLine {
+        return { itemName: '', description: '', quantity: 1, rate: 0, amount: 0 };
+    }
+}
 ```
 
 - [ ] **Step 2: Write the failing vitest** `src/lib/__tests__/invoice.test.ts`
@@ -2300,16 +2498,16 @@ import {
     getInvoiceBalanceDue,
     getInvoiceStatus,
     isInvoiceOverdue,
+    getInvoiceDisplayStatus,
     getInvoiceBankCharges,
-    formatInvoiceAmount,
-    formatInvoiceDate,
+    formatInvoiceDocumentAmount,
+    formatInvoiceDocumentDate,
     getInvoicePdfFileName,
-    addDaysToDate,
-    rupeesToPaise,
-    paiseToRupees
+    addDaysToDate
 } from '@/lib/invoice.ts';
+import type { TextualYearMonthDay } from '@/core/datetime.ts';
 
-const invoice = (total: number, received: number, closedManually = false, dueDate = '2026-04-30') =>
+const invoice = (total: number, received: number, closedManually = false, dueDate: TextualYearMonthDay = '2026-04-30') =>
     ({ total, received, closedManually, dueDate });
 
 describe('computeInvoiceTotals', () => {
@@ -2346,21 +2544,23 @@ describe('getInvoiceStatus', () => {
     });
 });
 
-describe('isInvoiceOverdue', () => {
+describe('overdue', () => {
     test('only unpaid or partial invoices past the due date', () => {
         expect(isInvoiceOverdue(invoice(100, 0), '2026-05-01')).toBe(true);
         expect(isInvoiceOverdue(invoice(100, 0), '2026-04-30')).toBe(false);
         expect(isInvoiceOverdue(invoice(100, 100), '2026-05-01')).toBe(false);
+        expect(getInvoiceDisplayStatus(invoice(100, 50), '2026-05-01')).toBe('overdue');
+        expect(getInvoiceDisplayStatus(invoice(100, 50), '2026-04-01')).toBe('partial');
     });
 });
 
-describe('formatting', () => {
+describe('document formatting', () => {
     test('amount like the Wave sample', () => {
-        expect(formatInvoiceAmount(37000000)).toBe('₹370,000.00');
+        expect(formatInvoiceDocumentAmount(37000000)).toBe('₹370,000.00');
     });
 
     test('date like the Wave sample', () => {
-        expect(formatInvoiceDate('2026-04-23')).toBe('April 23, 2026');
+        expect(formatInvoiceDocumentDate('2026-04-23')).toBe('April 23, 2026');
     });
 
     test('pdf file name like the Wave sample', () => {
@@ -2370,12 +2570,6 @@ describe('formatting', () => {
     test('add days across month end', () => {
         expect(addDaysToDate('2026-04-23', 7)).toBe('2026-04-30');
         expect(addDaysToDate('2026-04-28', 7)).toBe('2026-05-05');
-    });
-
-    test('rupees and paise round trip without float drift', () => {
-        expect(rupeesToPaise(370000)).toBe(37000000);
-        expect(rupeesToPaise(0.29)).toBe(29);
-        expect(paiseToRupees(37000000)).toBe(370000);
     });
 });
 ```
@@ -2388,15 +2582,18 @@ Expected: FAIL, cannot resolve `@/lib/invoice.ts`.
 - [ ] **Step 4: Create `src/lib/invoice.ts`**
 
 ```ts
-import type { InvoiceStatus } from '@/models/invoice.ts';
+import type { TextualYearMonthDay } from '@/core/datetime.ts';
 
 // mirrors models.InvoicePaidTolerance in pkg/models/invoice.go
 export const INVOICE_PAID_TOLERANCE = 0.03;
 
+export type InvoiceStatus = 'unpaid' | 'partial' | 'paid';
+export type InvoiceDisplayStatus = InvoiceStatus | 'overdue';
+
 interface InvoiceAmounts {
-    total: number;
-    received: number;
-    closedManually: boolean;
+    readonly total: number;
+    readonly received: number;
+    readonly closedManually: boolean;
 }
 
 export function computeInvoiceTotals(lines: { quantity: number, rate: number }[]): { subtotal: number, total: number } {
@@ -2417,8 +2614,12 @@ export function getInvoiceStatus(invoice: InvoiceAmounts): InvoiceStatus {
     return invoice.received > 0 ? 'partial' : 'unpaid';
 }
 
-export function isInvoiceOverdue(invoice: InvoiceAmounts & { dueDate: string }, today: string): boolean {
+export function isInvoiceOverdue(invoice: InvoiceAmounts & { readonly dueDate: string }, today: string): boolean {
     return getInvoiceStatus(invoice) !== 'paid' && invoice.dueDate < today;
+}
+
+export function getInvoiceDisplayStatus(invoice: InvoiceAmounts & { readonly dueDate: string }, today: string): InvoiceDisplayStatus {
+    return isInvoiceOverdue(invoice, today) ? 'overdue' : getInvoiceStatus(invoice);
 }
 
 // the shortfall written off on a paid invoice (bank / forex charges, or a manual close)
@@ -2426,13 +2627,14 @@ export function getInvoiceBankCharges(invoice: InvoiceAmounts): number {
     return getInvoiceStatus(invoice) === 'paid' ? getInvoiceBalanceDue(invoice) : 0;
 }
 
-const invoiceAmountFormat = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'INR' });
+// ponytail: the printed document is always English / en-US style like the Wave original; app screens use the i18n helpers instead
+const invoiceDocumentAmountFormat = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'INR' });
 
-export function formatInvoiceAmount(paise: number): string {
-    return invoiceAmountFormat.format(paise / 100);
+export function formatInvoiceDocumentAmount(paise: number): string {
+    return invoiceDocumentAmountFormat.format(paise / 100);
 }
 
-export function formatInvoiceDate(date: string): string {
+export function formatInvoiceDocumentDate(date: string): string {
     const [year, month, day] = date.split('-').map(Number);
     return new Date(Date.UTC(year!, month! - 1, day!)).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
 }
@@ -2441,22 +2643,14 @@ export function getInvoicePdfFileName(number: string, dueDate: string): string {
     return `Invoice_${number.replace(/[\\/:*?"<>|\s]+/g, '_')}_${dueDate}`;
 }
 
-export function addDaysToDate(date: string, days: number): string {
+export function addDaysToDate(date: string, days: number): TextualYearMonthDay {
     const [year, month, day] = date.split('-').map(Number);
-    return new Date(Date.UTC(year!, month! - 1, day! + days)).toISOString().substring(0, 10);
+    return new Date(Date.UTC(year!, month! - 1, day! + days)).toISOString().substring(0, 10) as TextualYearMonthDay;
 }
 
-export function getTodayDateString(): string {
+export function getTodayTextualDate(): TextualYearMonthDay {
     const now = new Date();
-    return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())).toISOString().substring(0, 10);
-}
-
-export function rupeesToPaise(value: number): number {
-    return Math.round(value * 100);
-}
-
-export function paiseToRupees(value: number): number {
-    return value / 100;
+    return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())).toISOString().substring(0, 10) as TextualYearMonthDay;
 }
 ```
 
@@ -2467,51 +2661,54 @@ Expected: all PASS.
 
 - [ ] **Step 6: Add API calls to `src/lib/services.ts`**
 
-Add to the imports block (next to the bucket imports):
+Imports, next to the bucket model imports:
 
 ```ts
 import type {
-    InvoiceProfile,
-    Customer,
-    CustomerSaveRequest,
-    Invoice,
-    InvoicePayment,
-    InvoiceSaveRequest
+    InvoiceProfileInfoResponse,
+    InvoiceProfileUpdateRequest,
+    CustomerInfoResponse,
+    CustomerCreateRequest,
+    CustomerModifyRequest,
+    InvoiceInfoResponse,
+    InvoiceCreateRequest,
+    InvoiceModifyRequest,
+    InvoicePayment
 } from '@/models/invoice.ts';
 ```
 
-Add after the bucket methods (same object literal):
+Methods, after the bucket methods in the same object literal:
 
 ```ts
-    getInvoiceProfile: (): ApiResponsePromise<InvoiceProfile> => {
-        return axios.get<ApiResponse<InvoiceProfile>>('v1/invoice_profile/get.json');
+    getInvoiceProfile: (): ApiResponsePromise<InvoiceProfileInfoResponse> => {
+        return axios.get<ApiResponse<InvoiceProfileInfoResponse>>('v1/invoice_profile/get.json');
     },
-    updateInvoiceProfile: (req: InvoiceProfile): ApiResponsePromise<InvoiceProfile> => {
-        return axios.post<ApiResponse<InvoiceProfile>>('v1/invoice_profile/update.json', req);
+    updateInvoiceProfile: (req: InvoiceProfileUpdateRequest): ApiResponsePromise<InvoiceProfileInfoResponse> => {
+        return axios.post<ApiResponse<InvoiceProfileInfoResponse>>('v1/invoice_profile/update.json', req);
     },
-    getAllCustomers: (): ApiResponsePromise<Customer[]> => {
-        return axios.get<ApiResponse<Customer[]>>('v1/customers/list.json');
+    getAllCustomers: (): ApiResponsePromise<CustomerInfoResponse[]> => {
+        return axios.get<ApiResponse<CustomerInfoResponse[]>>('v1/customers/list.json');
     },
-    addCustomer: (req: CustomerSaveRequest): ApiResponsePromise<Customer> => {
-        return axios.post<ApiResponse<Customer>>('v1/customers/add.json', req);
+    addCustomer: (req: CustomerCreateRequest): ApiResponsePromise<CustomerInfoResponse> => {
+        return axios.post<ApiResponse<CustomerInfoResponse>>('v1/customers/add.json', req);
     },
-    modifyCustomer: (req: CustomerSaveRequest): ApiResponsePromise<Customer> => {
-        return axios.post<ApiResponse<Customer>>('v1/customers/modify.json', req);
+    modifyCustomer: (req: CustomerModifyRequest): ApiResponsePromise<CustomerInfoResponse> => {
+        return axios.post<ApiResponse<CustomerInfoResponse>>('v1/customers/modify.json', req);
     },
     deleteCustomer: ({ id }: { id: string }): ApiResponsePromise<boolean> => {
         return axios.post<ApiResponse<boolean>>('v1/customers/delete.json', { id });
     },
-    getAllInvoices: (): ApiResponsePromise<Invoice[]> => {
-        return axios.get<ApiResponse<Invoice[]>>('v1/invoices/list.json');
+    getAllInvoices: (): ApiResponsePromise<InvoiceInfoResponse[]> => {
+        return axios.get<ApiResponse<InvoiceInfoResponse[]>>('v1/invoices/list.json');
     },
-    getInvoice: ({ id }: { id: string }): ApiResponsePromise<Invoice> => {
-        return axios.get<ApiResponse<Invoice>>('v1/invoices/get.json?id=' + encodeURIComponent(id));
+    getInvoice: ({ id }: { id: string }): ApiResponsePromise<InvoiceInfoResponse> => {
+        return axios.get<ApiResponse<InvoiceInfoResponse>>('v1/invoices/get.json?id=' + id);
     },
-    addInvoice: (req: InvoiceSaveRequest): ApiResponsePromise<Invoice> => {
-        return axios.post<ApiResponse<Invoice>>('v1/invoices/add.json', req);
+    addInvoice: (req: InvoiceCreateRequest): ApiResponsePromise<InvoiceInfoResponse> => {
+        return axios.post<ApiResponse<InvoiceInfoResponse>>('v1/invoices/add.json', req);
     },
-    modifyInvoice: (req: InvoiceSaveRequest): ApiResponsePromise<Invoice> => {
-        return axios.post<ApiResponse<Invoice>>('v1/invoices/modify.json', req);
+    modifyInvoice: (req: InvoiceModifyRequest): ApiResponsePromise<InvoiceInfoResponse> => {
+        return axios.post<ApiResponse<InvoiceInfoResponse>>('v1/invoices/modify.json', req);
     },
     deleteInvoice: ({ id }: { id: string }): ApiResponsePromise<boolean> => {
         return axios.post<ApiResponse<boolean>>('v1/invoices/delete.json', { id });
@@ -2523,10 +2720,10 @@ Add after the bucket methods (same object literal):
         return axios.post<ApiResponse<boolean>>('v1/invoices/reopen.json', { id });
     },
     getNextInvoiceNumber: ({ invoiceDate }: { invoiceDate: string }): ApiResponsePromise<string> => {
-        return axios.get<ApiResponse<string>>('v1/invoices/next_number.json?invoice_date=' + encodeURIComponent(invoiceDate));
+        return axios.get<ApiResponse<string>>('v1/invoices/next_number.json?invoice_date=' + invoiceDate);
     },
     getInvoicePaymentSuggestions: ({ id }: { id: string }): ApiResponsePromise<InvoicePayment[]> => {
-        return axios.get<ApiResponse<InvoicePayment[]>>('v1/invoices/payment/suggestions.json?id=' + encodeURIComponent(id));
+        return axios.get<ApiResponse<InvoicePayment[]>>('v1/invoices/payment/suggestions.json?id=' + id);
     },
     linkInvoicePayment: (req: { invoiceId: string, transactionId: string }): ApiResponsePromise<boolean> => {
         return axios.post<ApiResponse<boolean>>('v1/invoices/payment/link.json', req);
@@ -2536,918 +2733,725 @@ Add after the bucket methods (same object literal):
     },
 ```
 
-- [ ] **Step 7: Create `src/stores/invoice.ts`**
+- [ ] **Step 7: Create `src/stores/invoice.ts`** (state + mutators + load/get/save/delete like `src/stores/transactionTemplate.ts`)
 
 ```ts
+import { ref } from 'vue';
 import { defineStore } from 'pinia';
 
-import type {
+import {
+    type InvoicePayment,
     InvoiceProfile,
     Customer,
-    CustomerSaveRequest,
-    Invoice,
-    InvoicePayment,
-    InvoiceSaveRequest
+    Invoice
 } from '@/models/invoice.ts';
 
+import { isEquals } from '@/lib/common.ts';
 import services, { type ApiResponsePromise } from '@/lib/services.ts';
 import logger from '@/lib/logger.ts';
 
-const FAILED_MESSAGE = 'Unable to process invoice request';
-
-// unwraps the standard API envelope and normalises errors the same way the other stores do
-function call<T>(request: ApiResponsePromise<T>): Promise<T> {
-    return new Promise((resolve, reject) => {
-        request.then(response => {
-            const data = response.data;
-
-            if (!data || !data.success || data.result === undefined || data.result === null) {
-                reject({ message: FAILED_MESSAGE });
-                return;
-            }
-
-            resolve(data.result);
-        }).catch(error => {
-            logger.error(FAILED_MESSAGE, error);
-
-            if (error.response && error.response.data && error.response.data.errorMessage) {
-                reject({ error: error.response.data });
-            } else if (!error.processed) {
-                reject({ message: FAILED_MESSAGE });
-            } else {
-                reject(error);
-            }
-        });
-    });
-}
-
-// ponytail: no client-side cache; each page loads what it shows (a handful of invoices and customers)
 export const useInvoicesStore = defineStore('invoices', () => {
+    const allInvoices = ref<Invoice[]>([]);
+    const allInvoicesMap = ref<Record<string, Invoice>>({});
+    const allCustomers = ref<Customer[]>([]);
+    const allCustomersMap = ref<Record<string, Customer>>({});
+    const customerListStateInvalid = ref<boolean>(true);
+    const invoiceProfile = ref<InvoiceProfile | null>(null);
+
+    // unwraps the API envelope and normalises errors exactly like the other stores' inline handlers
+    function request<T>(apiRequest: ApiResponsePromise<T>, failedMessage: string): Promise<T> {
+        return new Promise((resolve, reject) => {
+            apiRequest.then(response => {
+                const data = response.data;
+
+                if (!data || !data.success || data.result === undefined || data.result === null) {
+                    reject({ message: failedMessage });
+                    return;
+                }
+
+                resolve(data.result);
+            }).catch(error => {
+                logger.error(failedMessage, error);
+
+                if (error.response && error.response.data && error.response.data.errorMessage) {
+                    reject({ error: error.response.data });
+                } else if (!error.processed) {
+                    reject({ message: failedMessage });
+                } else {
+                    reject(error);
+                }
+            });
+        });
+    }
+
+    function loadInvoiceList(invoices: Invoice[]): void {
+        allInvoices.value = invoices;
+        allInvoicesMap.value = {};
+
+        for (const invoice of invoices) {
+            allInvoicesMap.value[invoice.id] = invoice;
+        }
+    }
+
+    function loadCustomerList(customers: Customer[]): void {
+        allCustomers.value = customers;
+        allCustomersMap.value = {};
+
+        for (const customer of customers) {
+            allCustomersMap.value[customer.id] = customer;
+        }
+    }
+
+    function removeInvoiceFromList(invoiceId: string): void {
+        allInvoices.value = allInvoices.value.filter(invoice => invoice.id !== invoiceId);
+        delete allInvoicesMap.value[invoiceId];
+    }
+
+    function removeCustomerFromList(customerId: string): void {
+        allCustomers.value = allCustomers.value.filter(customer => customer.id !== customerId);
+        delete allCustomersMap.value[customerId];
+    }
+
+    function resetInvoices(): void {
+        allInvoices.value = [];
+        allInvoicesMap.value = {};
+        allCustomers.value = [];
+        allCustomersMap.value = {};
+        customerListStateInvalid.value = true;
+        invoiceProfile.value = null;
+    }
+
+    // ponytail: the invoice list is never served from cache, because "received" depends on transactions edited on other pages
+    function loadAllInvoices({ force }: { force?: boolean }): Promise<Invoice[]> {
+        return request(services.getAllInvoices(), 'Unable to retrieve invoice list').then(result => {
+            const invoices = Invoice.ofMulti(result);
+
+            if (force && isEquals(allInvoices.value, invoices)) {
+                return Promise.reject({ message: 'Invoice list is up to date', isUpToDate: true });
+            }
+
+            loadInvoiceList(invoices);
+            return invoices;
+        });
+    }
+
+    function getInvoice({ invoiceId }: { invoiceId: string }): Promise<Invoice> {
+        return request(services.getInvoice({ id: invoiceId }), 'Unable to retrieve invoice').then(result => Invoice.of(result));
+    }
+
+    function saveInvoice({ invoice, isEdit }: { invoice: Invoice, isEdit: boolean }): Promise<Invoice> {
+        const apiRequest = isEdit ? services.modifyInvoice(invoice.toModifyRequest()) : services.addInvoice(invoice.toCreateRequest());
+
+        return request(apiRequest, isEdit ? 'Unable to save invoice' : 'Unable to add invoice').then(result => Invoice.of(result));
+    }
+
+    function deleteInvoice({ invoice, beforeResolve }: { invoice: Invoice, beforeResolve?: (done: () => void) => void }): Promise<boolean> {
+        return request(services.deleteInvoice({ id: invoice.id }), 'Unable to delete this invoice').then(result => {
+            if (beforeResolve) {
+                beforeResolve(() => removeInvoiceFromList(invoice.id));
+            } else {
+                removeInvoiceFromList(invoice.id);
+            }
+
+            return result;
+        });
+    }
+
+    function setInvoiceClosed({ invoice, closed }: { invoice: Invoice, closed: boolean }): Promise<boolean> {
+        const apiRequest = closed ? services.closeInvoice({ id: invoice.id }) : services.reopenInvoice({ id: invoice.id });
+        return request(apiRequest, 'Unable to save invoice');
+    }
+
+    function getNextInvoiceNumber({ invoiceDate }: { invoiceDate: string }): Promise<string> {
+        return request(services.getNextInvoiceNumber({ invoiceDate }), 'Unable to get next invoice number');
+    }
+
+    function getInvoicePaymentSuggestions({ invoiceId }: { invoiceId: string }): Promise<InvoicePayment[]> {
+        return request(services.getInvoicePaymentSuggestions({ id: invoiceId }), 'Unable to retrieve matching transactions');
+    }
+
+    function linkInvoicePayment({ invoiceId, transactionId }: { invoiceId: string, transactionId: string }): Promise<boolean> {
+        return request(services.linkInvoicePayment({ invoiceId, transactionId }), 'Unable to link this transaction');
+    }
+
+    function unlinkInvoicePayment({ invoiceId, transactionId }: { invoiceId: string, transactionId: string }): Promise<boolean> {
+        return request(services.unlinkInvoicePayment({ invoiceId, transactionId }), 'Unable to unlink this transaction');
+    }
+
+    function loadAllCustomers({ force }: { force?: boolean }): Promise<Customer[]> {
+        if (!force && !customerListStateInvalid.value) {
+            return Promise.resolve(allCustomers.value);
+        }
+
+        return request(services.getAllCustomers(), 'Unable to retrieve customer list').then(result => {
+            const customers = Customer.ofMulti(result);
+            customerListStateInvalid.value = false;
+
+            if (force && isEquals(allCustomers.value, customers)) {
+                return Promise.reject({ message: 'Customer list is up to date', isUpToDate: true });
+            }
+
+            loadCustomerList(customers);
+            return customers;
+        });
+    }
+
+    function saveCustomer({ customer, isEdit }: { customer: Customer, isEdit: boolean }): Promise<Customer> {
+        const apiRequest = isEdit ? services.modifyCustomer(customer.toModifyRequest()) : services.addCustomer(customer.toCreateRequest());
+
+        return request(apiRequest, isEdit ? 'Unable to save customer' : 'Unable to add customer').then(result => {
+            const saved = Customer.of(result);
+
+            if (isEdit) {
+                allCustomers.value = allCustomers.value.map(item => item.id === saved.id ? saved : item);
+            } else {
+                allCustomers.value = [...allCustomers.value, saved].sort((a, b) => a.name.localeCompare(b.name));
+            }
+
+            allCustomersMap.value[saved.id] = saved;
+            return saved;
+        });
+    }
+
+    function deleteCustomer({ customer, beforeResolve }: { customer: Customer, beforeResolve?: (done: () => void) => void }): Promise<boolean> {
+        return request(services.deleteCustomer({ id: customer.id }), 'Unable to delete this customer').then(result => {
+            if (beforeResolve) {
+                beforeResolve(() => removeCustomerFromList(customer.id));
+            } else {
+                removeCustomerFromList(customer.id);
+            }
+
+            return result;
+        });
+    }
+
+    function loadInvoiceProfile({ force }: { force?: boolean }): Promise<InvoiceProfile> {
+        if (!force && invoiceProfile.value) {
+            return Promise.resolve(invoiceProfile.value);
+        }
+
+        return request(services.getInvoiceProfile(), 'Unable to retrieve invoice profile').then(result => {
+            invoiceProfile.value = InvoiceProfile.of(result);
+            return invoiceProfile.value;
+        });
+    }
+
+    function updateInvoiceProfile({ profile }: { profile: InvoiceProfile }): Promise<InvoiceProfile> {
+        return request(services.updateInvoiceProfile(profile.toUpdateRequest()), 'Unable to save invoice profile').then(result => {
+            invoiceProfile.value = InvoiceProfile.of(result);
+            return invoiceProfile.value;
+        });
+    }
+
     return {
-        getInvoiceProfile: (): Promise<InvoiceProfile> => call(services.getInvoiceProfile()),
-        updateInvoiceProfile: (profile: InvoiceProfile): Promise<InvoiceProfile> => call(services.updateInvoiceProfile(profile)),
-        getAllCustomers: (): Promise<Customer[]> => call(services.getAllCustomers()),
-        saveCustomer: (customer: CustomerSaveRequest): Promise<Customer> => call(customer.id ? services.modifyCustomer(customer) : services.addCustomer(customer)),
-        deleteCustomer: (id: string): Promise<boolean> => call(services.deleteCustomer({ id })),
-        getAllInvoices: (): Promise<Invoice[]> => call(services.getAllInvoices()),
-        getInvoice: (id: string): Promise<Invoice> => call(services.getInvoice({ id })),
-        saveInvoice: (invoice: InvoiceSaveRequest): Promise<Invoice> => call(invoice.id ? services.modifyInvoice(invoice) : services.addInvoice(invoice)),
-        deleteInvoice: (id: string): Promise<boolean> => call(services.deleteInvoice({ id })),
-        closeInvoice: (id: string): Promise<boolean> => call(services.closeInvoice({ id })),
-        reopenInvoice: (id: string): Promise<boolean> => call(services.reopenInvoice({ id })),
-        getNextInvoiceNumber: (invoiceDate: string): Promise<string> => call(services.getNextInvoiceNumber({ invoiceDate })),
-        getInvoicePaymentSuggestions: (id: string): Promise<InvoicePayment[]> => call(services.getInvoicePaymentSuggestions({ id })),
-        linkInvoicePayment: (invoiceId: string, transactionId: string): Promise<boolean> => call(services.linkInvoicePayment({ invoiceId, transactionId })),
-        unlinkInvoicePayment: (invoiceId: string, transactionId: string): Promise<boolean> => call(services.unlinkInvoicePayment({ invoiceId, transactionId }))
+        // states
+        allInvoices,
+        allInvoicesMap,
+        allCustomers,
+        allCustomersMap,
+        customerListStateInvalid,
+        invoiceProfile,
+        // functions
+        resetInvoices,
+        loadAllInvoices,
+        getInvoice,
+        saveInvoice,
+        deleteInvoice,
+        setInvoiceClosed,
+        getNextInvoiceNumber,
+        getInvoicePaymentSuggestions,
+        linkInvoicePayment,
+        unlinkInvoicePayment,
+        loadAllCustomers,
+        saveCustomer,
+        deleteCustomer,
+        loadInvoiceProfile,
+        updateInvoiceProfile
     };
 });
 ```
 
-If `ApiResponsePromise` is not exported by name from the default-export module import, import it as `import services, { type ApiResponsePromise } from '@/lib/services.ts';` (it is declared `export type` at `src/lib/services.ts:252`).
+- [ ] **Step 8: Reset on logout** in `src/stores/index.ts`
 
-- [ ] **Step 8: Type-check and test**
+Add `import { useInvoicesStore } from '@/stores/invoice.ts';` with the other store imports, `const invoicesStore = useInvoicesStore();` after `const userCustomIconsStore = useUserCustomIconsStore();`, and `invoicesStore.resetInvoices();` as the first line after `setNotificationContent(null);` in `resetAllStates`.
 
-Run: `npx vue-tsc --noEmit && npx vitest run src/lib/__tests__/invoice.test.ts`
-Expected: no type errors; tests PASS.
+- [ ] **Step 9: Type-check, lint, test**
 
-- [ ] **Step 9: Commit**
+Run: `npx vue-tsc --noEmit && npx eslint src/models/invoice.ts src/lib/invoice.ts src/stores/invoice.ts src/stores/index.ts src/lib/services.ts && npx vitest run src/lib/__tests__/invoice.test.ts`
+Expected: clean; tests PASS.
+
+- [ ] **Step 10: Commit**
 
 ```bash
-git add src/models/invoice.ts src/lib/invoice.ts src/lib/__tests__/invoice.test.ts src/lib/services.ts src/stores/invoice.ts
+git add src/models/invoice.ts src/lib/invoice.ts src/lib/__tests__/invoice.test.ts src/lib/services.ts src/stores/invoice.ts src/stores/index.ts
 git commit --no-verify -m "invoices: frontend models, helpers, API calls and store"
 ```
 
 ---
 
-### Task 7: Navigation and invoice profile settings page
+### Task 7: Shared page logic (`src/views/base/invoices/`)
 
 **Files:**
-- Create: `src/views/desktop/common/NoNavbarPageLayout.vue`, `src/views/desktop/settings/InvoiceProfileSettingsPage.vue`
-- Modify: `src/router/desktop.ts` (imports ~line 50; move `/budget/list` and `/bucket/list` at lines 206-215; add new routes), `src/components/desktop/MainPageLayout.vue` (after the Accounts `router-link` ending ~line 89; `@mdi/js` import ~line 203-225), `src/views/desktop/settings/SettingsPageLayout.vue` (remove the "Planning" section lines 28-44; add Invoice Profile item; drop now-unused icon imports)
+- Create: `src/views/base/invoices/InvoiceListPageBase.ts`, `InvoiceEditPageBase.ts`, `InvoiceDetailPageBase.ts`, `CustomerEditPageBase.ts`, `InvoiceProfilePageBase.ts`
 
 **Interfaces:**
-- Consumes: `useInvoicesStore().getInvoiceProfile/updateInvoiceProfile`.
-- Produces routes: `/budget/list`, `/bucket/list`, `/invoice/list`, `/invoice/view?id=` (under `NoNavbarPageLayout`), `/settings/invoice_profile` (under `SettingsPageLayout`). Tasks 8 and 9 create the `invoices/ListPage.vue` and `invoices/ViewPage.vue` components these routes import; until then, create them as one-line placeholders so the router compiles:
+- Consumes: Task 6 models, helpers, store; `useI18n` from `@/locales/helpers.ts`; `useAccountsStore` (`allAccountsMap`).
+- Produces (exact names; desktop and mobile pages destructure these):
+  - `useInvoiceListPageBase()` → `{ loading, showPaid, today, allInvoices, displayInvoices, noAvailableInvoice, outstandingTotal, overdueTotal, formatAmount, formatDate, getDisplayStatus, getDisplayStatusName }`
+  - `useInvoiceEditPageBase()` → `{ editInvoiceId, loading, submitting, invoice, allCustomers, title, saveButtonTitle, inputEmptyProblemMessage, inputIsEmpty, totals, addLine, removeLine, setInvoice, prepareNewInvoice, setInvoiceDate, formatAmount, formatDate }`
+  - `useInvoiceDetailPageBase()` → `{ loading, updating, invoice, profile, suggestions, displayStatus, displayStatusName, balanceDue, bankCharges, formatAmount, formatDate, formatPaymentDescription, printInvoice }`
+  - `useCustomerEditPageBase()` → `{ editCustomerId, loading, submitting, customer, title, saveButtonTitle, inputEmptyProblemMessage, inputIsEmpty }`
+  - `useInvoiceProfilePageBase()` → `{ loading, saving, newProfile, oldProfile, inputIsNotChanged, inputInvalidProblemMessage, inputIsInvalid, setProfile, reset, readLogoFile }`
+  - `getInvoiceDisplayStatusName(status: InvoiceDisplayStatus): string` exported from `InvoiceListPageBase.ts` (English key).
 
-```vue
-<template><div/></template>
-```
-
-- [ ] **Step 1: Create `src/views/desktop/common/NoNavbarPageLayout.vue`**
-
-```vue
-<template>
-    <main-page-layout no-navbar>
-        <template #content>
-            <router-view />
-        </template>
-    </main-page-layout>
-</template>
-```
-
-- [ ] **Step 2: Create placeholder `src/views/desktop/invoices/ListPage.vue` and `src/views/desktop/invoices/ViewPage.vue`** with `<template><div/></template>` (replaced in Tasks 8 and 9).
-
-- [ ] **Step 3: Update `src/router/desktop.ts`**
-
-Add imports next to `BucketListPage`:
+- [ ] **Step 1: Create `src/views/base/invoices/InvoiceListPageBase.ts`**
 
 ```ts
-import NoNavbarPageLayout from '@/views/desktop/common/NoNavbarPageLayout.vue';
-import InvoiceListPage from '@/views/desktop/invoices/ListPage.vue';
-import InvoiceViewPage from '@/views/desktop/invoices/ViewPage.vue';
-import InvoiceProfileSettingsPage from '@/views/desktop/settings/InvoiceProfileSettingsPage.vue';
-```
-
-Delete the `/budget/list` and `/bucket/list` entries from the `SettingsPageLayout` children. Insert this new top-level route right after the `/account/list` route (before the `SettingsPageLayout` route):
-
-```ts
-        {
-            path: '/',
-            component: NoNavbarPageLayout,
-            beforeEnter: checkLogin,
-            children: [
-                {
-                    path: '/budget/list',
-                    component: BudgetListPage,
-                    beforeEnter: checkLogin
-                },
-                {
-                    path: '/bucket/list',
-                    component: BucketListPage,
-                    beforeEnter: checkLogin
-                },
-                {
-                    path: '/invoice/list',
-                    component: InvoiceListPage,
-                    beforeEnter: checkLogin
-                },
-                {
-                    path: '/invoice/view',
-                    component: InvoiceViewPage,
-                    beforeEnter: checkLogin,
-                    props: route => ({ id: route.query['id'] })
-                }
-            ]
-        },
-```
-
-Add to the `SettingsPageLayout` children, after `/settings/sms_capture`:
-
-```ts
-                {
-                    path: '/settings/invoice_profile',
-                    component: InvoiceProfileSettingsPage,
-                    beforeEnter: checkLogin
-                },
-```
-
-- [ ] **Step 4: Add header buttons in `src/components/desktop/MainPageLayout.vue`**
-
-After the Accounts `</router-link>` and before the Add Transaction `router-link`, insert:
-
-```vue
-                                <router-link to="/budget/list"
-                                             :aria-current="isTopNavigationActive('/budget/list') ? 'page' : undefined">
-                                    <v-btn class="top-navigation-button ms-1" density="comfortable" variant="text"
-                                           :aria-label="tt('Budgets')" :icon="true"
-                                           :active="isTopNavigationActive('/budget/list')"
-                                           :color="isTopNavigationActive('/budget/list') ? 'primary' : 'default'">
-                                        <v-icon :icon="isTopNavigationActive('/budget/list') ? mdiWallet : mdiWalletOutline" size="24" />
-                                        <v-tooltip activator="parent">{{ tt('Budgets') }}</v-tooltip>
-                                    </v-btn>
-                                </router-link>
-
-                                <router-link to="/bucket/list"
-                                             :aria-current="isTopNavigationActive('/bucket/list') ? 'page' : undefined">
-                                    <v-btn class="top-navigation-button ms-1" density="comfortable" variant="text"
-                                           :aria-label="tt('Buckets')" :icon="true"
-                                           :active="isTopNavigationActive('/bucket/list')"
-                                           :color="isTopNavigationActive('/bucket/list') ? 'primary' : 'default'">
-                                        <v-icon :icon="isTopNavigationActive('/bucket/list') ? mdiPiggyBank : mdiPiggyBankOutline" size="24" />
-                                        <v-tooltip activator="parent">{{ tt('Buckets') }}</v-tooltip>
-                                    </v-btn>
-                                </router-link>
-
-                                <router-link to="/invoice/list"
-                                             :aria-current="isInvoicePageActive ? 'page' : undefined">
-                                    <v-btn class="top-navigation-button ms-1" density="comfortable" variant="text"
-                                           :aria-label="tt('Invoices')" :icon="true"
-                                           :active="isInvoicePageActive"
-                                           :color="isInvoicePageActive ? 'primary' : 'default'">
-                                        <v-icon :icon="isInvoicePageActive ? mdiFileDocument : mdiFileDocumentOutline" size="24" />
-                                        <v-tooltip activator="parent">{{ tt('Invoices') }}</v-tooltip>
-                                    </v-btn>
-                                </router-link>
-```
-
-Add `mdiWallet, mdiWalletOutline, mdiPiggyBank, mdiPiggyBankOutline, mdiFileDocument, mdiFileDocumentOutline` to the `@mdi/js` import. `isTopNavigationActive` (line ~280) compares `route.path` for equality, so add next to it:
-
-```ts
-const isInvoicePageActive = computed<boolean>(() => route.path === '/invoice/list' || route.path === '/invoice/view');
-```
-
-- [ ] **Step 5: Update `src/views/desktop/settings/SettingsPageLayout.vue`**
-
-Delete the whole "Planning" block (the `nav-section-title` "Planning" `<li>` and the two `/budget/list` and `/bucket/list` `<li class="nav-link">` items). Remove `mdiWalletOutline` and `mdiPiggyBankOutline` from the script's icon import if nothing else uses them. After the `/settings/sms_capture` nav item (search for `sms_capture`), add:
-
-```vue
-            <li class="nav-link">
-                <router-link to="/settings/invoice_profile">
-                    <v-icon class="nav-item-icon" :icon="mdiFileDocumentEditOutline"/>
-                    <span class="nav-item-title">{{ tt('Invoice Profile') }}</span>
-                </router-link>
-            </li>
-```
-
-and add `mdiFileDocumentEditOutline` to its `@mdi/js` import.
-
-- [ ] **Step 6: Create `src/views/desktop/settings/InvoiceProfileSettingsPage.vue`**
-
-```vue
-<template>
-    <v-row>
-        <v-col cols="12">
-            <v-card :class="{ 'disabled': loading }">
-                <template #title>
-                    <span>{{ tt('Invoice Profile') }}</span>
-                </template>
-
-                <v-card-text class="pt-2">
-                    <span class="text-body-large">{{ tt('These details are printed on every invoice.') }}</span>
-                </v-card-text>
-
-                <v-card-text>
-                    <v-row>
-                        <v-col cols="12" md="6">
-                            <v-text-field variant="outlined" density="compact" :label="tt('Business Name')" v-model="profile.businessName" />
-                        </v-col>
-                        <v-col cols="12" md="3">
-                            <v-text-field variant="outlined" density="compact" :label="tt('Invoice Number Prefix')" v-model="profile.numberPrefix" />
-                        </v-col>
-                        <v-col cols="12" md="3">
-                            <v-text-field variant="outlined" density="compact" type="number" min="0" max="365"
-                                          :label="tt('Payment Terms (days)')" v-model.number="profile.defaultTermsDays" />
-                        </v-col>
-                        <v-col cols="12" md="6">
-                            <v-textarea variant="outlined" density="compact" rows="4" :label="tt('Address')" v-model="profile.addressLines" />
-                        </v-col>
-                        <v-col cols="12" md="6">
-                            <v-text-field variant="outlined" density="compact" :label="tt('Phone')" v-model="profile.phone" />
-                            <v-text-field variant="outlined" density="compact" :label="tt('Website')" v-model="profile.website" />
-                        </v-col>
-                        <v-col cols="12">
-                            <v-textarea variant="outlined" density="compact" rows="7" :label="tt('Default Notes / Terms')" v-model="profile.defaultNotes" />
-                        </v-col>
-                        <v-col cols="12" class="d-flex align-center gap-4">
-                            <img class="invoice-profile-logo" :src="profile.logoDataUrl" alt="" v-if="profile.logoDataUrl" />
-                            <v-btn variant="tonal" @click="logoInput?.click()">{{ tt('Choose Logo') }}</v-btn>
-                            <v-btn variant="text" color="secondary" @click="profile.logoDataUrl = ''" v-if="profile.logoDataUrl">{{ tt('Remove Logo') }}</v-btn>
-                            <input ref="logoInput" type="file" accept="image/png,image/jpeg" class="d-none" @change="onLogoChosen" />
-                        </v-col>
-                    </v-row>
-                </v-card-text>
-
-                <v-card-text>
-                    <v-btn color="primary" :loading="saving" :disabled="saving || !profile.numberPrefix" @click="save">{{ tt('Save Changes') }}</v-btn>
-                </v-card-text>
-            </v-card>
-        </v-col>
-    </v-row>
-
-    <snack-bar ref="snackbar" />
-</template>
-
-<script setup lang="ts">
-import { ref, onMounted, useTemplateRef } from 'vue';
+import { ref, computed } from 'vue';
 
 import { useI18n } from '@/locales/helpers.ts';
+
 import { useInvoicesStore } from '@/stores/invoice.ts';
-import type { InvoiceProfile } from '@/models/invoice.ts';
 
-import SnackBar from '@/components/desktop/SnackBar.vue';
+import type { TextualYearMonthDay } from '@/core/datetime.ts';
+import { type Invoice, INVOICE_CURRENCY } from '@/models/invoice.ts';
 
-type SnackBarType = InstanceType<typeof SnackBar>;
+import { parseBigDecimal } from '@/lib/numeral.ts';
+import {
+    type InvoiceDisplayStatus,
+    getInvoiceBalanceDue,
+    getInvoiceStatus,
+    getInvoiceDisplayStatus,
+    isInvoiceOverdue,
+    getTodayTextualDate
+} from '@/lib/invoice.ts';
 
-// matches the backend's max length for logoDataUrl (base64 grows the file by about a third)
-const MAX_LOGO_BYTES = 250 * 1024;
-
-const { tt } = useI18n();
-const invoicesStore = useInvoicesStore();
-
-const snackbar = useTemplateRef<SnackBarType>('snackbar');
-const logoInput = useTemplateRef<HTMLInputElement>('logoInput');
-
-const loading = ref<boolean>(true);
-const saving = ref<boolean>(false);
-const profile = ref<InvoiceProfile>({
-    businessName: '', addressLines: '', phone: '', website: '', logoDataUrl: '', defaultNotes: '', numberPrefix: 'INV', defaultTermsDays: 7
-});
-
-function showError(error: { processed?: boolean }): void {
-    if (!error.processed) {
-        snackbar.value?.showError(error);
-    }
-}
-
-function onLogoChosen(event: Event): void {
-    const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
-    input.value = '';
-
-    if (!file) {
-        return;
-    }
-
-    if (file.size > MAX_LOGO_BYTES) {
-        snackbar.value?.showMessage('Logo must be smaller than 250 KB');
-        return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = () => {
-        profile.value.logoDataUrl = reader.result as string;
+export function getInvoiceDisplayStatusName(status: InvoiceDisplayStatus): string {
+    const names: Record<InvoiceDisplayStatus, string> = {
+        unpaid: 'Unpaid',
+        partial: 'Partially Paid',
+        paid: 'Paid',
+        overdue: 'Overdue'
     };
-    reader.readAsDataURL(file);
+
+    return names[status];
 }
 
-function save(): void {
-    saving.value = true;
+export function useInvoiceListPageBase() {
+    const { formatAmountToLocalizedNumeralsWithCurrency, formatGregorianTextualYearMonthDayToLongDate } = useI18n();
 
-    invoicesStore.updateInvoiceProfile(profile.value).then(saved => {
-        profile.value = saved;
-        snackbar.value?.showMessage('Invoice profile saved');
-    }).catch(showError).finally(() => {
-        saving.value = false;
-    });
+    const invoicesStore = useInvoicesStore();
+
+    const loading = ref<boolean>(true);
+    const showPaid = ref<boolean>(true);
+    const today = getTodayTextualDate();
+
+    const allInvoices = computed<Invoice[]>(() => invoicesStore.allInvoices);
+    const displayInvoices = computed<Invoice[]>(() => showPaid.value ? allInvoices.value : allInvoices.value.filter(invoice => getInvoiceStatus(invoice) !== 'paid'));
+    const noAvailableInvoice = computed<boolean>(() => displayInvoices.value.length < 1);
+
+    const outstandingTotal = computed<number>(() => allInvoices.value
+        .filter(invoice => getInvoiceStatus(invoice) !== 'paid')
+        .reduce((sum, invoice) => sum + getInvoiceBalanceDue(invoice), 0));
+
+    const overdueTotal = computed<number>(() => allInvoices.value
+        .filter(invoice => isInvoiceOverdue(invoice, today))
+        .reduce((sum, invoice) => sum + getInvoiceBalanceDue(invoice), 0));
+
+    function formatAmount(paise: number): string {
+        return formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(paise), INVOICE_CURRENCY);
+    }
+
+    function formatDate(date: TextualYearMonthDay): string {
+        return formatGregorianTextualYearMonthDayToLongDate(date);
+    }
+
+    function getDisplayStatus(invoice: Invoice): InvoiceDisplayStatus {
+        return getInvoiceDisplayStatus(invoice, today);
+    }
+
+    function getDisplayStatusName(invoice: Invoice): string {
+        return getInvoiceDisplayStatusName(getDisplayStatus(invoice));
+    }
+
+    return {
+        // states
+        loading,
+        showPaid,
+        today,
+        // computed states
+        allInvoices,
+        displayInvoices,
+        noAvailableInvoice,
+        outstandingTotal,
+        overdueTotal,
+        // functions
+        formatAmount,
+        formatDate,
+        getDisplayStatus,
+        getDisplayStatusName
+    };
 }
-
-onMounted(() => {
-    invoicesStore.getInvoiceProfile().then(loaded => {
-        profile.value = loaded;
-    }).catch(showError).finally(() => {
-        loading.value = false;
-    });
-});
-</script>
-
-<style scoped>
-.invoice-profile-logo {
-    max-height: 48px;
-    max-width: 240px;
-}
-</style>
 ```
 
-- [ ] **Step 7: Type-check and check in the browser**
+- [ ] **Step 2: Create `src/views/base/invoices/InvoiceEditPageBase.ts`**
 
-Run: `npx vue-tsc --noEmit && npx eslint src/router/desktop.ts src/components/desktop/MainPageLayout.vue src/views/desktop/settings src/views/desktop/common`
+```ts
+import { ref, computed } from 'vue';
+
+import { useI18n } from '@/locales/helpers.ts';
+
+import { useInvoicesStore } from '@/stores/invoice.ts';
+
+import type { TextualYearMonthDay } from '@/core/datetime.ts';
+import { type Customer, type InvoiceProfile, Invoice, INVOICE_CURRENCY } from '@/models/invoice.ts';
+
+import { parseBigDecimal } from '@/lib/numeral.ts';
+import { computeInvoiceTotals, addDaysToDate, getTodayTextualDate } from '@/lib/invoice.ts';
+
+export function useInvoiceEditPageBase() {
+    const { formatAmountToLocalizedNumeralsWithCurrency, formatGregorianTextualYearMonthDayToLongDate } = useI18n();
+
+    const invoicesStore = useInvoicesStore();
+
+    const editInvoiceId = ref<string | null>(null);
+    const loading = ref<boolean>(false);
+    const submitting = ref<boolean>(false);
+    const invoice = ref<Invoice>(Invoice.createNewInvoice());
+
+    const allCustomers = computed<Customer[]>(() => invoicesStore.allCustomers);
+
+    const title = computed<string>(() => editInvoiceId.value ? 'Edit Invoice' : 'Add Invoice');
+    const saveButtonTitle = computed<string>(() => editInvoiceId.value ? 'Save' : 'Add');
+
+    const totals = computed<{ subtotal: number, total: number }>(() => computeInvoiceTotals(invoice.value.lines));
+
+    const inputEmptyProblemMessage = computed<string | null>(() => {
+        if (!invoice.value.customerId) {
+            return 'Customer cannot be blank';
+        } else if (!invoice.value.number.trim()) {
+            return 'Invoice number cannot be blank';
+        } else if (invoice.value.dueDate < invoice.value.invoiceDate) {
+            return 'Due date cannot be before the invoice date';
+        } else if (invoice.value.lines.length < 1) {
+            return 'Invoice must have at least one line';
+        }
+
+        for (const line of invoice.value.lines) {
+            if (!line.itemName.trim()) {
+                return 'Item name cannot be blank';
+            } else if (line.quantity < 1 || line.rate <= 0) {
+                return 'Quantity and rate must be greater than zero';
+            }
+        }
+
+        return null;
+    });
+
+    const inputIsEmpty = computed<boolean>(() => !!inputEmptyProblemMessage.value);
+
+    function addLine(): void {
+        invoice.value.lines.push(Invoice.createNewLine());
+    }
+
+    function removeLine(index: number): void {
+        invoice.value.lines.splice(index, 1);
+    }
+
+    function setInvoice(source: Invoice): void {
+        invoice.value = source.clone();
+    }
+
+    // a new invoice dated today with the profile's terms and notes, optionally copying another invoice
+    function prepareNewInvoice(profile: InvoiceProfile, duplicateFrom?: Invoice | null): void {
+        const newInvoice = duplicateFrom ? duplicateFrom.duplicate() : Invoice.createNewInvoice();
+        const today = getTodayTextualDate();
+
+        newInvoice.invoiceDate = today;
+        newInvoice.dueDate = addDaysToDate(today, profile.defaultTermsDays);
+
+        if (!duplicateFrom) {
+            newInvoice.notes = profile.defaultNotes;
+        }
+
+        invoice.value = newInvoice;
+    }
+
+    function setInvoiceDate(date: TextualYearMonthDay, termsDays: number): void {
+        invoice.value.invoiceDate = date;
+        invoice.value.dueDate = addDaysToDate(date, termsDays);
+    }
+
+    function formatAmount(paise: number): string {
+        return formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(paise), INVOICE_CURRENCY);
+    }
+
+    function formatDate(date: TextualYearMonthDay): string {
+        return formatGregorianTextualYearMonthDayToLongDate(date);
+    }
+
+    return {
+        // states
+        editInvoiceId,
+        loading,
+        submitting,
+        invoice,
+        // computed states
+        allCustomers,
+        title,
+        saveButtonTitle,
+        inputEmptyProblemMessage,
+        inputIsEmpty,
+        totals,
+        // functions
+        addLine,
+        removeLine,
+        setInvoice,
+        prepareNewInvoice,
+        setInvoiceDate,
+        formatAmount,
+        formatDate
+    };
+}
+```
+
+- [ ] **Step 3: Create `src/views/base/invoices/InvoiceDetailPageBase.ts`**
+
+```ts
+import { ref, computed } from 'vue';
+
+import { useI18n } from '@/locales/helpers.ts';
+
+import { useAccountsStore } from '@/stores/account.ts';
+
+import type { TextualYearMonthDay } from '@/core/datetime.ts';
+import { type Invoice, type InvoicePayment, type InvoiceProfile, INVOICE_CURRENCY } from '@/models/invoice.ts';
+
+import { parseBigDecimal } from '@/lib/numeral.ts';
+import { parseDateTimeFromUnixTimeWithTimezoneOffset, getTimezoneOffsetMinutes } from '@/lib/datetime.ts';
+import {
+    type InvoiceDisplayStatus,
+    getInvoiceBalanceDue,
+    getInvoiceBankCharges,
+    getInvoiceDisplayStatus,
+    getInvoicePdfFileName,
+    getTodayTextualDate
+} from '@/lib/invoice.ts';
+
+import { getInvoiceDisplayStatusName } from './InvoiceListPageBase.ts';
+
+export function useInvoiceDetailPageBase() {
+    const { formatAmountToLocalizedNumeralsWithCurrency, formatGregorianTextualYearMonthDayToLongDate, formatDateTimeToLongDate } = useI18n();
+
+    const accountsStore = useAccountsStore();
+
+    const loading = ref<boolean>(true);
+    const updating = ref<boolean>(false);
+    const invoice = ref<Invoice | null>(null);
+    const profile = ref<InvoiceProfile | null>(null);
+    const suggestions = ref<InvoicePayment[]>([]);
+
+    const displayStatus = computed<InvoiceDisplayStatus | null>(() => invoice.value ? getInvoiceDisplayStatus(invoice.value, getTodayTextualDate()) : null);
+    const displayStatusName = computed<string>(() => displayStatus.value ? getInvoiceDisplayStatusName(displayStatus.value) : '');
+    const balanceDue = computed<number>(() => invoice.value ? getInvoiceBalanceDue(invoice.value) : 0);
+    const bankCharges = computed<number>(() => invoice.value ? getInvoiceBankCharges(invoice.value) : 0);
+
+    function formatAmount(paise: number): string {
+        return formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(paise), INVOICE_CURRENCY);
+    }
+
+    function formatDate(date: TextualYearMonthDay): string {
+        return formatGregorianTextualYearMonthDayToLongDate(date);
+    }
+
+    // "April 29, 2026 · PNB Savings · NEFT-QUBER TECH"
+    function formatPaymentDescription(payment: InvoicePayment): string {
+        const date = formatDateTimeToLongDate(parseDateTimeFromUnixTimeWithTimezoneOffset(payment.transactionTime, getTimezoneOffsetMinutes(payment.transactionTime)));
+        const accountName = accountsStore.allAccountsMap[payment.accountId]?.name ?? '';
+        return [date, accountName, payment.comment].filter(part => !!part).join(' · ');
+    }
+
+    // the browser suggests document.title as the PDF file name
+    function printInvoice(): void {
+        if (!invoice.value) {
+            return;
+        }
+
+        const originalTitle = document.title;
+        document.title = getInvoicePdfFileName(invoice.value.number, invoice.value.dueDate);
+        window.addEventListener('afterprint', () => {
+            document.title = originalTitle;
+        }, { once: true });
+        window.print();
+    }
+
+    return {
+        // states
+        loading,
+        updating,
+        invoice,
+        profile,
+        suggestions,
+        // computed states
+        displayStatus,
+        displayStatusName,
+        balanceDue,
+        bankCharges,
+        // functions
+        formatAmount,
+        formatDate,
+        formatPaymentDescription,
+        printInvoice
+    };
+}
+```
+
+- [ ] **Step 4: Create `src/views/base/invoices/CustomerEditPageBase.ts`**
+
+```ts
+import { ref, computed } from 'vue';
+
+import { Customer } from '@/models/invoice.ts';
+
+export function useCustomerEditPageBase() {
+    const editCustomerId = ref<string | null>(null);
+    const loading = ref<boolean>(false);
+    const submitting = ref<boolean>(false);
+    const customer = ref<Customer>(Customer.createNewCustomer());
+
+    const title = computed<string>(() => editCustomerId.value ? 'Edit Customer' : 'Add Customer');
+    const saveButtonTitle = computed<string>(() => editCustomerId.value ? 'Save' : 'Add');
+
+    const inputEmptyProblemMessage = computed<string | null>(() => {
+        if (!customer.value.name.trim()) {
+            return 'Customer name cannot be blank';
+        }
+
+        return null;
+    });
+
+    const inputIsEmpty = computed<boolean>(() => !!inputEmptyProblemMessage.value);
+
+    return {
+        // states
+        editCustomerId,
+        loading,
+        submitting,
+        customer,
+        // computed states
+        title,
+        saveButtonTitle,
+        inputEmptyProblemMessage,
+        inputIsEmpty
+    };
+}
+```
+
+- [ ] **Step 5: Create `src/views/base/invoices/InvoiceProfilePageBase.ts`**
+
+```ts
+import { ref, computed } from 'vue';
+
+import { InvoiceProfile } from '@/models/invoice.ts';
+
+import { isEquals } from '@/lib/common.ts';
+
+// matches the backend's 350,000-character limit on logoDataUrl (base64 grows a file by about a third)
+const MAX_INVOICE_LOGO_FILE_SIZE = 250 * 1024;
+
+export function useInvoiceProfilePageBase() {
+    const loading = ref<boolean>(true);
+    const saving = ref<boolean>(false);
+    const newProfile = ref<InvoiceProfile>(InvoiceProfile.createNewProfile());
+    const oldProfile = ref<InvoiceProfile>(InvoiceProfile.createNewProfile());
+
+    const inputIsNotChanged = computed<boolean>(() => isEquals(newProfile.value.toUpdateRequest(), oldProfile.value.toUpdateRequest()));
+
+    const inputInvalidProblemMessage = computed<string | null>(() => {
+        if (!newProfile.value.numberPrefix.trim()) {
+            return 'Invoice number prefix cannot be blank';
+        } else if (newProfile.value.defaultTermsDays < 0 || newProfile.value.defaultTermsDays > 365) {
+            return 'Payment terms must be between 0 and 365 days';
+        }
+
+        return null;
+    });
+
+    const inputIsInvalid = computed<boolean>(() => !!inputInvalidProblemMessage.value);
+
+    function setProfile(profile: InvoiceProfile): void {
+        newProfile.value = profile.clone();
+        oldProfile.value = profile.clone();
+    }
+
+    function reset(): void {
+        newProfile.value = oldProfile.value.clone();
+    }
+
+    // reads a png / jpeg file into a data url; rejects with an English message key
+    function readLogoFile(file: File): Promise<string> {
+        return new Promise((resolve, reject) => {
+            if (file.type !== 'image/png' && file.type !== 'image/jpeg') {
+                reject({ message: 'The logo must be a PNG or JPEG image' });
+                return;
+            }
+
+            if (file.size > MAX_INVOICE_LOGO_FILE_SIZE) {
+                reject({ message: 'Logo must be smaller than 250 KB' });
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = () => reject({ message: 'Unable to read this file' });
+            reader.readAsDataURL(file);
+        });
+    }
+
+    return {
+        // states
+        loading,
+        saving,
+        newProfile,
+        oldProfile,
+        // computed states
+        inputIsNotChanged,
+        inputInvalidProblemMessage,
+        inputIsInvalid,
+        // functions
+        setProfile,
+        reset,
+        readLogoFile
+    };
+}
+```
+
+- [ ] **Step 6: Type-check and lint**
+
+Run: `npx vue-tsc --noEmit && npx eslint src/views/base/invoices`
 Expected: clean.
 
-Run the dev server (`npm run serve`, plus the Go backend) and check:
-- The header shows Budgets, Buckets and Invoices buttons after Accounts. Clicking Budgets opens the budget list with **no** settings sidebar, and the Budgets button is highlighted.
-- Settings sidebar no longer has the Planning section; it has "Invoice Profile".
-- Invoice Profile: fill in the sample's details (Rishabh Jain, F-452, Phase-8B / Industrial Area, Sector 91 / Mohali, Punjab 160055 / India, Mobile 7009600910, rishabhjain.dev, prefix `CA`, 7 days, the bank notes block, the Codeation logo PNG), save, reload: values persist.
-
-- [ ] **Step 8: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add src/views/desktop/common/NoNavbarPageLayout.vue src/views/desktop/invoices src/views/desktop/settings src/router/desktop.ts src/components/desktop/MainPageLayout.vue
-git commit --no-verify -m "invoices: header navigation and invoice profile settings"
+git add src/views/base/invoices
+git commit --no-verify -m "invoices: shared page logic"
 ```
 
 ---
 
-### Task 8: Invoice list page, edit dialog, customer dialog
+### Task 8: Printable invoice document (the one new component)
 
 **Files:**
-- Create (replace placeholder): `src/views/desktop/invoices/ListPage.vue`
-- Create: `src/views/desktop/invoices/dialogs/InvoiceEditDialog.vue`, `src/views/desktop/invoices/dialogs/CustomerEditDialog.vue`, `src/views/desktop/invoices/InvoiceStatusChip.vue`
+- Create: `src/components/common/InvoiceDocument.vue`
+
+**Why new:** nothing in the app renders or prints a document (no `@media print` anywhere in `src`). It is shared by the desktop detail dialog and the mobile detail page, so it lives outside `components/desktop` and `components/mobile`. It is a plain-HTML component with no Vuetify or Framework7 tags so both apps can render it, and it is pure (props in, markup out) so a server-side renderer for emailed invoices can later mirror it.
 
 **Interfaces:**
-- Consumes: `useInvoicesStore()` (Task 6), helpers from `src/lib/invoice.ts` (Task 6).
-- Produces:
-  - `InvoiceEditDialog` props `show: boolean`, `invoice: Invoice | null` (an existing invoice with `lines` to edit, `null` for new), `duplicateFrom: Invoice | null` (copy lines/customer/notes into a new invoice); emits `update:show`, `saved(invoice: Invoice)`.
-  - `CustomerEditDialog` props `show: boolean`, `customer: Customer | null`; emits `update:show`, `saved(customer: Customer)`.
+- Consumes: Task 6 `Invoice`, `InvoiceProfile`, `formatInvoiceDocumentAmount`, `formatInvoiceDocumentDate`, `getInvoiceBalanceDue`.
+- Produces: `<invoice-document :invoice="Invoice" :profile="InvoiceProfile" />`. Wrapping element class `invoice-document`; while printing, only `.invoice-document` is visible.
 
-- [ ] **Step 1: Create `src/views/desktop/invoices/dialogs/CustomerEditDialog.vue`**
-
-```vue
-<template>
-    <v-dialog v-model="showDialog" max-width="560" persistent>
-        <v-card>
-            <v-card-title>{{ customer ? tt('Edit Customer') : tt('Add Customer') }}</v-card-title>
-            <v-card-text>
-                <v-text-field variant="outlined" density="compact" :label="tt('Customer Name')" v-model="form.name" autofocus />
-                <v-text-field variant="outlined" density="compact" :label="tt('Contact Person')" v-model="form.contactName" />
-                <v-textarea variant="outlined" density="compact" rows="3" :label="tt('Address')" v-model="form.addressLines" />
-                <v-text-field variant="outlined" density="compact" type="email" :label="tt('Email')" v-model="form.email" />
-            </v-card-text>
-            <v-card-actions>
-                <v-spacer />
-                <v-btn variant="text" :disabled="saving" @click="showDialog = false">{{ tt('Cancel') }}</v-btn>
-                <v-btn color="primary" variant="tonal" :loading="saving" :disabled="saving || !form.name.trim()" @click="save">{{ tt('Save') }}</v-btn>
-            </v-card-actions>
-        </v-card>
-    </v-dialog>
-
-    <snack-bar ref="snackbar" />
-</template>
-
-<script setup lang="ts">
-import { ref, computed, watch, useTemplateRef } from 'vue';
-
-import { useI18n } from '@/locales/helpers.ts';
-import { useInvoicesStore } from '@/stores/invoice.ts';
-import type { Customer, CustomerSaveRequest } from '@/models/invoice.ts';
-
-import SnackBar from '@/components/desktop/SnackBar.vue';
-
-type SnackBarType = InstanceType<typeof SnackBar>;
-
-const props = defineProps<{
-    show: boolean;
-    customer: Customer | null;
-}>();
-
-const emit = defineEmits<{
-    (e: 'update:show', value: boolean): void;
-    (e: 'saved', customer: Customer): void;
-}>();
-
-const { tt } = useI18n();
-const invoicesStore = useInvoicesStore();
-const snackbar = useTemplateRef<SnackBarType>('snackbar');
-
-const showDialog = computed({
-    get: () => props.show,
-    set: value => emit('update:show', value)
-});
-
-const saving = ref<boolean>(false);
-const form = ref<CustomerSaveRequest>({ name: '', contactName: '', addressLines: '', email: '' });
-
-watch(() => props.show, show => {
-    if (show) {
-        form.value = props.customer ? { ...props.customer } : { name: '', contactName: '', addressLines: '', email: '' };
-    }
-});
-
-function save(): void {
-    saving.value = true;
-
-    invoicesStore.saveCustomer(form.value).then(saved => {
-        emit('saved', saved);
-        showDialog.value = false;
-    }).catch(error => {
-        if (!error.processed) {
-            snackbar.value?.showError(error);
-        }
-    }).finally(() => {
-        saving.value = false;
-    });
-}
-</script>
-```
-
-- [ ] **Step 2: Create `src/views/desktop/invoices/dialogs/InvoiceEditDialog.vue`**
-
-```vue
-<template>
-    <v-dialog v-model="showDialog" max-width="960" persistent>
-        <v-card>
-            <v-card-title>{{ invoice ? tt('Edit Invoice') : tt('New Invoice') }}</v-card-title>
-
-            <v-card-text>
-                <v-row>
-                    <v-col cols="12" md="6" class="d-flex align-start gap-2">
-                        <v-select variant="outlined" density="compact" :label="tt('Customer')"
-                                  :items="customers" item-title="name" item-value="id" v-model="form.customerId" />
-                        <v-btn variant="tonal" :icon="true" size="small" class="mt-1" @click="showCustomerDialog = true">
-                            <v-icon :icon="mdiPlus" />
-                            <v-tooltip activator="parent">{{ tt('Add Customer') }}</v-tooltip>
-                        </v-btn>
-                    </v-col>
-                    <v-col cols="12" md="6">
-                        <v-text-field variant="outlined" density="compact" :label="tt('Invoice Number')" v-model="form.number" />
-                    </v-col>
-                    <v-col cols="12" md="6">
-                        <v-text-field variant="outlined" density="compact" type="date" :label="tt('Invoice Date')"
-                                      v-model="form.invoiceDate" @update:model-value="onInvoiceDateChanged" />
-                    </v-col>
-                    <v-col cols="12" md="6">
-                        <v-text-field variant="outlined" density="compact" type="date" :label="tt('Payment Due')"
-                                      :min="form.invoiceDate" v-model="form.dueDate" />
-                    </v-col>
-                </v-row>
-
-                <div class="text-title-small mb-2">{{ tt('Services') }}</div>
-                <v-row dense v-for="(line, index) in lines" :key="index" class="align-start">
-                    <v-col cols="12" md="3">
-                        <v-text-field variant="outlined" density="compact" :label="tt('Item')" v-model="line.itemName" />
-                    </v-col>
-                    <v-col cols="12" md="4">
-                        <v-textarea variant="outlined" density="compact" rows="1" auto-grow :label="tt('Description')" v-model="line.description" />
-                    </v-col>
-                    <v-col cols="4" md="1">
-                        <v-text-field variant="outlined" density="compact" type="number" min="1" :label="tt('Qty')" v-model.number="line.quantity" />
-                    </v-col>
-                    <v-col cols="4" md="2">
-                        <v-text-field variant="outlined" density="compact" type="number" min="0" step="0.01" :label="tt('Rate')" prefix="₹" v-model.number="line.rateRupees" />
-                    </v-col>
-                    <v-col cols="3" md="1" class="text-right pt-4">{{ formatInvoiceAmount(rupeesToPaise(line.rateRupees || 0) * (line.quantity || 0)) }}</v-col>
-                    <v-col cols="1" md="1" class="text-right">
-                        <v-btn variant="text" :icon="true" size="small" :disabled="lines.length <= 1" @click="lines.splice(index, 1)">
-                            <v-icon :icon="mdiDeleteOutline" />
-                        </v-btn>
-                    </v-col>
-                </v-row>
-                <v-btn variant="text" size="small" @click="addLine">
-                    <v-icon :icon="mdiPlus" start />{{ tt('Add Line') }}
-                </v-btn>
-
-                <div class="d-flex justify-end text-title-medium my-4">
-                    <span class="me-4">{{ tt('Total') }}:</span>
-                    <span>{{ formatInvoiceAmount(totals.total) }}</span>
-                </div>
-
-                <v-textarea variant="outlined" density="compact" rows="6" :label="tt('Notes / Terms')" v-model="form.notes" />
-            </v-card-text>
-
-            <v-card-actions>
-                <v-spacer />
-                <v-btn variant="text" :disabled="saving" @click="showDialog = false">{{ tt('Cancel') }}</v-btn>
-                <v-btn color="primary" variant="tonal" :loading="saving" :disabled="saving || !isValid" @click="save">{{ tt('Save') }}</v-btn>
-            </v-card-actions>
-        </v-card>
-    </v-dialog>
-
-    <customer-edit-dialog v-model:show="showCustomerDialog" :customer="null" @saved="onCustomerAdded" />
-    <snack-bar ref="snackbar" />
-</template>
-
-<script setup lang="ts">
-import { ref, computed, watch, useTemplateRef } from 'vue';
-
-import { mdiPlus, mdiDeleteOutline } from '@mdi/js';
-
-import { useI18n } from '@/locales/helpers.ts';
-import { useInvoicesStore } from '@/stores/invoice.ts';
-import type { Customer, Invoice, InvoiceProfile, InvoiceSaveRequest } from '@/models/invoice.ts';
-import { computeInvoiceTotals, formatInvoiceAmount, addDaysToDate, getTodayDateString, rupeesToPaise, paiseToRupees } from '@/lib/invoice.ts';
-
-import CustomerEditDialog from './CustomerEditDialog.vue';
-import SnackBar from '@/components/desktop/SnackBar.vue';
-
-type SnackBarType = InstanceType<typeof SnackBar>;
-
-interface EditableLine {
-    itemName: string;
-    description: string;
-    quantity: number;
-    rateRupees: number;
-}
-
-const props = defineProps<{
-    show: boolean;
-    invoice: Invoice | null;
-    duplicateFrom: Invoice | null;
-}>();
-
-const emit = defineEmits<{
-    (e: 'update:show', value: boolean): void;
-    (e: 'saved', invoice: Invoice): void;
-}>();
-
-const { tt } = useI18n();
-const invoicesStore = useInvoicesStore();
-const snackbar = useTemplateRef<SnackBarType>('snackbar');
-
-const showDialog = computed({
-    get: () => props.show,
-    set: value => emit('update:show', value)
-});
-
-const saving = ref<boolean>(false);
-const showCustomerDialog = ref<boolean>(false);
-const customers = ref<Customer[]>([]);
-const profile = ref<InvoiceProfile | null>(null);
-const form = ref<Omit<InvoiceSaveRequest, 'lines'>>({ number: '', customerId: '', invoiceDate: '', dueDate: '', notes: '' });
-const lines = ref<EditableLine[]>([]);
-
-const totals = computed(() => computeInvoiceTotals(lines.value.map(line => ({ quantity: line.quantity || 0, rate: rupeesToPaise(line.rateRupees || 0) }))));
-
-const isValid = computed(() => !!form.value.number.trim() && !!form.value.customerId && !!form.value.invoiceDate
-    && form.value.dueDate >= form.value.invoiceDate
-    && lines.value.length > 0 && lines.value.every(line => line.itemName.trim() && line.quantity >= 1 && line.rateRupees > 0));
-
-function showError(error: { processed?: boolean }): void {
-    if (!error.processed) {
-        snackbar.value?.showError(error);
-    }
-}
-
-function addLine(): void {
-    lines.value.push({ itemName: '', description: '', quantity: 1, rateRupees: 0 });
-}
-
-function suggestNumber(): void {
-    invoicesStore.getNextInvoiceNumber(form.value.invoiceDate).then(number => {
-        form.value.number = number;
-    }).catch(showError);
-}
-
-function onInvoiceDateChanged(): void {
-    if (!form.value.invoiceDate) {
-        return;
-    }
-
-    form.value.dueDate = addDaysToDate(form.value.invoiceDate, profile.value?.defaultTermsDays ?? 7);
-
-    if (!props.invoice) {
-        suggestNumber();
-    }
-}
-
-function onCustomerAdded(customer: Customer): void {
-    customers.value.push(customer);
-    form.value.customerId = customer.id;
-}
-
-watch(() => props.show, show => {
-    if (!show) {
-        return;
-    }
-
-    invoicesStore.getAllCustomers().then(loaded => {
-        customers.value = loaded;
-    }).catch(showError);
-
-    invoicesStore.getInvoiceProfile().then(loaded => {
-        profile.value = loaded;
-        const source = props.invoice ?? props.duplicateFrom;
-
-        if (props.invoice) {
-            form.value = {
-                id: props.invoice.id, number: props.invoice.number, customerId: props.invoice.customerId,
-                invoiceDate: props.invoice.invoiceDate, dueDate: props.invoice.dueDate, notes: props.invoice.notes
-            };
-        } else {
-            const today = getTodayDateString();
-            form.value = {
-                number: '', customerId: source?.customerId ?? '', invoiceDate: today,
-                dueDate: addDaysToDate(today, loaded.defaultTermsDays), notes: source?.notes ?? loaded.defaultNotes
-            };
-            suggestNumber();
-        }
-
-        lines.value = source?.lines?.length
-            ? source.lines.map(line => ({ itemName: line.itemName, description: line.description, quantity: line.quantity, rateRupees: paiseToRupees(line.rate) }))
-            : [{ itemName: '', description: '', quantity: 1, rateRupees: 0 }];
-    }).catch(showError);
-});
-
-function save(): void {
-    saving.value = true;
-
-    invoicesStore.saveInvoice({
-        ...form.value,
-        lines: lines.value.map(line => ({ itemName: line.itemName.trim(), description: line.description, quantity: line.quantity, rate: rupeesToPaise(line.rateRupees) }))
-    }).then(saved => {
-        emit('saved', saved);
-        showDialog.value = false;
-    }).catch(showError).finally(() => {
-        saving.value = false;
-    });
-}
-</script>
-```
-
-- [ ] **Step 3: Replace `src/views/desktop/invoices/ListPage.vue`**
-
-```vue
-<template>
-    <v-row class="match-height">
-        <v-col cols="12">
-            <v-card>
-                <template #title>
-                    <div class="title-and-toolbar d-flex align-center">
-                        <span>{{ tt('Invoices') }}</span>
-                        <v-btn density="compact" color="default" variant="text" size="24" class="ms-2" :icon="true" :loading="loading" @click="reload">
-                            <template #loader>
-                                <v-progress-circular indeterminate size="20"/>
-                            </template>
-                            <v-icon :icon="mdiRefresh" size="24" />
-                            <v-tooltip activator="parent">{{ tt('Refresh') }}</v-tooltip>
-                        </v-btn>
-                        <v-spacer />
-                        <v-btn variant="text" size="small" class="me-2" to="/settings/invoice_profile">{{ tt('Invoice Profile') }}</v-btn>
-                        <v-btn color="primary" variant="tonal" size="small" :disabled="loading" @click="addInvoice">
-                            <v-icon :icon="mdiPlus" size="20" start />{{ tt('New Invoice') }}
-                        </v-btn>
-                    </div>
-                </template>
-
-                <v-card-text class="d-flex flex-wrap gap-6">
-                    <div>
-                        <div class="text-body-small">{{ tt('Outstanding') }}</div>
-                        <div class="text-title-large">{{ formatInvoiceAmount(outstandingTotal) }}</div>
-                    </div>
-                    <div>
-                        <div class="text-body-small">{{ tt('Overdue') }}</div>
-                        <div class="text-title-large" :class="{ 'text-error': overdueTotal > 0 }">{{ formatInvoiceAmount(overdueTotal) }}</div>
-                    </div>
-                </v-card-text>
-
-                <v-card-text class="d-flex flex-wrap align-center gap-4">
-                    <v-btn-toggle v-model="filter" density="compact" variant="outlined" mandatory>
-                        <v-btn value="all">{{ tt('All') }}</v-btn>
-                        <v-btn value="outstanding">{{ tt('Outstanding') }}</v-btn>
-                        <v-btn value="paid">{{ tt('Paid') }}</v-btn>
-                    </v-btn-toggle>
-                    <v-select class="invoice-customer-filter" variant="outlined" density="compact" hide-details clearable
-                              :label="tt('Customer')" :items="customerOptions" v-model="customerFilter" />
-                </v-card-text>
-
-                <v-table hover>
-                    <thead>
-                    <tr>
-                        <th>{{ tt('Number') }}</th>
-                        <th>{{ tt('Customer') }}</th>
-                        <th>{{ tt('Invoice Date') }}</th>
-                        <th>{{ tt('Payment Due') }}</th>
-                        <th class="text-right">{{ tt('Total') }}</th>
-                        <th class="text-right">{{ tt('Received') }}</th>
-                        <th class="text-right">{{ tt('Balance Due') }}</th>
-                        <th>{{ tt('Status') }}</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    <tr class="cursor-pointer" :key="invoice.id" v-for="invoice in filteredInvoices" @click="openInvoice(invoice)">
-                        <td>{{ invoice.number }}</td>
-                        <td>{{ invoice.billToName }}</td>
-                        <td>{{ formatInvoiceDate(invoice.invoiceDate) }}</td>
-                        <td>{{ formatInvoiceDate(invoice.dueDate) }}</td>
-                        <td class="text-right">{{ formatInvoiceAmount(invoice.total) }}</td>
-                        <td class="text-right">{{ formatInvoiceAmount(invoice.received) }}</td>
-                        <td class="text-right">{{ formatInvoiceAmount(getInvoiceBalanceDue(invoice)) }}</td>
-                        <td><invoice-status-chip :invoice="invoice" :today="today" /></td>
-                    </tr>
-                    <tr v-if="!loading && !filteredInvoices.length">
-                        <td colspan="8" class="text-center text-medium-emphasis py-6">{{ tt('No invoices') }}</td>
-                    </tr>
-                    </tbody>
-                </v-table>
-            </v-card>
-        </v-col>
-    </v-row>
-
-    <invoice-edit-dialog v-model:show="showEditDialog" :invoice="null" :duplicate-from="null" @saved="onInvoiceSaved" />
-    <snack-bar ref="snackbar" />
-</template>
-
-<script setup lang="ts">
-import { ref, computed, onMounted, useTemplateRef } from 'vue';
-import { useRouter } from 'vue-router';
-
-import { mdiRefresh, mdiPlus } from '@mdi/js';
-
-import { useI18n } from '@/locales/helpers.ts';
-import { useInvoicesStore } from '@/stores/invoice.ts';
-import type { Invoice } from '@/models/invoice.ts';
-import { formatInvoiceAmount, formatInvoiceDate, getInvoiceBalanceDue, getInvoiceStatus, isInvoiceOverdue, getTodayDateString } from '@/lib/invoice.ts';
-
-import InvoiceEditDialog from './dialogs/InvoiceEditDialog.vue';
-import InvoiceStatusChip from './InvoiceStatusChip.vue';
-import SnackBar from '@/components/desktop/SnackBar.vue';
-
-type SnackBarType = InstanceType<typeof SnackBar>;
-
-const { tt } = useI18n();
-const router = useRouter();
-const invoicesStore = useInvoicesStore();
-const snackbar = useTemplateRef<SnackBarType>('snackbar');
-
-const loading = ref<boolean>(false);
-const showEditDialog = ref<boolean>(false);
-const invoices = ref<Invoice[]>([]);
-const filter = ref<'all' | 'outstanding' | 'paid'>('all');
-const customerFilter = ref<string | null>(null);
-const today = getTodayDateString();
-
-const customerOptions = computed(() => Array.from(new Set(invoices.value.map(invoice => invoice.billToName))).sort());
-
-const filteredInvoices = computed(() => invoices.value.filter(invoice => {
-    const paid = getInvoiceStatus(invoice) === 'paid';
-    return (filter.value === 'all' || (filter.value === 'paid') === paid)
-        && (!customerFilter.value || invoice.billToName === customerFilter.value);
-}));
-
-const outstandingTotal = computed(() => invoices.value
-    .filter(invoice => getInvoiceStatus(invoice) !== 'paid')
-    .reduce((sum, invoice) => sum + getInvoiceBalanceDue(invoice), 0));
-
-const overdueTotal = computed(() => invoices.value
-    .filter(invoice => isInvoiceOverdue(invoice, today))
-    .reduce((sum, invoice) => sum + getInvoiceBalanceDue(invoice), 0));
-
-function reload(): void {
-    loading.value = true;
-
-    invoicesStore.getAllInvoices().then(loaded => {
-        invoices.value = loaded;
-    }).catch(error => {
-        if (!error.processed) {
-            snackbar.value?.showError(error);
-        }
-    }).finally(() => {
-        loading.value = false;
-    });
-}
-
-function addInvoice(): void {
-    showEditDialog.value = true;
-}
-
-function openInvoice(invoice: Invoice): void {
-    router.push(`/invoice/view?id=${invoice.id}`);
-}
-
-function onInvoiceSaved(invoice: Invoice): void {
-    openInvoice(invoice);
-}
-
-onMounted(reload);
-</script>
-
-<style scoped>
-.invoice-customer-filter {
-    max-width: 280px;
-}
-</style>
-```
-
-- [ ] **Step 4: Create `src/views/desktop/invoices/InvoiceStatusChip.vue`** (used by the list and the view page)
-
-```vue
-<template>
-    <v-chip size="small" variant="tonal" :color="color">{{ tt(label) }}</v-chip>
-</template>
-
-<script setup lang="ts">
-import { computed } from 'vue';
-
-import { useI18n } from '@/locales/helpers.ts';
-import type { Invoice } from '@/models/invoice.ts';
-import { getInvoiceStatus, isInvoiceOverdue } from '@/lib/invoice.ts';
-
-const props = defineProps<{
-    invoice: Invoice;
-    today: string;
-}>();
-
-const { tt } = useI18n();
-
-const label = computed<string>(() => {
-    if (isInvoiceOverdue(props.invoice, props.today)) {
-        return 'Overdue';
-    }
-
-    return { unpaid: 'Unpaid', partial: 'Partially Paid', paid: 'Paid' }[getInvoiceStatus(props.invoice)];
-});
-
-const color = computed<string>(() => ({ Overdue: 'error', Unpaid: 'warning', 'Partially Paid': 'info', Paid: 'success' } as Record<string, string>)[label.value]!);
-</script>
-```
-
-- [ ] **Step 5: Type-check and check in the browser**
-
-Run: `npx vue-tsc --noEmit && npx eslint src/views/desktop/invoices`
-Expected: clean.
-
-In the browser: Invoices → New Invoice. Add customer "Quber Tech" (Kanika Batra, the London address, kanika.batra@qubertech.com) from the + button; it gets selected. Set invoice date 2026-04-23: number becomes `CA/2026-27/01`, due date 2026-04-30, notes prefilled from the profile. One line: Consulting / "Software Consulting\nQuber Tech" / 1 / 370000. Total shows ₹370,000.00. Save: you land on `/invoice/view?id=…` (blank until Task 9). Back on the list: the row shows ₹370,000.00 total, ₹0.00 received, and Overdue (since its due date is in the past). Outstanding and Overdue both show ₹370,000.00. The Paid tab shows nothing.
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add src/views/desktop/invoices
-git commit --no-verify -m "invoices: list page and edit dialogs"
-```
-
----
-
-### Task 9: Invoice view page, print document, payments panel
-
-**Files:**
-- Create: `src/components/desktop/InvoiceDocument.vue`
-- Create (replace placeholder): `src/views/desktop/invoices/ViewPage.vue`
-
-**Interfaces:**
-- Consumes: Task 6 store and helpers; Task 8 `InvoiceEditDialog`, `InvoiceStatusChip`; existing `useAccountsStore()` (`loadAllAccounts({ force: false })`, `allAccountsMap: Record<string, Account>` with `.name`).
-- Produces: `InvoiceDocument` props `invoice: Invoice` (with `lines`), `profile: InvoiceProfile`. Route prop `id: string` on `ViewPage`.
-
-- [ ] **Step 1: Create `src/components/desktop/InvoiceDocument.vue`**
-
-A pure component, so a server-side renderer for emailed invoices can later mirror its structure.
+- [ ] **Step 1: Create `src/components/common/InvoiceDocument.vue`**
 
 ```vue
 <template>
@@ -3482,9 +3486,9 @@ A pure component, so a server-side renderer for emailed invoices can later mirro
             <table class="invoice-meta">
                 <tbody>
                 <tr><th>Invoice Number:</th><td>{{ invoice.number }}</td></tr>
-                <tr><th>Invoice Date:</th><td>{{ formatInvoiceDate(invoice.invoiceDate) }}</td></tr>
-                <tr><th>Payment Due:</th><td>{{ formatInvoiceDate(invoice.dueDate) }}</td></tr>
-                <tr class="invoice-meta-highlight"><th>Amount Due ({{ invoice.currency }}):</th><td class="invoice-strong">{{ formatInvoiceAmount(balanceDue) }}</td></tr>
+                <tr><th>Invoice Date:</th><td>{{ formatInvoiceDocumentDate(invoice.invoiceDate) }}</td></tr>
+                <tr><th>Payment Due:</th><td>{{ formatInvoiceDocumentDate(invoice.dueDate) }}</td></tr>
+                <tr class="invoice-meta-highlight"><th>Amount Due ({{ invoice.currency }}):</th><td class="invoice-strong">{{ formatInvoiceDocumentAmount(balanceDue) }}</td></tr>
                 </tbody>
             </table>
         </div>
@@ -3492,10 +3496,10 @@ A pure component, so a server-side renderer for emailed invoices can later mirro
         <table class="invoice-lines">
             <thead>
             <tr>
-                <th class="text-left">Services</th>
-                <th class="text-right" v-if="showQuantity">Quantity</th>
-                <th class="text-right">Rate</th>
-                <th class="text-right">Amount</th>
+                <th class="invoice-left">Services</th>
+                <th class="invoice-right" v-if="showQuantity">Quantity</th>
+                <th class="invoice-right">Rate</th>
+                <th class="invoice-right">Amount</th>
             </tr>
             </thead>
             <tbody>
@@ -3504,18 +3508,18 @@ A pure component, so a server-side renderer for emailed invoices can later mirro
                     <div class="invoice-strong">{{ line.itemName }}</div>
                     <div class="invoice-muted invoice-pre">{{ line.description }}</div>
                 </td>
-                <td class="text-right" v-if="showQuantity">{{ line.quantity }}</td>
-                <td class="text-right">{{ formatInvoiceAmount(line.rate) }}</td>
-                <td class="text-right">{{ formatInvoiceAmount(line.amount) }}</td>
+                <td class="invoice-right" v-if="showQuantity">{{ line.quantity }}</td>
+                <td class="invoice-right">{{ formatInvoiceDocumentAmount(line.rate) }}</td>
+                <td class="invoice-right">{{ formatInvoiceDocumentAmount(line.amount) }}</td>
             </tr>
             </tbody>
         </table>
 
         <table class="invoice-totals">
             <tbody>
-            <tr><th>Total:</th><td>{{ formatInvoiceAmount(invoice.total) }}</td></tr>
-            <tr v-if="invoice.received > 0"><th>Payments received:</th><td>−{{ formatInvoiceAmount(Math.min(invoice.received, invoice.total)) }}</td></tr>
-            <tr class="invoice-totals-due"><th>Amount Due ({{ invoice.currency }}):</th><td>{{ formatInvoiceAmount(balanceDue) }}</td></tr>
+            <tr><th>Total:</th><td>{{ formatInvoiceDocumentAmount(invoice.total) }}</td></tr>
+            <tr v-if="invoice.received > 0"><th>Payments received:</th><td>−{{ formatInvoiceDocumentAmount(Math.min(invoice.received, invoice.total)) }}</td></tr>
+            <tr class="invoice-totals-due"><th>Amount Due ({{ invoice.currency }}):</th><td>{{ formatInvoiceDocumentAmount(balanceDue) }}</td></tr>
             </tbody>
         </table>
 
@@ -3530,7 +3534,7 @@ A pure component, so a server-side renderer for emailed invoices can later mirro
 import { computed } from 'vue';
 
 import type { Invoice, InvoiceProfile } from '@/models/invoice.ts';
-import { formatInvoiceAmount, formatInvoiceDate, getInvoiceBalanceDue } from '@/lib/invoice.ts';
+import { formatInvoiceDocumentAmount, formatInvoiceDocumentDate, getInvoiceBalanceDue } from '@/lib/invoice.ts';
 
 const props = defineProps<{
     invoice: Invoice;
@@ -3538,11 +3542,11 @@ const props = defineProps<{
 }>();
 
 const balanceDue = computed<number>(() => getInvoiceBalanceDue(props.invoice));
-const showQuantity = computed<boolean>(() => !!props.invoice.lines?.some(line => line.quantity !== 1));
+const showQuantity = computed<boolean>(() => props.invoice.lines.some(line => line.quantity !== 1));
 </script>
 
 <style scoped>
-/* Printed in English regardless of app language: it is a document sent to the customer. */
+/* A document for the customer: always white paper and black text, whatever the app theme or language. */
 .invoice-document {
     --invoice-accent: #3d86f5;
     background: #fff;
@@ -3551,6 +3555,7 @@ const showQuantity = computed<boolean>(() => !!props.invoice.lines?.some(line =>
     font-size: 13px;
     line-height: 1.35;
     max-width: 800px;
+    min-width: 640px;
     margin: 0 auto;
     padding: 32px;
 }
@@ -3584,6 +3589,14 @@ const showQuantity = computed<boolean>(() => !!props.invoice.lines?.some(line =>
 
 .invoice-gap {
     height: 12px;
+}
+
+.invoice-left {
+    text-align: left;
+}
+
+.invoice-right {
+    text-align: right;
 }
 
 .invoice-banner {
@@ -3664,228 +3677,23 @@ const showQuantity = computed<boolean>(() => !!props.invoice.lines?.some(line =>
     margin-top: 56px;
 }
 </style>
-```
-
-- [ ] **Step 2: Replace `src/views/desktop/invoices/ViewPage.vue`**
-
-```vue
-<template>
-    <div class="invoice-view-toolbar d-flex flex-wrap align-center gap-2 mb-4">
-        <v-btn variant="text" :prepend-icon="mdiArrowLeft" to="/invoice/list">{{ tt('Invoices') }}</v-btn>
-        <invoice-status-chip :invoice="invoice" :today="today" v-if="invoice" />
-        <v-spacer />
-        <v-btn variant="tonal" :disabled="!invoice" @click="showEditDialog = true">{{ tt('Edit') }}</v-btn>
-        <v-btn variant="tonal" :disabled="!invoice" @click="showDuplicateDialog = true">{{ tt('Duplicate') }}</v-btn>
-        <v-btn variant="tonal" :disabled="!invoice || busy" @click="toggleClosed" v-if="invoice">
-            {{ invoice.closedManually ? tt('Reopen') : tt('Mark as Paid') }}
-        </v-btn>
-        <v-btn color="error" variant="text" :disabled="!invoice || busy" @click="remove">{{ tt('Delete') }}</v-btn>
-        <v-btn color="primary" :prepend-icon="mdiPrinterOutline" :disabled="!invoice || !profile" @click="print">{{ tt('Print / Save PDF') }}</v-btn>
-    </div>
-
-    <v-row v-if="invoice && profile">
-        <v-col cols="12" lg="8">
-            <v-card class="invoice-print-area">
-                <invoice-document :invoice="invoice" :profile="profile" />
-            </v-card>
-        </v-col>
-
-        <v-col cols="12" lg="4" class="invoice-view-payments">
-            <v-card>
-                <v-card-title>{{ tt('Payments') }}</v-card-title>
-                <v-card-text>
-                    <div class="d-flex justify-space-between"><span>{{ tt('Total') }}</span><span>{{ formatInvoiceAmount(invoice.total) }}</span></div>
-                    <div class="d-flex justify-space-between"><span>{{ tt('Received') }}</span><span>{{ formatInvoiceAmount(invoice.received) }}</span></div>
-                    <div class="d-flex justify-space-between" v-if="bankCharges > 0"><span>{{ tt('Bank Charges') }}</span><span>{{ formatInvoiceAmount(bankCharges) }}</span></div>
-                    <div class="d-flex justify-space-between text-title-medium mt-1" v-else>
-                        <span>{{ tt('Balance Due') }}</span><span>{{ formatInvoiceAmount(getInvoiceBalanceDue(invoice)) }}</span>
-                    </div>
-                </v-card-text>
-
-                <v-list density="compact" v-if="invoice.payments?.length">
-                    <v-list-item :key="payment.transactionId" v-for="payment in invoice.payments"
-                                 :title="formatInvoiceAmount(payment.amount)" :subtitle="paymentSubtitle(payment)">
-                        <template #append>
-                            <v-btn variant="text" size="small" :icon="true" :disabled="busy" @click="unlink(payment)">
-                                <v-icon :icon="mdiLinkOff" />
-                                <v-tooltip activator="parent">{{ tt('Unlink') }}</v-tooltip>
-                            </v-btn>
-                        </template>
-                    </v-list-item>
-                </v-list>
-
-                <template v-if="suggestions.length">
-                    <v-divider />
-                    <v-card-subtitle class="mt-3">{{ tt('Suggested Matches') }}</v-card-subtitle>
-                    <v-list density="compact">
-                        <v-list-item :key="suggestion.transactionId" v-for="suggestion in suggestions"
-                                     :title="formatInvoiceAmount(suggestion.amount)" :subtitle="paymentSubtitle(suggestion)">
-                            <template #append>
-                                <v-btn variant="tonal" size="small" :disabled="busy" @click="link(suggestion)">{{ tt('Link') }}</v-btn>
-                            </template>
-                        </v-list-item>
-                    </v-list>
-                </template>
-                <v-card-text class="text-medium-emphasis" v-else-if="getInvoiceStatus(invoice) !== 'paid'">
-                    {{ tt('No matching income transactions found yet.') }}
-                </v-card-text>
-            </v-card>
-        </v-col>
-    </v-row>
-
-    <invoice-edit-dialog v-model:show="showEditDialog" :invoice="invoice" :duplicate-from="null" @saved="load" />
-    <invoice-edit-dialog v-model:show="showDuplicateDialog" :invoice="null" :duplicate-from="invoice" @saved="openInvoice" />
-    <confirm-dialog ref="confirmDialog" />
-    <snack-bar ref="snackbar" />
-</template>
-
-<script setup lang="ts">
-import { ref, computed, watch, onBeforeUnmount, useTemplateRef } from 'vue';
-import { useRouter } from 'vue-router';
-
-import { mdiArrowLeft, mdiPrinterOutline, mdiLinkOff } from '@mdi/js';
-
-import { useI18n } from '@/locales/helpers.ts';
-import { useInvoicesStore } from '@/stores/invoice.ts';
-import { useAccountsStore } from '@/stores/account.ts';
-import type { Invoice, InvoicePayment, InvoiceProfile } from '@/models/invoice.ts';
-import {
-    formatInvoiceAmount,
-    getInvoiceBalanceDue,
-    getInvoiceBankCharges,
-    getInvoiceStatus,
-    getInvoicePdfFileName,
-    getTodayDateString
-} from '@/lib/invoice.ts';
-
-import InvoiceDocument from '@/components/desktop/InvoiceDocument.vue';
-import InvoiceEditDialog from './dialogs/InvoiceEditDialog.vue';
-import InvoiceStatusChip from './InvoiceStatusChip.vue';
-import ConfirmDialog from '@/components/desktop/ConfirmDialog.vue';
-import SnackBar from '@/components/desktop/SnackBar.vue';
-
-type ConfirmDialogType = InstanceType<typeof ConfirmDialog>;
-type SnackBarType = InstanceType<typeof SnackBar>;
-
-const props = defineProps<{
-    id?: string;
-}>();
-
-const { tt } = useI18n();
-const router = useRouter();
-const invoicesStore = useInvoicesStore();
-const accountsStore = useAccountsStore();
-const confirmDialog = useTemplateRef<ConfirmDialogType>('confirmDialog');
-const snackbar = useTemplateRef<SnackBarType>('snackbar');
-
-const invoice = ref<Invoice | null>(null);
-const profile = ref<InvoiceProfile | null>(null);
-const suggestions = ref<InvoicePayment[]>([]);
-const busy = ref<boolean>(false);
-const showEditDialog = ref<boolean>(false);
-const showDuplicateDialog = ref<boolean>(false);
-const today = getTodayDateString();
-const originalTitle = document.title;
-
-const bankCharges = computed<number>(() => invoice.value ? getInvoiceBankCharges(invoice.value) : 0);
-
-function showError(error: { processed?: boolean }): void {
-    if (!error.processed) {
-        snackbar.value?.showError(error);
-    }
-}
-
-function paymentSubtitle(payment: InvoicePayment): string {
-    const date = new Date(payment.transactionTime * 1000).toLocaleDateString();
-    const account = accountsStore.allAccountsMap[payment.accountId]?.name ?? '';
-    return [date, account, payment.comment].filter(part => !!part).join(' · ');
-}
-
-function load(): void {
-    if (!props.id) {
-        return;
-    }
-
-    Promise.all([
-        invoicesStore.getInvoice(props.id),
-        invoicesStore.getInvoiceProfile(),
-        accountsStore.loadAllAccounts({ force: false })
-    ]).then(([loadedInvoice, loadedProfile]) => {
-        invoice.value = loadedInvoice;
-        profile.value = loadedProfile;
-
-        return getInvoiceStatus(loadedInvoice) === 'paid' ? [] : invoicesStore.getInvoicePaymentSuggestions(loadedInvoice.id);
-    }).then(loadedSuggestions => {
-        suggestions.value = loadedSuggestions;
-    }).catch(showError);
-}
-
-function runAndReload(action: () => Promise<boolean>): void {
-    busy.value = true;
-    action().then(load).catch(showError).finally(() => {
-        busy.value = false;
-    });
-}
-
-function link(suggestion: InvoicePayment): void {
-    runAndReload(() => invoicesStore.linkInvoicePayment(invoice.value!.id, suggestion.transactionId));
-}
-
-function unlink(payment: InvoicePayment): void {
-    runAndReload(() => invoicesStore.unlinkInvoicePayment(invoice.value!.id, payment.transactionId));
-}
-
-function toggleClosed(): void {
-    const id = invoice.value!.id;
-    runAndReload(() => invoice.value!.closedManually ? invoicesStore.reopenInvoice(id) : invoicesStore.closeInvoice(id));
-}
-
-function remove(): void {
-    confirmDialog.value?.open('Are you sure you want to delete this invoice?').then(() => {
-        busy.value = true;
-        invoicesStore.deleteInvoice(invoice.value!.id).then(() => {
-            router.push('/invoice/list');
-        }).catch(showError).finally(() => {
-            busy.value = false;
-        });
-    });
-}
-
-function openInvoice(saved: Invoice): void {
-    router.push(`/invoice/view?id=${saved.id}`);
-}
-
-function print(): void {
-    // the browser uses document.title as the suggested PDF file name
-    document.title = getInvoicePdfFileName(invoice.value!.number, invoice.value!.dueDate);
-    window.addEventListener('afterprint', () => {
-        document.title = originalTitle;
-    }, { once: true });
-    window.print();
-}
-
-watch(() => props.id, load, { immediate: true });
-
-onBeforeUnmount(() => {
-    document.title = originalTitle;
-});
-</script>
 
 <style>
-/* Not scoped: printing has to hide the app chrome outside this component. */
+/* Not scoped: when printing, hide the whole app (desktop dialog overlay or mobile page) and show only the document. */
 @media print {
     body * {
         visibility: hidden;
     }
 
-    .invoice-print-area, .invoice-print-area * {
+    .invoice-document, .invoice-document * {
         visibility: visible;
     }
 
-    .invoice-print-area {
-        position: absolute;
+    .invoice-document {
+        position: fixed;
         inset: 0;
-        box-shadow: none !important;
+        min-width: 0;
+        max-width: none;
     }
 
     @page {
@@ -3895,94 +3703,2733 @@ onBeforeUnmount(() => {
 </style>
 ```
 
-- [ ] **Step 3: Type-check and lint**
+- [ ] **Step 2: Type-check and lint**
 
-Run: `npx vue-tsc --noEmit && npx eslint src/views/desktop/invoices src/components/desktop/InvoiceDocument.vue`
+Run: `npx vue-tsc --noEmit && npx eslint src/components/common`
 Expected: clean.
 
-- [ ] **Step 4: Check against the sample in the browser**
-
-Open the `CA/2026-27/01` invoice created in Task 8.
-- The document matches the Wave sample (`~/Desktop/Invoice_CA_2026-27_01_2026-04-30.pdf`): logo top-left, business block top-right, double-rule "Invoice" banner, bill-to left, meta box right with grey "Amount Due (INR): ₹370,000.00" row, Services/Rate/Amount table with dotted rules (no Quantity column), totals, notes. The ₹ glyph renders (Wave's PDF shows ☐).
-- Print / Save PDF: the dialog shows only the invoice (no header, no payments panel) and the suggested file name is `Invoice_CA_2026-27_01_2026-04-30`. Save it and compare side by side with the Wave PDF.
-- Payments: add an income transaction of ₹3,68,500 to the PNB account dated 2026-04-29 (Transactions page). Reload the invoice: it appears under Suggested Matches. Link: status becomes Paid, panel shows Bank Charges ₹1,500.00, the document's Amount Due shows ₹1,500.00 and "Payments received" appears. Unlink: back to Overdue.
-- Partial: link a ₹2,00,000 income → Partially Paid with ₹1,70,000 balance due; the suggestions now only offer amounts ≤ ₹1,70,000.
-- Mark as Paid with the partial payment → Paid, Bank Charges ₹1,70,000; Reopen → Partially Paid.
-- Duplicate → new-invoice dialog with the same customer, lines and notes, the next number, today's date.
-- Delete the transaction you linked (Transactions page) → the invoice's received drops back.
-
-- [ ] **Step 5: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
-git add src/components/desktop/InvoiceDocument.vue src/views/desktop/invoices/ViewPage.vue
-git commit --no-verify -m "invoices: view page, print layout and payments panel"
+git add src/components/common/InvoiceDocument.vue
+git commit --no-verify -m "invoices: printable invoice document"
 ```
 
 ---
 
-### Task 10: Locale strings and full verification
+### Task 9: Desktop navigation and Invoice Profile settings page
+
+**Files:**
+- Create: `src/views/desktop/settings/InvoiceProfileSettingPage.vue`
+- Modify: `src/router/desktop.ts`, `src/components/desktop/MainPageLayout.vue` (after the Accounts `router-link` ~line 89; `@mdi/js` import ~lines 203-225), `src/views/desktop/settings/SettingsPageLayout.vue` (after the `/settings/sms_capture` item ~line 122; its `@mdi/js` import)
+
+**Interfaces:**
+- Consumes: Task 6 store (`loadInvoiceProfile`, `updateInvoiceProfile`), Task 7 `useInvoiceProfilePageBase`.
+- Produces: route `/settings/invoice_profile` (child of `SettingsPageLayout`); header buttons. The `/invoice/list` route is added in Task 10.
+
+Navigation decision: Budgets and Buckets keep their existing routes and Settings sidebar entries; the header buttons simply link to them (no route moves, no new layout). Invoices gets its own top-level page in Task 10, built like the Accounts page.
+
+- [ ] **Step 1: Header buttons** in `src/components/desktop/MainPageLayout.vue`, after the Accounts `</router-link>` and before the Add Transaction `router-link`, copying the existing button markup exactly:
+
+```vue
+                                <router-link to="/budget/list"
+                                             :aria-current="isTopNavigationActive('/budget/list') ? 'page' : undefined">
+                                    <v-btn class="top-navigation-button ms-1" density="comfortable" variant="text"
+                                           :aria-label="tt('Budgets')" :icon="true"
+                                           :active="isTopNavigationActive('/budget/list')"
+                                           :color="isTopNavigationActive('/budget/list') ? 'primary' : 'default'">
+                                        <v-icon :icon="isTopNavigationActive('/budget/list') ? mdiWallet : mdiWalletOutline" size="24" />
+                                        <v-tooltip activator="parent">{{ tt('Budgets') }}</v-tooltip>
+                                    </v-btn>
+                                </router-link>
+
+                                <router-link to="/bucket/list"
+                                             :aria-current="isTopNavigationActive('/bucket/list') ? 'page' : undefined">
+                                    <v-btn class="top-navigation-button ms-1" density="comfortable" variant="text"
+                                           :aria-label="tt('Buckets')" :icon="true"
+                                           :active="isTopNavigationActive('/bucket/list')"
+                                           :color="isTopNavigationActive('/bucket/list') ? 'primary' : 'default'">
+                                        <v-icon :icon="isTopNavigationActive('/bucket/list') ? mdiPiggyBank : mdiPiggyBankOutline" size="24" />
+                                        <v-tooltip activator="parent">{{ tt('Buckets') }}</v-tooltip>
+                                    </v-btn>
+                                </router-link>
+
+                                <router-link to="/invoice/list"
+                                             :aria-current="isTopNavigationActive('/invoice/list') ? 'page' : undefined">
+                                    <v-btn class="top-navigation-button ms-1" density="comfortable" variant="text"
+                                           :aria-label="tt('Invoices')" :icon="true"
+                                           :active="isTopNavigationActive('/invoice/list')"
+                                           :color="isTopNavigationActive('/invoice/list') ? 'primary' : 'default'">
+                                        <v-icon :icon="isTopNavigationActive('/invoice/list') ? mdiFileDocument : mdiFileDocumentOutline" size="24" />
+                                        <v-tooltip activator="parent">{{ tt('Invoices') }}</v-tooltip>
+                                    </v-btn>
+                                </router-link>
+```
+
+Add `mdiWallet, mdiWalletOutline, mdiPiggyBank, mdiPiggyBankOutline, mdiFileDocument, mdiFileDocumentOutline` to the file's `@mdi/js` import.
+
+- [ ] **Step 2: Settings sidebar item** in `src/views/desktop/settings/SettingsPageLayout.vue`, right after the `/settings/sms_capture` `<li>`:
+
+```vue
+            <li class="nav-link">
+                <router-link to="/settings/invoice_profile">
+                    <v-icon class="nav-item-icon" :icon="mdiFileDocumentEditOutline"/>
+                    <span class="nav-item-title">{{ tt('Invoice Profile') }}</span>
+                </router-link>
+            </li>
+```
+
+Add `mdiFileDocumentEditOutline` to its `@mdi/js` import.
+
+- [ ] **Step 3: Create `src/views/desktop/settings/InvoiceProfileSettingPage.vue`** (structure copied from `src/views/desktop/users/UserBasicSettingPage.vue`)
+
+```vue
+<template>
+    <v-row>
+        <v-col cols="12">
+            <v-card class="setting-items" :class="{ 'disabled': loading || saving }">
+                <template #title>
+                    <span>{{ tt('Invoice Profile') }}</span>
+                    <v-progress-circular indeterminate size="20" class="ms-3" v-if="loading"></v-progress-circular>
+                </template>
+
+                <v-card-text class="d-flex mt-2">
+                    <v-avatar rounded="lg" variant="tonal" size="100" class="me-4 cursor-pointer">
+                        <v-img :src="newProfile.logoDataUrl" v-if="newProfile.logoDataUrl"></v-img>
+                        <v-icon size="48" :icon="mdiImageOutline" v-else />
+                        <v-menu activator="parent" width="200" location="bottom" offset="14px">
+                            <v-list>
+                                <v-list-item :disabled="saving" :title="tt('Update Logo')" @click="logoInput?.click()"></v-list-item>
+                                <v-list-item :disabled="!newProfile.logoDataUrl || saving" :title="tt('Remove Logo')" @click="newProfile.logoDataUrl = ''"></v-list-item>
+                            </v-list>
+                        </v-menu>
+                    </v-avatar>
+                    <div class="d-flex flex-column justify-center">
+                        <span class="text-body-large">{{ tt('These details are printed on every invoice.') }}</span>
+                    </div>
+                </v-card-text>
+
+                <v-divider />
+
+                <v-form>
+                    <v-card-text class="my-1 pa-0 text-body-medium">
+                        <div class="setting-item">
+                            <span>{{ tt('Business Name') }}</span>
+                            <v-spacer/>
+                            <v-text-field class="ms-4" density="compact" type="text" autocomplete="off"
+                                          persistent-placeholder max-width="400px"
+                                          :disabled="loading || saving" :placeholder="tt('Business Name')"
+                                          v-model="newProfile.businessName" />
+                        </div>
+                        <div class="setting-item">
+                            <span>{{ tt('Address') }}</span>
+                            <v-spacer/>
+                            <v-textarea class="ms-4" density="compact" rows="4" autocomplete="off"
+                                        persistent-placeholder max-width="400px"
+                                        :disabled="loading || saving" :placeholder="tt('Address')"
+                                        v-model="newProfile.addressLines" />
+                        </div>
+                        <div class="setting-item">
+                            <span>{{ tt('Phone') }}</span>
+                            <v-spacer/>
+                            <v-text-field class="ms-4" density="compact" type="text" autocomplete="off"
+                                          persistent-placeholder max-width="400px"
+                                          :disabled="loading || saving" :placeholder="tt('Phone')"
+                                          v-model="newProfile.phone" />
+                        </div>
+                        <div class="setting-item">
+                            <span>{{ tt('Website') }}</span>
+                            <v-spacer/>
+                            <v-text-field class="ms-4" density="compact" type="text" autocomplete="off"
+                                          persistent-placeholder max-width="400px"
+                                          :disabled="loading || saving" :placeholder="tt('Website')"
+                                          v-model="newProfile.website" />
+                        </div>
+                        <div class="setting-item">
+                            <span>{{ tt('Invoice Number Prefix') }}</span>
+                            <v-spacer/>
+                            <v-text-field class="ms-4" density="compact" type="text" autocomplete="off"
+                                          persistent-placeholder max-width="400px"
+                                          :disabled="loading || saving" :placeholder="tt('Invoice Number Prefix')"
+                                          v-model="newProfile.numberPrefix" />
+                        </div>
+                        <div class="setting-item">
+                            <span>{{ tt('Payment Terms (days)') }}</span>
+                            <v-spacer/>
+                            <number-input class="ms-4" density="compact" max-width="400px"
+                                          :disabled="loading || saving"
+                                          :min-value="0" :max-value="365" :max-decimal-count="0"
+                                          v-model="newProfile.defaultTermsDays" />
+                        </div>
+                        <div class="setting-item">
+                            <span>{{ tt('Default Notes / Terms') }}</span>
+                            <v-spacer/>
+                            <v-textarea class="ms-4" density="compact" rows="7" autocomplete="off"
+                                        persistent-placeholder max-width="400px"
+                                        :disabled="loading || saving" :placeholder="tt('Default Notes / Terms')"
+                                        v-model="newProfile.defaultNotes" />
+                        </div>
+                    </v-card-text>
+
+                    <v-card-text class="d-flex flex-wrap gap-4">
+                        <v-tooltip :disabled="!inputIsInvalid" :text="inputInvalidProblemMessage ? tt(inputInvalidProblemMessage) : ''">
+                            <template v-slot:activator="{ props }">
+                                <div v-bind="props" class="d-inline-block">
+                                    <v-btn :disabled="inputIsNotChanged || inputIsInvalid || saving" @click="save">
+                                        {{ tt('Save Changes') }}
+                                        <v-progress-circular indeterminate size="22" class="ms-2" v-if="saving"></v-progress-circular>
+                                    </v-btn>
+                                </div>
+                            </template>
+                        </v-tooltip>
+                        <v-btn color="default" variant="tonal" :disabled="inputIsNotChanged || saving" @click="reset">{{ tt('Reset') }}</v-btn>
+                    </v-card-text>
+                </v-form>
+            </v-card>
+        </v-col>
+    </v-row>
+
+    <snack-bar ref="snackbar" />
+    <input ref="logoInput" type="file" style="display: none" accept="image/png,image/jpeg" @change="onLogoChosen($event)" />
+</template>
+
+<script setup lang="ts">
+import { useTemplateRef } from 'vue';
+
+import { mdiImageOutline } from '@mdi/js';
+
+import SnackBar from '@/components/desktop/SnackBar.vue';
+
+import { useI18n } from '@/locales/helpers.ts';
+import { useInvoiceProfilePageBase } from '@/views/base/invoices/InvoiceProfilePageBase.ts';
+
+import { useInvoicesStore } from '@/stores/invoice.ts';
+
+type SnackBarType = InstanceType<typeof SnackBar>;
+
+const { tt } = useI18n();
+const {
+    loading,
+    saving,
+    newProfile,
+    inputIsNotChanged,
+    inputInvalidProblemMessage,
+    inputIsInvalid,
+    setProfile,
+    reset,
+    readLogoFile
+} = useInvoiceProfilePageBase();
+
+const invoicesStore = useInvoicesStore();
+
+const snackbar = useTemplateRef<SnackBarType>('snackbar');
+const logoInput = useTemplateRef<HTMLInputElement>('logoInput');
+
+function init(): void {
+    loading.value = true;
+
+    invoicesStore.loadInvoiceProfile({ force: true }).then(profile => {
+        setProfile(profile);
+        loading.value = false;
+    }).catch(error => {
+        loading.value = false;
+
+        if (!error.processed) {
+            snackbar.value?.showError(error);
+        }
+    });
+}
+
+function onLogoChosen(event: Event): void {
+    const el = event.target as HTMLInputElement;
+
+    if (!el.files || !el.files.length || !el.files[0]) {
+        return;
+    }
+
+    const logoFile = el.files[0] as File;
+    el.value = '';
+
+    readLogoFile(logoFile).then(dataUrl => {
+        newProfile.value.logoDataUrl = dataUrl;
+    }).catch(error => {
+        snackbar.value?.showError(error);
+    });
+}
+
+function save(): void {
+    saving.value = true;
+
+    invoicesStore.updateInvoiceProfile({ profile: newProfile.value }).then(profile => {
+        saving.value = false;
+        setProfile(profile);
+        snackbar.value?.showMessage('Invoice profile has been saved');
+    }).catch(error => {
+        saving.value = false;
+
+        if (!error.processed) {
+            snackbar.value?.showError(error);
+        }
+    });
+}
+
+init();
+</script>
+```
+
+- [ ] **Step 4: Route** in `src/router/desktop.ts`: import `InvoiceProfileSettingPage from '@/views/desktop/settings/InvoiceProfileSettingPage.vue'` and add to the `SettingsPageLayout` children after `/settings/sms_capture`:
+
+```ts
+                {
+                    path: '/settings/invoice_profile',
+                    component: InvoiceProfileSettingPage,
+                    beforeEnter: checkLogin
+                },
+```
+
+- [ ] **Step 5: Type-check, lint, and check in the browser**
+
+Run: `npx vue-tsc --noEmit && npx eslint src/router/desktop.ts src/components/desktop/MainPageLayout.vue src/views/desktop/settings`
+Expected: clean. (The Invoices header button points at `/invoice/list`, which 404s to the catch-all until Task 10.)
+
+With `npm run serve` and the Go backend running:
+- Header shows Budgets, Buckets, Invoices after Accounts; Budgets/Buckets open their existing pages and highlight.
+- Settings sidebar shows "Invoice Profile". Fill in the sample's details (Rishabh Jain; F-452, Phase-8B / Industrial Area, Sector 91 / Mohali, Punjab 160055 / India; 7009600910; rishabhjain.dev; prefix `CA`; 7 days; the bank-details notes block; the Codeation logo PNG via the avatar menu). Save Changes, reload: values persist; Reset restores unsaved edits; Save is disabled until something changes.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/views/desktop/settings src/router/desktop.ts src/components/desktop/MainPageLayout.vue
+git commit --no-verify -m "invoices: desktop header navigation and invoice profile settings"
+```
+
+---
+
+### Task 10: Desktop invoices page, customer dialog, invoice edit dialog
+
+**Files:**
+- Create: `src/views/desktop/invoices/ListPage.vue`, `src/views/desktop/invoices/dialogs/CustomerEditDialog.vue`, `src/views/desktop/invoices/dialogs/InvoiceEditDialog.vue`
+- Create (placeholder, replaced in Task 11): `src/views/desktop/invoices/dialogs/InvoiceDetailDialog.vue` with:
+
+```vue
+<template><div/></template>
+<script setup lang="ts">
+function open(): Promise<{ changed: boolean }> { return Promise.resolve({ changed: false }); }
+defineExpose({ open });
+</script>
+```
+- Modify: `src/router/desktop.ts` (top-level route next to `/account/list`)
+
+**Interfaces:**
+- Consumes: Task 6 store/models, Task 7 `useInvoiceListPageBase`, `useInvoiceEditPageBase`, `useCustomerEditPageBase`.
+- Produces:
+  - `CustomerEditDialog.open({ id?: string, currentCustomer?: Customer }): Promise<{ message: string, customer: Customer }>`; cancel rejects with `undefined`.
+  - `InvoiceEditDialog.open({ id?: string, currentInvoice?: Invoice, duplicateFrom?: Invoice }): Promise<{ message: string, invoice: Invoice }>`; cancel rejects with `undefined`.
+  - `InvoiceDetailDialog.open({ id: string }): Promise<{ changed: boolean }>` (built in Task 11).
+
+- [ ] **Step 1: Create `src/views/desktop/invoices/dialogs/CustomerEditDialog.vue`** (pattern: `src/views/desktop/categories/list/dialogs/EditDialog.vue`)
+
+```vue
+<template>
+    <v-dialog width="640" :persistent="isCustomerModified" v-model="showState">
+        <one-column-dialog-layout :disabled="loading || submitting" :loading="loading"
+                                  :title="tt(title)" :cancel-button-title="tt('Cancel')"
+                                  @cancel="cancel">
+            <template #content>
+                <v-form class="mt-2">
+                    <v-row>
+                        <v-col cols="12" md="6">
+                            <v-text-field type="text" autocomplete="off" persistent-placeholder
+                                          :disabled="loading || submitting"
+                                          :label="tt('Customer Name')" :placeholder="tt('Customer Name')"
+                                          v-model="customer.name" />
+                        </v-col>
+                        <v-col cols="12" md="6">
+                            <v-text-field type="text" autocomplete="off" persistent-placeholder
+                                          :disabled="loading || submitting"
+                                          :label="tt('Contact Person')" :placeholder="tt('Contact Person (optional)')"
+                                          v-model="customer.contactName" />
+                        </v-col>
+                        <v-col cols="12" md="12">
+                            <v-textarea type="text" autocomplete="off" persistent-placeholder rows="3"
+                                        :disabled="loading || submitting"
+                                        :label="tt('Address')" :placeholder="tt('Address')"
+                                        v-model="customer.addressLines" />
+                        </v-col>
+                        <v-col cols="12" md="12">
+                            <v-text-field type="email" autocomplete="off" persistent-placeholder
+                                          :disabled="loading || submitting"
+                                          :label="tt('Email')" :placeholder="tt('Email (optional)')"
+                                          v-model="customer.email" />
+                        </v-col>
+                    </v-row>
+                </v-form>
+            </template>
+
+            <template #footer>
+                <v-spacer/>
+                <v-tooltip :disabled="!inputIsEmpty" :text="inputEmptyProblemMessage ? tt(inputEmptyProblemMessage) : ''">
+                    <template v-slot:activator="{ props }">
+                        <div v-bind="props" class="d-inline-block">
+                            <v-btn :disabled="inputIsEmpty || loading || submitting" @click="save">
+                                {{ tt(saveButtonTitle) }}
+                                <v-progress-circular indeterminate size="22" class="ms-2" v-if="submitting"></v-progress-circular>
+                            </v-btn>
+                        </div>
+                    </template>
+                </v-tooltip>
+            </template>
+        </one-column-dialog-layout>
+    </v-dialog>
+
+    <snack-bar ref="snackbar" />
+</template>
+
+<script setup lang="ts">
+import { ref, computed, useTemplateRef } from 'vue';
+
+import SnackBar from '@/components/desktop/SnackBar.vue';
+
+import { useI18n } from '@/locales/helpers.ts';
+import { useCustomerEditPageBase } from '@/views/base/invoices/CustomerEditPageBase.ts';
+
+import { useInvoicesStore } from '@/stores/invoice.ts';
+
+import { Customer } from '@/models/invoice.ts';
+
+import { isEquals } from '@/lib/common.ts';
+
+type SnackBarType = InstanceType<typeof SnackBar>;
+
+interface CustomerEditResponse {
+    message: string;
+    customer: Customer;
+}
+
+const { tt } = useI18n();
+const {
+    editCustomerId,
+    loading,
+    submitting,
+    customer,
+    title,
+    saveButtonTitle,
+    inputEmptyProblemMessage,
+    inputIsEmpty
+} = useCustomerEditPageBase();
+
+const invoicesStore = useInvoicesStore();
+
+const snackbar = useTemplateRef<SnackBarType>('snackbar');
+
+let resolveFunc: ((value: CustomerEditResponse) => void) | null = null;
+let rejectFunc: ((reason?: unknown) => void) | null = null;
+
+const showState = ref<boolean>(false);
+const initCustomer = ref<Customer>(Customer.createNewCustomer());
+
+const isCustomerModified = computed<boolean>(() => !isEquals(customer.value.toCreateRequest(), initCustomer.value.toCreateRequest()));
+
+function open(options: { id?: string, currentCustomer?: Customer }): Promise<CustomerEditResponse> {
+    showState.value = true;
+    loading.value = false;
+    submitting.value = false;
+    editCustomerId.value = options.id ?? null;
+    initCustomer.value = options.currentCustomer ? options.currentCustomer.clone() : Customer.createNewCustomer();
+    customer.value = initCustomer.value.clone();
+
+    return new Promise((resolve, reject) => {
+        resolveFunc = resolve;
+        rejectFunc = reject;
+    });
+}
+
+function save(): void {
+    const problemMessage = inputEmptyProblemMessage.value;
+
+    if (problemMessage) {
+        snackbar.value?.showMessage(problemMessage);
+        return;
+    }
+
+    submitting.value = true;
+
+    invoicesStore.saveCustomer({ customer: customer.value, isEdit: !!editCustomerId.value }).then(saved => {
+        submitting.value = false;
+        resolveFunc?.({ message: editCustomerId.value ? 'You have saved this customer' : 'You have added a new customer', customer: saved });
+        showState.value = false;
+    }).catch(error => {
+        submitting.value = false;
+
+        if (!error.processed) {
+            snackbar.value?.showError(error);
+        }
+    });
+}
+
+function cancel(): void {
+    rejectFunc?.();
+    showState.value = false;
+}
+
+defineExpose({
+    open
+});
+</script>
+```
+
+- [ ] **Step 2: Create `src/views/desktop/invoices/dialogs/InvoiceEditDialog.vue`**
+
+```vue
+<template>
+    <v-dialog width="1000" :persistent="isInvoiceModified" v-model="showState">
+        <one-column-dialog-layout :disabled="loading || submitting" :loading="loading"
+                                  :title="tt(title)" :cancel-button-title="tt('Cancel')"
+                                  @cancel="cancel">
+            <template #content>
+                <v-form class="mt-2">
+                    <v-row>
+                        <v-col cols="12" md="6">
+                            <v-autocomplete item-title="name" item-value="id" persistent-placeholder
+                                            :disabled="loading || submitting"
+                                            :label="tt('Customer')" :placeholder="tt('Customer')"
+                                            :items="allCustomers" :no-data-text="tt('No results')"
+                                            v-model="invoice.customerId">
+                                <template #append>
+                                    <v-btn density="compact" color="default" variant="text" :icon="true"
+                                           :aria-label="tt('Add Customer')" :disabled="loading || submitting" @click="addCustomer">
+                                        <v-icon :icon="mdiAccountPlusOutline" />
+                                        <v-tooltip activator="parent">{{ tt('Add Customer') }}</v-tooltip>
+                                    </v-btn>
+                                </template>
+                            </v-autocomplete>
+                        </v-col>
+                        <v-col cols="12" md="6">
+                            <v-text-field type="text" autocomplete="off" persistent-placeholder
+                                          :disabled="loading || submitting"
+                                          :label="tt('Invoice Number')" :placeholder="tt('Invoice Number')"
+                                          v-model="invoice.number" />
+                        </v-col>
+                        <v-col cols="12" md="6">
+                            <date-select :disabled="loading || submitting"
+                                         :label="tt('Invoice Date')"
+                                         :model-value="invoice.invoiceDate"
+                                         @update:model-value="onInvoiceDateChanged" />
+                        </v-col>
+                        <v-col cols="12" md="6">
+                            <date-select :disabled="loading || submitting"
+                                         :label="tt('Payment Due')"
+                                         v-model="invoice.dueDate" />
+                        </v-col>
+                    </v-row>
+
+                    <v-row class="mt-2" :key="index" v-for="(line, index) in invoice.lines">
+                        <v-col cols="12" md="3">
+                            <v-text-field type="text" autocomplete="off" persistent-placeholder
+                                          :disabled="loading || submitting"
+                                          :label="tt('Item')" :placeholder="tt('Item')"
+                                          v-model="line.itemName" />
+                        </v-col>
+                        <v-col cols="12" md="4">
+                            <v-textarea type="text" autocomplete="off" persistent-placeholder rows="1" auto-grow
+                                        :disabled="loading || submitting"
+                                        :label="tt('Description')" :placeholder="tt('Description (optional)')"
+                                        v-model="line.description" />
+                        </v-col>
+                        <v-col cols="4" md="1">
+                            <number-input :disabled="loading || submitting" :persistent-placeholder="true"
+                                          :label="tt('Qty')" :min-value="1" :max-value="10000" :max-decimal-count="0"
+                                          v-model="line.quantity" />
+                        </v-col>
+                        <v-col cols="6" md="3">
+                            <amount-input :disabled="loading || submitting" :persistent-placeholder="true"
+                                          :currency="invoice.currency" :show-currency="true"
+                                          :label="tt('Rate')" :placeholder="tt('Rate')"
+                                          v-model="line.rate" />
+                        </v-col>
+                        <v-col cols="2" md="1" class="d-flex align-center">
+                            <v-btn color="error" variant="text" :icon="mdiDeleteOutline" :aria-label="tt('Remove')"
+                                   :disabled="loading || submitting || invoice.lines.length <= 1"
+                                   @click="removeLine(index)"></v-btn>
+                        </v-col>
+                    </v-row>
+
+                    <div class="d-flex align-center mt-2">
+                        <v-btn color="primary" variant="text" density="comfortable" :prepend-icon="mdiPlus"
+                               :disabled="loading || submitting" @click="addLine">{{ tt('Add Line') }}</v-btn>
+                        <v-spacer />
+                        <span class="text-body-large me-4">{{ tt('Total') }}</span>
+                        <span class="text-title-medium">{{ formatAmount(totals.total) }}</span>
+                    </div>
+
+                    <v-row class="mt-2">
+                        <v-col cols="12" md="12">
+                            <v-textarea type="text" autocomplete="off" persistent-placeholder rows="6"
+                                        :disabled="loading || submitting"
+                                        :label="tt('Notes / Terms')" :placeholder="tt('Notes / Terms')"
+                                        v-model="invoice.notes" />
+                        </v-col>
+                    </v-row>
+                </v-form>
+            </template>
+
+            <template #footer>
+                <v-spacer/>
+                <v-tooltip :disabled="!inputIsEmpty" :text="inputEmptyProblemMessage ? tt(inputEmptyProblemMessage) : ''">
+                    <template v-slot:activator="{ props }">
+                        <div v-bind="props" class="d-inline-block">
+                            <v-btn :disabled="inputIsEmpty || loading || submitting" @click="save">
+                                {{ tt(saveButtonTitle) }}
+                                <v-progress-circular indeterminate size="22" class="ms-2" v-if="submitting"></v-progress-circular>
+                            </v-btn>
+                        </div>
+                    </template>
+                </v-tooltip>
+            </template>
+        </one-column-dialog-layout>
+    </v-dialog>
+
+    <customer-edit-dialog ref="customerEditDialog" />
+    <snack-bar ref="snackbar" />
+</template>
+
+<script setup lang="ts">
+import { ref, computed, useTemplateRef } from 'vue';
+
+import { mdiPlus, mdiDeleteOutline, mdiAccountPlusOutline } from '@mdi/js';
+
+import SnackBar from '@/components/desktop/SnackBar.vue';
+import CustomerEditDialog from './CustomerEditDialog.vue';
+
+import { useI18n } from '@/locales/helpers.ts';
+import { useInvoiceEditPageBase } from '@/views/base/invoices/InvoiceEditPageBase.ts';
+
+import { useInvoicesStore } from '@/stores/invoice.ts';
+
+import type { TextualYearMonthDay } from '@/core/datetime.ts';
+import { type InvoiceProfile, Invoice } from '@/models/invoice.ts';
+
+import { isEquals } from '@/lib/common.ts';
+
+type SnackBarType = InstanceType<typeof SnackBar>;
+type CustomerEditDialogType = InstanceType<typeof CustomerEditDialog>;
+
+interface InvoiceEditResponse {
+    message: string;
+    invoice: Invoice;
+}
+
+const { tt } = useI18n();
+const {
+    editInvoiceId,
+    loading,
+    submitting,
+    invoice,
+    allCustomers,
+    title,
+    saveButtonTitle,
+    inputEmptyProblemMessage,
+    inputIsEmpty,
+    totals,
+    addLine,
+    removeLine,
+    setInvoice,
+    prepareNewInvoice,
+    setInvoiceDate,
+    formatAmount
+} = useInvoiceEditPageBase();
+
+const invoicesStore = useInvoicesStore();
+
+const snackbar = useTemplateRef<SnackBarType>('snackbar');
+const customerEditDialog = useTemplateRef<CustomerEditDialogType>('customerEditDialog');
+
+let resolveFunc: ((value: InvoiceEditResponse) => void) | null = null;
+let rejectFunc: ((reason?: unknown) => void) | null = null;
+
+const showState = ref<boolean>(false);
+const profile = ref<InvoiceProfile | null>(null);
+const initInvoice = ref<Invoice>(Invoice.createNewInvoice());
+
+const isInvoiceModified = computed<boolean>(() => !isEquals(invoice.value.toCreateRequest(), initInvoice.value.toCreateRequest()));
+
+function suggestNumber(): void {
+    invoicesStore.getNextInvoiceNumber({ invoiceDate: invoice.value.invoiceDate }).then(number => {
+        invoice.value.number = number;
+        initInvoice.value.number = number;
+    }).catch(error => {
+        if (!error.processed) {
+            snackbar.value?.showError(error);
+        }
+    });
+}
+
+function open(options: { id?: string, currentInvoice?: Invoice, duplicateFrom?: Invoice }): Promise<InvoiceEditResponse> {
+    showState.value = true;
+    loading.value = true;
+    submitting.value = false;
+    editInvoiceId.value = options.id ?? null;
+
+    if (options.currentInvoice) {
+        setInvoice(options.currentInvoice);
+    }
+
+    Promise.all([
+        invoicesStore.loadAllCustomers({ force: false }),
+        invoicesStore.loadInvoiceProfile({ force: false }),
+        options.id ? invoicesStore.getInvoice({ invoiceId: options.id }) : Promise.resolve(null)
+    ]).then(([, loadedProfile, loadedInvoice]) => {
+        profile.value = loadedProfile;
+
+        if (loadedInvoice) {
+            setInvoice(loadedInvoice);
+        } else {
+            prepareNewInvoice(loadedProfile, options.duplicateFrom);
+            suggestNumber();
+        }
+
+        initInvoice.value = invoice.value.clone();
+        loading.value = false;
+    }).catch(error => {
+        loading.value = false;
+        showState.value = false;
+
+        if (!error.processed) {
+            rejectFunc?.(error);
+        }
+    });
+
+    return new Promise((resolve, reject) => {
+        resolveFunc = resolve;
+        rejectFunc = reject;
+    });
+}
+
+function onInvoiceDateChanged(date: TextualYearMonthDay | ''): void {
+    if (!date) {
+        return;
+    }
+
+    setInvoiceDate(date, profile.value?.defaultTermsDays ?? 7);
+
+    if (!editInvoiceId.value) {
+        suggestNumber();
+    }
+}
+
+function addCustomer(): void {
+    customerEditDialog.value?.open({}).then(result => {
+        invoice.value.customerId = result.customer.id;
+        snackbar.value?.showMessage(result.message);
+    }).catch(error => {
+        if (error) {
+            snackbar.value?.showError(error);
+        }
+    });
+}
+
+function save(): void {
+    const problemMessage = inputEmptyProblemMessage.value;
+
+    if (problemMessage) {
+        snackbar.value?.showMessage(problemMessage);
+        return;
+    }
+
+    submitting.value = true;
+
+    invoicesStore.saveInvoice({ invoice: invoice.value, isEdit: !!editInvoiceId.value }).then(saved => {
+        submitting.value = false;
+        resolveFunc?.({ message: editInvoiceId.value ? 'You have saved this invoice' : 'You have added a new invoice', invoice: saved });
+        showState.value = false;
+    }).catch(error => {
+        submitting.value = false;
+
+        if (!error.processed) {
+            snackbar.value?.showError(error);
+        }
+    });
+}
+
+function cancel(): void {
+    rejectFunc?.();
+    showState.value = false;
+}
+
+defineExpose({
+    open
+});
+</script>
+```
+
+- [ ] **Step 3: Create `src/views/desktop/invoices/ListPage.vue`** (layout: `accounts/ListPage.vue` sidebar; card and table: `templates/ListPage.vue`)
+
+```vue
+<template>
+    <main-page-layout nav-items-class="my-3">
+        <template #nav-items>
+            <div class="mx-2 mb-2">
+                <span class="text-body-medium">{{ tt('Outstanding') }}</span>
+                <div class="text-body-large text-truncate mt-1 mb-2">
+                    <span v-if="!loading || allInvoices.length > 0">{{ formatAmount(outstandingTotal) }}</span>
+                    <v-skeleton-loader class="skeleton-no-margin mt-1 mb-2" type="text" :loading="true" v-else></v-skeleton-loader>
+                </div>
+                <span class="text-body-medium">{{ tt('Overdue') }}</span>
+                <div class="text-body-large text-expense text-truncate mt-1">
+                    <span v-if="!loading || allInvoices.length > 0">{{ formatAmount(overdueTotal) }}</span>
+                    <v-skeleton-loader class="skeleton-no-margin mt-1 mb-2" type="text" :loading="true" v-else></v-skeleton-loader>
+                </div>
+            </div>
+
+            <v-divider class="my-2" />
+
+            <li class="nav-link">
+                <a class="d-flex align-center cursor-pointer"
+                   :class="{ 'router-link-active router-link-exact-active': activeView === 'invoices', 'disabled': loading }"
+                   @click="activeView = 'invoices'">
+                    <v-icon class="nav-item-icon" :icon="mdiFileDocumentOutline"/>
+                    <span class="nav-item-title">{{ tt('Invoices') }}</span>
+                </a>
+            </li>
+            <li class="nav-link">
+                <a class="d-flex align-center cursor-pointer"
+                   :class="{ 'router-link-active router-link-exact-active': activeView === 'customers', 'disabled': loading }"
+                   @click="activeView = 'customers'">
+                    <v-icon class="nav-item-icon" :icon="mdiAccountMultipleOutline"/>
+                    <span class="nav-item-title">{{ tt('Customers') }}</span>
+                </a>
+            </li>
+        </template>
+
+        <template #content>
+            <v-row class="match-height">
+                <v-col cols="12">
+                    <v-card>
+                        <template #title>
+                            <div class="title-and-toolbar d-flex align-center">
+                                <span>{{ activeView === 'invoices' ? tt('Invoices') : tt('Customers') }}</span>
+                                <v-btn class="ms-3" color="default" variant="outlined"
+                                       :disabled="loading || updating" @click="add">{{ tt('Add') }}</v-btn>
+                                <v-btn density="compact" color="default" variant="text" class="ms-2"
+                                       :aria-label="tt('Refresh')" :icon="true" :disabled="loading || updating"
+                                       :loading="loading" @click="reload(true)">
+                                    <template #loader>
+                                        <v-progress-circular indeterminate size="20"/>
+                                    </template>
+                                    <v-icon :icon="mdiRefresh" size="24" />
+                                    <v-tooltip activator="parent">{{ tt('Refresh') }}</v-tooltip>
+                                </v-btn>
+                                <v-spacer/>
+                                <v-btn density="comfortable" color="default" variant="text" class="ms-2"
+                                       :aria-label="tt('More')" :disabled="loading || updating" :icon="true">
+                                    <v-icon :icon="mdiDotsVertical" />
+                                    <v-menu activator="parent">
+                                        <v-list>
+                                            <v-list-item :prepend-icon="mdiEyeOutline" :title="tt('Show Paid Invoices')"
+                                                         v-if="activeView === 'invoices' && !showPaid" @click="showPaid = true"></v-list-item>
+                                            <v-list-item :prepend-icon="mdiEyeOffOutline" :title="tt('Hide Paid Invoices')"
+                                                         v-if="activeView === 'invoices' && showPaid" @click="showPaid = false"></v-list-item>
+                                            <v-list-item :prepend-icon="mdiFileDocumentEditOutline" :title="tt('Invoice Profile')"
+                                                         to="/settings/invoice_profile"></v-list-item>
+                                        </v-list>
+                                    </v-menu>
+                                </v-btn>
+                            </div>
+                        </template>
+
+                        <v-table class="table-striped" :hover="!loading" v-if="activeView === 'invoices'">
+                            <thead>
+                            <tr>
+                                <th>{{ tt('Invoice Number') }}</th>
+                                <th>{{ tt('Customer') }}</th>
+                                <th>{{ tt('Invoice Date') }}</th>
+                                <th>{{ tt('Payment Due') }}</th>
+                                <th class="text-right">{{ tt('Total') }}</th>
+                                <th class="text-right">{{ tt('Balance Due') }}</th>
+                                <th>{{ tt('Status') }}</th>
+                            </tr>
+                            </thead>
+
+                            <tbody v-if="loading && noAvailableInvoice">
+                            <tr :key="itemIdx" v-for="itemIdx in [ 1, 2, 3 ]">
+                                <td class="px-0" colspan="7"><v-skeleton-loader type="text" :loading="true"></v-skeleton-loader></td>
+                            </tr>
+                            </tbody>
+
+                            <tbody v-if="!loading && noAvailableInvoice">
+                            <tr><td colspan="7">{{ tt('No available invoice') }}</td></tr>
+                            </tbody>
+
+                            <tbody v-if="!noAvailableInvoice">
+                            <tr class="cursor-pointer" :key="invoice.id" v-for="invoice in displayInvoices" @click="view(invoice)">
+                                <td>{{ invoice.number }}</td>
+                                <td>{{ invoice.billToName }}</td>
+                                <td>{{ formatDate(invoice.invoiceDate) }}</td>
+                                <td>{{ formatDate(invoice.dueDate) }}</td>
+                                <td class="text-right">{{ formatAmount(invoice.total) }}</td>
+                                <td class="text-right">{{ formatAmount(getInvoiceBalanceDue(invoice)) }}</td>
+                                <td>
+                                    <v-chip size="small" variant="tonal" :color="statusColors[getDisplayStatus(invoice)]">{{ tt(getDisplayStatusName(invoice)) }}</v-chip>
+                                </td>
+                            </tr>
+                            </tbody>
+                        </v-table>
+
+                        <v-table class="table-striped" :hover="!loading" v-if="activeView === 'customers'">
+                            <thead>
+                            <tr>
+                                <th>
+                                    <div class="d-flex align-center">
+                                        <span>{{ tt('Customer Name') }}</span>
+                                        <v-spacer/>
+                                        <span>{{ tt('Operation') }}</span>
+                                    </div>
+                                </th>
+                            </tr>
+                            </thead>
+
+                            <tbody v-if="!loading && !allCustomers.length">
+                            <tr><td>{{ tt('No available customer') }}</td></tr>
+                            </tbody>
+
+                            <tbody>
+                            <tr :key="customer.id" v-for="customer in allCustomers"
+                                @mouseover="hoveredCustomerId = customer.id" @mouseleave="hoveredCustomerId = ''">
+                                <td>
+                                    <div class="d-flex align-center">
+                                        <span>{{ customer.name }}</span>
+                                        <small class="text-medium-emphasis ms-2" v-if="customer.contactName">{{ customer.contactName }}</small>
+                                        <v-spacer/>
+                                        <template v-if="hoveredCustomerId === customer.id && !loading">
+                                            <v-btn class="px-2" color="default" density="comfortable" variant="text"
+                                                   :prepend-icon="mdiPencilOutline" :disabled="loading || updating"
+                                                   @click="editCustomer(customer)">{{ tt('Edit') }}</v-btn>
+                                            <v-btn class="px-2" color="default" density="comfortable" variant="text"
+                                                   :prepend-icon="mdiDeleteOutline" :disabled="loading || updating"
+                                                   @click="removeCustomer(customer)">{{ tt('Delete') }}</v-btn>
+                                        </template>
+                                    </div>
+                                </td>
+                            </tr>
+                            </tbody>
+                        </v-table>
+                    </v-card>
+                </v-col>
+            </v-row>
+        </template>
+    </main-page-layout>
+
+    <invoice-edit-dialog ref="invoiceEditDialog" />
+    <invoice-detail-dialog ref="invoiceDetailDialog" />
+    <customer-edit-dialog ref="customerEditDialog" />
+    <confirm-dialog ref="confirmDialog"/>
+    <snack-bar ref="snackbar" />
+</template>
+
+<script setup lang="ts">
+import { ref, computed, useTemplateRef } from 'vue';
+
+import {
+    mdiRefresh,
+    mdiDotsVertical,
+    mdiEyeOutline,
+    mdiEyeOffOutline,
+    mdiPencilOutline,
+    mdiDeleteOutline,
+    mdiFileDocumentOutline,
+    mdiFileDocumentEditOutline,
+    mdiAccountMultipleOutline
+} from '@mdi/js';
+
+import ConfirmDialog from '@/components/desktop/ConfirmDialog.vue';
+import SnackBar from '@/components/desktop/SnackBar.vue';
+import InvoiceEditDialog from './dialogs/InvoiceEditDialog.vue';
+import InvoiceDetailDialog from './dialogs/InvoiceDetailDialog.vue';
+import CustomerEditDialog from './dialogs/CustomerEditDialog.vue';
+
+import { useI18n } from '@/locales/helpers.ts';
+import { useInvoiceListPageBase } from '@/views/base/invoices/InvoiceListPageBase.ts';
+
+import { useInvoicesStore } from '@/stores/invoice.ts';
+
+import type { Customer, Invoice } from '@/models/invoice.ts';
+
+import { type InvoiceDisplayStatus, getInvoiceBalanceDue } from '@/lib/invoice.ts';
+
+type ConfirmDialogType = InstanceType<typeof ConfirmDialog>;
+type SnackBarType = InstanceType<typeof SnackBar>;
+type InvoiceEditDialogType = InstanceType<typeof InvoiceEditDialog>;
+type InvoiceDetailDialogType = InstanceType<typeof InvoiceDetailDialog>;
+type CustomerEditDialogType = InstanceType<typeof CustomerEditDialog>;
+
+const { tt } = useI18n();
+const {
+    loading,
+    showPaid,
+    allInvoices,
+    displayInvoices,
+    noAvailableInvoice,
+    outstandingTotal,
+    overdueTotal,
+    formatAmount,
+    formatDate,
+    getDisplayStatus,
+    getDisplayStatusName
+} = useInvoiceListPageBase();
+
+const invoicesStore = useInvoicesStore();
+
+const confirmDialog = useTemplateRef<ConfirmDialogType>('confirmDialog');
+const snackbar = useTemplateRef<SnackBarType>('snackbar');
+const invoiceEditDialog = useTemplateRef<InvoiceEditDialogType>('invoiceEditDialog');
+const invoiceDetailDialog = useTemplateRef<InvoiceDetailDialogType>('invoiceDetailDialog');
+const customerEditDialog = useTemplateRef<CustomerEditDialogType>('customerEditDialog');
+
+const statusColors: Record<InvoiceDisplayStatus, string> = { unpaid: 'warning', partial: 'info', paid: 'success', overdue: 'error' };
+
+const activeView = ref<'invoices' | 'customers'>('invoices');
+const updating = ref<boolean>(false);
+const hoveredCustomerId = ref<string>('');
+
+const allCustomers = computed<Customer[]>(() => invoicesStore.allCustomers);
+
+function showError(error: { processed?: boolean, isUpToDate?: boolean }): void {
+    if (error && !error.processed && !error.isUpToDate) {
+        snackbar.value?.showError(error);
+    }
+}
+
+function reload(force: boolean): void {
+    loading.value = true;
+
+    Promise.all([
+        invoicesStore.loadAllInvoices({ force: force }),
+        invoicesStore.loadAllCustomers({ force: force })
+    ]).then(() => {
+        loading.value = false;
+
+        if (force) {
+            snackbar.value?.showMessage('Invoice list has been updated');
+        }
+    }).catch(error => {
+        loading.value = false;
+
+        if (error.isUpToDate) {
+            snackbar.value?.showMessage('Invoice list is up to date');
+        } else {
+            showError(error);
+        }
+    });
+}
+
+function add(): void {
+    if (activeView.value === 'customers') {
+        customerEditDialog.value?.open({}).then(result => {
+            snackbar.value?.showMessage(result.message);
+        }).catch(showError);
+        return;
+    }
+
+    invoiceEditDialog.value?.open({}).then(result => {
+        snackbar.value?.showMessage(result.message);
+        reload(false);
+        view(result.invoice);
+    }).catch(showError);
+}
+
+function view(invoice: Invoice): void {
+    invoiceDetailDialog.value?.open({ id: invoice.id }).then(result => {
+        if (result.changed) {
+            reload(false);
+        }
+    }).catch(showError);
+}
+
+function editCustomer(customer: Customer): void {
+    customerEditDialog.value?.open({ id: customer.id, currentCustomer: customer }).then(result => {
+        snackbar.value?.showMessage(result.message);
+    }).catch(showError);
+}
+
+function removeCustomer(customer: Customer): void {
+    confirmDialog.value?.open('Are you sure you want to delete this customer?').then(() => {
+        updating.value = true;
+
+        invoicesStore.deleteCustomer({ customer }).then(() => {
+            updating.value = false;
+        }).catch(error => {
+            updating.value = false;
+            showError(error);
+        });
+    });
+}
+
+reload(false);
+</script>
+```
+
+- [ ] **Step 4: Route** in `src/router/desktop.ts`: import `InvoiceListPage from '@/views/desktop/invoices/ListPage.vue'` and add right after the `/account/list` route:
+
+```ts
+        {
+            path: '/invoice/list',
+            component: InvoiceListPage,
+            beforeEnter: checkLogin
+        },
+```
+
+- [ ] **Step 5: Type-check, lint, and check in the browser**
+
+Run: `npx vue-tsc --noEmit && npx eslint src/views/desktop/invoices src/router/desktop.ts`
+Expected: clean.
+
+In the browser: header → Invoices. The sidebar shows Outstanding / Overdue (₹0.00) and Invoices / Customers items, like the Accounts sidebar. Customers → Add → "Quber Tech" / Kanika Batra / the London address / kanika.batra@qubertech.com → saved; hover shows Edit/Delete. Invoices → Add: dialog has the customer autocomplete (with an add-customer button), number `CA/2026-27/…`, today's date and due date +7 days, notes from the profile. Change the invoice date to 2026-04-23: due date becomes 2026-04-30 and number `CA/2026-27/01`. Line: Consulting / "Software Consulting\nQuber Tech" / 1 / ₹3,70,000 (typed in the amount field). Total shows ₹3,70,000.00 formatted per the user's settings. Save: snackbar, list row appears with an Overdue chip; sidebar Outstanding and Overdue update. Closing the dialog with edits asks nothing (persistent only blocks outside-click), Cancel discards.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/views/desktop/invoices src/router/desktop.ts
+git commit --no-verify -m "invoices: desktop invoices page and edit dialogs"
+```
+
+---
+
+### Task 11: Desktop invoice detail dialog (document, payments, actions, print)
+
+**Files:**
+- Create (replace placeholder): `src/views/desktop/invoices/dialogs/InvoiceDetailDialog.vue`
+
+**Interfaces:**
+- Consumes: Task 6 store, Task 7 `useInvoiceDetailPageBase`, Task 8 `InvoiceDocument`, Task 10 `InvoiceEditDialog.open`, `useAccountsStore().loadAllAccounts`.
+- Produces: `open({ id: string }): Promise<{ changed: boolean }>`, resolved when the dialog is closed (it is a view dialog; closing is not a cancel).
+
+- [ ] **Step 1: Replace `src/views/desktop/invoices/dialogs/InvoiceDetailDialog.vue`**
+
+```vue
+<template>
+    <v-dialog width="1200" v-model="showState">
+        <one-column-dialog-layout :disabled="loading || updating" :loading="loading"
+                                  :title="invoice ? invoice.number : tt('Invoice')" :cancel-button-title="tt('Close')"
+                                  @cancel="close">
+            <template #after-title>
+                <v-chip class="ms-3" size="small" variant="tonal" :color="displayStatus ? statusColors[displayStatus] : 'default'"
+                        v-if="invoice">{{ tt(displayStatusName) }}</v-chip>
+            </template>
+
+            <template #toolbar>
+                <v-btn density="comfortable" color="default" variant="text" class="ms-1" :icon="true"
+                       :aria-label="tt('Edit')" :disabled="!invoice || loading || updating" @click="edit">
+                    <v-icon :icon="mdiPencilOutline" />
+                    <v-tooltip activator="parent">{{ tt('Edit') }}</v-tooltip>
+                </v-btn>
+                <v-btn density="comfortable" color="default" variant="text" class="ms-1" :icon="true"
+                       :aria-label="tt('Duplicate')" :disabled="!invoice || loading || updating" @click="duplicate">
+                    <v-icon :icon="mdiContentCopy" />
+                    <v-tooltip activator="parent">{{ tt('Duplicate') }}</v-tooltip>
+                </v-btn>
+                <v-btn density="comfortable" color="default" variant="text" class="ms-1" :icon="true"
+                       :aria-label="invoice?.closedManually ? tt('Reopen') : tt('Mark as Paid')"
+                       :disabled="!invoice || loading || updating" @click="toggleClosed">
+                    <v-icon :icon="invoice?.closedManually ? mdiLockOpenVariantOutline : mdiCheckDecagramOutline" />
+                    <v-tooltip activator="parent">{{ invoice?.closedManually ? tt('Reopen') : tt('Mark as Paid') }}</v-tooltip>
+                </v-btn>
+                <v-btn density="comfortable" color="default" variant="text" class="ms-1" :icon="true"
+                       :aria-label="tt('Delete')" :disabled="!invoice || loading || updating" @click="remove">
+                    <v-icon :icon="mdiDeleteOutline" />
+                    <v-tooltip activator="parent">{{ tt('Delete') }}</v-tooltip>
+                </v-btn>
+                <v-btn density="comfortable" color="default" variant="text" class="ms-1" :icon="true"
+                       :aria-label="tt('Print / Save PDF')" :disabled="!invoice || !profile || loading" @click="printInvoice">
+                    <v-icon :icon="mdiPrinterOutline" />
+                    <v-tooltip activator="parent">{{ tt('Print / Save PDF') }}</v-tooltip>
+                </v-btn>
+            </template>
+
+            <template #content>
+                <v-row v-if="invoice && profile">
+                    <v-col cols="12" lg="8" class="overflow-x-auto">
+                        <invoice-document :invoice="invoice" :profile="profile" />
+                    </v-col>
+
+                    <v-col cols="12" lg="4">
+                        <v-list density="compact">
+                            <v-list-item :title="tt('Total')">
+                                <template #append><span>{{ formatAmount(invoice.total) }}</span></template>
+                            </v-list-item>
+                            <v-list-item :title="tt('Received')">
+                                <template #append><span>{{ formatAmount(invoice.received) }}</span></template>
+                            </v-list-item>
+                            <v-list-item :title="tt('Bank Charges')" v-if="bankCharges > 0">
+                                <template #append><span>{{ formatAmount(bankCharges) }}</span></template>
+                            </v-list-item>
+                            <v-list-item :title="tt('Balance Due')" v-else>
+                                <template #append><span class="font-weight-bold">{{ formatAmount(balanceDue) }}</span></template>
+                            </v-list-item>
+                        </v-list>
+
+                        <v-divider class="my-2" />
+                        <div class="text-title-small px-4 py-2">{{ tt('Payments') }}</div>
+                        <v-list density="compact" v-if="invoice.payments.length">
+                            <v-list-item :key="payment.transactionId" v-for="payment in invoice.payments"
+                                         :title="formatAmount(payment.amount)" :subtitle="formatPaymentDescription(payment)">
+                                <template #append>
+                                    <v-btn density="comfortable" color="default" variant="text" :icon="true"
+                                           :aria-label="tt('Unlink')" :disabled="updating" @click="unlink(payment)">
+                                        <v-icon :icon="mdiLinkOff" />
+                                        <v-tooltip activator="parent">{{ tt('Unlink') }}</v-tooltip>
+                                    </v-btn>
+                                </template>
+                            </v-list-item>
+                        </v-list>
+                        <div class="text-body-medium px-4 pb-2" v-else>{{ tt('No payments linked yet.') }}</div>
+
+                        <template v-if="displayStatus !== 'paid'">
+                            <v-divider class="my-2" />
+                            <div class="text-title-small px-4 py-2">{{ tt('Suggested Matches') }}</div>
+                            <v-list density="compact" v-if="suggestions.length">
+                                <v-list-item :key="suggestion.transactionId" v-for="suggestion in suggestions"
+                                             :title="formatAmount(suggestion.amount)" :subtitle="formatPaymentDescription(suggestion)">
+                                    <template #append>
+                                        <v-btn color="primary" variant="tonal" size="small" :disabled="updating" @click="link(suggestion)">{{ tt('Link') }}</v-btn>
+                                    </template>
+                                </v-list-item>
+                            </v-list>
+                            <div class="text-body-medium px-4 pb-2" v-else>{{ tt('No matching income transactions found yet.') }}</div>
+                        </template>
+                    </v-col>
+                </v-row>
+            </template>
+        </one-column-dialog-layout>
+    </v-dialog>
+
+    <invoice-edit-dialog ref="invoiceEditDialog" />
+    <confirm-dialog ref="confirmDialog"/>
+    <snack-bar ref="snackbar" />
+</template>
+
+<script setup lang="ts">
+import { ref, useTemplateRef } from 'vue';
+
+import {
+    mdiPencilOutline,
+    mdiContentCopy,
+    mdiCheckDecagramOutline,
+    mdiLockOpenVariantOutline,
+    mdiDeleteOutline,
+    mdiPrinterOutline,
+    mdiLinkOff
+} from '@mdi/js';
+
+import ConfirmDialog from '@/components/desktop/ConfirmDialog.vue';
+import SnackBar from '@/components/desktop/SnackBar.vue';
+import InvoiceDocument from '@/components/common/InvoiceDocument.vue';
+import InvoiceEditDialog from './InvoiceEditDialog.vue';
+
+import { useI18n } from '@/locales/helpers.ts';
+import { useInvoiceDetailPageBase } from '@/views/base/invoices/InvoiceDetailPageBase.ts';
+
+import { useInvoicesStore } from '@/stores/invoice.ts';
+import { useAccountsStore } from '@/stores/account.ts';
+
+import type { InvoicePayment } from '@/models/invoice.ts';
+
+import type { InvoiceDisplayStatus } from '@/lib/invoice.ts';
+
+type ConfirmDialogType = InstanceType<typeof ConfirmDialog>;
+type SnackBarType = InstanceType<typeof SnackBar>;
+type InvoiceEditDialogType = InstanceType<typeof InvoiceEditDialog>;
+
+interface InvoiceDetailResponse {
+    changed: boolean;
+}
+
+const { tt } = useI18n();
+const {
+    loading,
+    updating,
+    invoice,
+    profile,
+    suggestions,
+    displayStatus,
+    displayStatusName,
+    balanceDue,
+    bankCharges,
+    formatAmount,
+    formatPaymentDescription,
+    printInvoice
+} = useInvoiceDetailPageBase();
+
+const invoicesStore = useInvoicesStore();
+const accountsStore = useAccountsStore();
+
+const confirmDialog = useTemplateRef<ConfirmDialogType>('confirmDialog');
+const snackbar = useTemplateRef<SnackBarType>('snackbar');
+const invoiceEditDialog = useTemplateRef<InvoiceEditDialogType>('invoiceEditDialog');
+
+const statusColors: Record<InvoiceDisplayStatus, string> = { unpaid: 'warning', partial: 'info', paid: 'success', overdue: 'error' };
+
+let resolveFunc: ((value: InvoiceDetailResponse) => void) | null = null;
+let rejectFunc: ((reason?: unknown) => void) | null = null;
+
+const showState = ref<boolean>(false);
+const invoiceId = ref<string>('');
+const changed = ref<boolean>(false);
+
+function showError(error: { processed?: boolean }): void {
+    if (error && !error.processed) {
+        snackbar.value?.showError(error);
+    }
+}
+
+function load(): void {
+    loading.value = true;
+
+    Promise.all([
+        invoicesStore.getInvoice({ invoiceId: invoiceId.value }),
+        invoicesStore.loadInvoiceProfile({ force: false }),
+        accountsStore.loadAllAccounts({ force: false })
+    ]).then(([loadedInvoice, loadedProfile]) => {
+        invoice.value = loadedInvoice;
+        profile.value = loadedProfile;
+        loading.value = false;
+
+        if (displayStatus.value === 'paid') {
+            suggestions.value = [];
+            return;
+        }
+
+        invoicesStore.getInvoicePaymentSuggestions({ invoiceId: loadedInvoice.id }).then(result => {
+            suggestions.value = result;
+        }).catch(showError);
+    }).catch(error => {
+        loading.value = false;
+        showState.value = false;
+
+        if (!error.processed) {
+            rejectFunc?.(error);
+        }
+    });
+}
+
+function open(options: { id: string }): Promise<InvoiceDetailResponse> {
+    showState.value = true;
+    invoiceId.value = options.id;
+    invoice.value = null;
+    suggestions.value = [];
+    changed.value = false;
+    load();
+
+    return new Promise((resolve, reject) => {
+        resolveFunc = resolve;
+        rejectFunc = reject;
+    });
+}
+
+function runAndReload(action: () => Promise<unknown>): void {
+    updating.value = true;
+
+    action().then(() => {
+        updating.value = false;
+        changed.value = true;
+        load();
+    }).catch(error => {
+        updating.value = false;
+        showError(error);
+    });
+}
+
+function link(suggestion: InvoicePayment): void {
+    runAndReload(() => invoicesStore.linkInvoicePayment({ invoiceId: invoiceId.value, transactionId: suggestion.transactionId }));
+}
+
+function unlink(payment: InvoicePayment): void {
+    runAndReload(() => invoicesStore.unlinkInvoicePayment({ invoiceId: invoiceId.value, transactionId: payment.transactionId }));
+}
+
+function toggleClosed(): void {
+    if (invoice.value) {
+        const current = invoice.value;
+        runAndReload(() => invoicesStore.setInvoiceClosed({ invoice: current, closed: !current.closedManually }));
+    }
+}
+
+function edit(): void {
+    invoiceEditDialog.value?.open({ id: invoiceId.value, currentInvoice: invoice.value ?? undefined }).then(result => {
+        snackbar.value?.showMessage(result.message);
+        changed.value = true;
+        load();
+    }).catch(showError);
+}
+
+function duplicate(): void {
+    invoiceEditDialog.value?.open({ duplicateFrom: invoice.value ?? undefined }).then(result => {
+        snackbar.value?.showMessage(result.message);
+        changed.value = true;
+        invoiceId.value = result.invoice.id;
+        load();
+    }).catch(showError);
+}
+
+function remove(): void {
+    confirmDialog.value?.open('Are you sure you want to delete this invoice?').then(() => {
+        if (!invoice.value) {
+            return;
+        }
+
+        updating.value = true;
+
+        invoicesStore.deleteInvoice({ invoice: invoice.value }).then(() => {
+            updating.value = false;
+            changed.value = true;
+            close();
+        }).catch(error => {
+            updating.value = false;
+            showError(error);
+        });
+    });
+}
+
+function close(): void {
+    resolveFunc?.({ changed: changed.value });
+    showState.value = false;
+}
+
+defineExpose({
+    open
+});
+</script>
+```
+
+- [ ] **Step 2: Type-check and lint**
+
+Run: `npx vue-tsc --noEmit && npx eslint src/views/desktop/invoices`
+Expected: clean.
+
+- [ ] **Step 3: Check against the sample in the browser**
+
+Click the `CA/2026-27/01` row:
+- Title `CA/2026-27/01` with an Overdue chip; toolbar icons Edit, Duplicate, Mark as Paid, Delete, Print.
+- The document matches the Wave sample (`~/Desktop/Invoice_CA_2026-27_01_2026-04-30.pdf`): logo top-left, business block top-right, double-rule "Invoice" banner, bill-to left, meta box right with grey "Amount Due (INR): ₹370,000.00" row, Services/Rate/Amount with dotted rules (no Quantity column), totals, notes. The ₹ glyph renders (Wave shows ☐). It stays white in dark theme.
+- Print: the print preview shows only the document; suggested file name `Invoice_CA_2026-27_01_2026-04-30`. Save as PDF and compare side by side with the Wave PDF.
+- Add an income of ₹3,68,500 to the PNB account dated 2026-04-29 (Transactions page), reopen the invoice: it is under Suggested Matches with "date · PNB … · comment". Link: chip turns Paid, Bank Charges ₹1,500.00, document's Amount Due ₹1,500.00 with a "Payments received" row. Unlink: back to Overdue. Close the dialog: the list row and sidebar totals refresh.
+- Link a ₹2,00,000 income instead: Partially Paid (or Overdue), Balance Due ₹1,70,000; suggestions now only offer amounts ≤ ₹1,70,000. Mark as Paid: Paid with Bank Charges ₹1,70,000; Reopen restores.
+- Duplicate: edit dialog prefilled with the same customer, lines and notes, today's date and the next number; saving switches the detail dialog to the new invoice.
+- Delete the linked transaction on the Transactions page, reopen the invoice: received has dropped.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/views/desktop/invoices/dialogs/InvoiceDetailDialog.vue
+git commit --no-verify -m "invoices: desktop invoice detail dialog with payments and print"
+```
+
+---
+
+### Task 12: Mobile routes, settings link, invoice profile, customers
+
+**Files:**
+- Create: `src/views/mobile/invoices/ProfilePage.vue`, `src/views/mobile/invoices/CustomerListPage.vue`, `src/views/mobile/invoices/CustomerEditPage.vue`
+- Create (placeholders, replaced in Task 13): `src/views/mobile/invoices/ListPage.vue`, `EditPage.vue`, `DetailPage.vue`, each:
+
+```vue
+<template>
+    <f7-page><f7-navbar :back-link="tt('Back')"></f7-navbar></f7-page>
+</template>
+<script setup lang="ts">
+import { useI18n } from '@/locales/helpers.ts';
+const { tt } = useI18n();
+</script>
+```
+- Modify: `src/router/mobile.ts` (imports at the top; routes before the `(.*)` catch-all at ~line 390), `src/views/mobile/SettingsPage.vue` (after the Buckets item, line 72)
+
+**Interfaces:**
+- Consumes: Task 6 store, Task 7 `useInvoiceProfilePageBase`, `useCustomerEditPageBase`.
+- Produces mobile routes: `/invoice/list`, `/invoice/add` (optional `?duplicateFrom=<id>`), `/invoice/edit?id=`, `/invoice/detail?id=`, `/invoice/customer/list`, `/invoice/customer/add`, `/invoice/customer/edit?id=`, `/invoice/profile`.
+
+- [ ] **Step 1: Routes** in `src/router/mobile.ts`. Imports with the other page imports:
+
+```ts
+import InvoiceListPage from '@/views/mobile/invoices/ListPage.vue';
+import InvoiceEditPage from '@/views/mobile/invoices/EditPage.vue';
+import InvoiceDetailPage from '@/views/mobile/invoices/DetailPage.vue';
+import InvoiceCustomerListPage from '@/views/mobile/invoices/CustomerListPage.vue';
+import InvoiceCustomerEditPage from '@/views/mobile/invoices/CustomerEditPage.vue';
+import InvoiceProfilePage from '@/views/mobile/invoices/ProfilePage.vue';
+```
+
+Routes, after the `/bucket/list` route and before the `(.*)` catch-all:
+
+```ts
+    {
+        path: '/invoice/list',
+        async: asyncResolve(InvoiceListPage),
+        beforeEnter: [checkLogin]
+    },
+    {
+        path: '/invoice/add',
+        async: asyncResolve(InvoiceEditPage),
+        beforeEnter: [checkLogin]
+    },
+    {
+        path: '/invoice/edit',
+        async: asyncResolve(InvoiceEditPage),
+        beforeEnter: [checkLogin]
+    },
+    {
+        path: '/invoice/detail',
+        async: asyncResolve(InvoiceDetailPage),
+        beforeEnter: [checkLogin]
+    },
+    {
+        path: '/invoice/customer/list',
+        async: asyncResolve(InvoiceCustomerListPage),
+        beforeEnter: [checkLogin]
+    },
+    {
+        path: '/invoice/customer/add',
+        async: asyncResolve(InvoiceCustomerEditPage),
+        beforeEnter: [checkLogin]
+    },
+    {
+        path: '/invoice/customer/edit',
+        async: asyncResolve(InvoiceCustomerEditPage),
+        beforeEnter: [checkLogin]
+    },
+    {
+        path: '/invoice/profile',
+        async: asyncResolve(InvoiceProfilePage),
+        beforeEnter: [checkLogin]
+    },
+```
+
+- [ ] **Step 2: Settings link** in `src/views/mobile/SettingsPage.vue`, after `<f7-list-item :title="tt('Buckets')" link="/bucket/list"></f7-list-item>`:
+
+```vue
+            <f7-list-item :title="tt('Invoices')" link="/invoice/list"></f7-list-item>
+```
+
+- [ ] **Step 3: Create `src/views/mobile/invoices/ProfilePage.vue`** (pattern: `src/views/mobile/users/UserProfilePage.vue`; image picker: `src/views/mobile/transactions/EditPage.vue:397-426, 518`)
+
+```vue
+<template>
+    <f7-page @page:afterin="onPageAfterIn">
+        <f7-navbar>
+            <f7-nav-left :class="{ 'disabled': loading }" :back-link="tt('Back')"></f7-nav-left>
+            <f7-nav-title :title="tt('Invoice Profile')"></f7-nav-title>
+            <f7-nav-right :class="{ 'navbar-compact-icons': true, 'disabled': loading }">
+                <f7-link icon-f7="checkmark_alt" :class="{ 'disabled': inputIsNotChanged || inputIsInvalid || saving }" :aria-label="tt('Save')" @click="save"></f7-link>
+            </f7-nav-right>
+        </f7-navbar>
+
+        <f7-list strong inset dividers class="margin-vertical skeleton-text" v-if="loading">
+            <f7-list-item class="list-item-with-header-and-title" header="Business Name" title="Business Name"></f7-list-item>
+            <f7-list-item class="list-item-with-header-and-title" header="Address" title="Address"></f7-list-item>
+            <f7-list-item class="list-item-with-header-and-title" header="Invoice Number Prefix" title="INV"></f7-list-item>
+        </f7-list>
+
+        <f7-list form strong inset dividers class="margin-vertical" v-else>
+            <f7-list-item :header="tt('Logo')">
+                <template #footer>
+                    <div class="display-flex align-items-center padding-top-half">
+                        <image-box style="height: 48px; width: auto" alt="logo" :src="newProfile.logoDataUrl" v-if="newProfile.logoDataUrl"></image-box>
+                        <f7-button class="margin-left-half" :text="tt('Update Logo')" @click="logoInput?.click()"></f7-button>
+                        <f7-button class="margin-left-half" color="red" :text="tt('Remove Logo')" @click="newProfile.logoDataUrl = ''" v-if="newProfile.logoDataUrl"></f7-button>
+                    </div>
+                </template>
+            </f7-list-item>
+            <f7-list-input type="text" autocomplete="off" clear-button
+                           :label="tt('Business Name')" :placeholder="tt('Business Name')"
+                           v-model:value="newProfile.businessName"></f7-list-input>
+            <f7-list-input type="textarea" style="height: auto" autocomplete="off"
+                           :label="tt('Address')" :placeholder="tt('Address')"
+                           v-textarea-auto-size v-model:value="newProfile.addressLines"></f7-list-input>
+            <f7-list-input type="text" autocomplete="off" clear-button
+                           :label="tt('Phone')" :placeholder="tt('Phone')"
+                           v-model:value="newProfile.phone"></f7-list-input>
+            <f7-list-input type="text" autocomplete="off" clear-button
+                           :label="tt('Website')" :placeholder="tt('Website')"
+                           v-model:value="newProfile.website"></f7-list-input>
+            <f7-list-input type="text" autocomplete="off" clear-button
+                           :label="tt('Invoice Number Prefix')" :placeholder="tt('Invoice Number Prefix')"
+                           v-model:value="newProfile.numberPrefix"></f7-list-input>
+            <list-number-input :label="tt('Payment Terms (days)')" :placeholder="tt('Payment Terms (days)')"
+                               :min-value="0" :max-value="365" :max-decimal-count="0"
+                               v-model="newProfile.defaultTermsDays"></list-number-input>
+            <f7-list-input type="textarea" style="height: auto" autocomplete="off"
+                           :label="tt('Default Notes / Terms')" :placeholder="tt('Default Notes / Terms')"
+                           v-textarea-auto-size v-model:value="newProfile.defaultNotes"></f7-list-input>
+        </f7-list>
+
+        <input ref="logoInput" type="file" style="display: none" accept="image/png,image/jpeg" @change="onLogoChosen($event)" />
+    </f7-page>
+</template>
+
+<script setup lang="ts">
+import { ref, useTemplateRef } from 'vue';
+import type { Router } from 'framework7/types';
+
+import { useI18n } from '@/locales/helpers.ts';
+import { useI18nUIComponents, showLoading, hideLoading } from '@/lib/ui/mobile.ts';
+import { useInvoiceProfilePageBase } from '@/views/base/invoices/InvoiceProfilePageBase.ts';
+
+import { useInvoicesStore } from '@/stores/invoice.ts';
+
+const props = defineProps<{
+    f7route: Router.Route;
+    f7router: Router.Router;
+}>();
+
+const { tt } = useI18n();
+const { showAlert, showToast, routeBackOnError } = useI18nUIComponents();
+const {
+    loading,
+    saving,
+    newProfile,
+    inputIsNotChanged,
+    inputInvalidProblemMessage,
+    inputIsInvalid,
+    setProfile,
+    readLogoFile
+} = useInvoiceProfilePageBase();
+
+const invoicesStore = useInvoicesStore();
+
+const logoInput = useTemplateRef<HTMLInputElement>('logoInput');
+const loadingError = ref<unknown | null>(null);
+
+function init(): void {
+    loading.value = true;
+
+    invoicesStore.loadInvoiceProfile({ force: true }).then(profile => {
+        setProfile(profile);
+        loading.value = false;
+    }).catch(error => {
+        if (error.processed) {
+            loading.value = false;
+        } else {
+            loadingError.value = error;
+            showToast(error.message || error);
+        }
+    });
+}
+
+function onLogoChosen(event: Event): void {
+    const el = event.target as HTMLInputElement;
+
+    if (!el.files || !el.files.length || !el.files[0]) {
+        return;
+    }
+
+    const logoFile = el.files[0] as File;
+    el.value = '';
+
+    readLogoFile(logoFile).then(dataUrl => {
+        newProfile.value.logoDataUrl = dataUrl;
+    }).catch(error => {
+        showAlert(error.message);
+    });
+}
+
+function save(): void {
+    const router = props.f7router;
+    const problemMessage = inputInvalidProblemMessage.value;
+
+    if (problemMessage) {
+        showAlert(problemMessage);
+        return;
+    }
+
+    saving.value = true;
+    showLoading(() => saving.value);
+
+    invoicesStore.updateInvoiceProfile({ profile: newProfile.value }).then(profile => {
+        saving.value = false;
+        hideLoading();
+        setProfile(profile);
+        showToast('Invoice profile has been saved');
+        router.back();
+    }).catch(error => {
+        saving.value = false;
+        hideLoading();
+
+        if (!error.processed) {
+            showToast(error.message || error);
+        }
+    });
+}
+
+function onPageAfterIn(): void {
+    routeBackOnError(props.f7router, loadingError);
+}
+
+init();
+</script>
+```
+
+- [ ] **Step 4: Create `src/views/mobile/invoices/CustomerListPage.vue`** (pattern: `src/views/mobile/templates/ListPage.vue`)
+
+```vue
+<template>
+    <f7-page ptr @ptr:refresh="reload" @page:afterin="onPageAfterIn">
+        <f7-navbar>
+            <f7-nav-left :class="{ 'disabled': loading }" :back-link="tt('Back')"></f7-nav-left>
+            <f7-nav-title :title="tt('Customers')"></f7-nav-title>
+            <f7-nav-right :class="{ 'navbar-compact-icons': true, 'disabled': loading }">
+                <f7-link icon-f7="plus" :aria-label="tt('Add')" href="/invoice/customer/add"></f7-link>
+            </f7-nav-right>
+        </f7-navbar>
+
+        <f7-list strong inset dividers class="margin-top-half skeleton-text" v-if="loading">
+            <f7-list-item title="Customer Name" :key="itemIdx" v-for="itemIdx in [ 1, 2, 3 ]"></f7-list-item>
+        </f7-list>
+
+        <f7-list strong inset dividers class="margin-top-half" v-if="!loading && !customers.length">
+            <f7-list-item :title="tt('No available customer')"></f7-list-item>
+        </f7-list>
+
+        <f7-list strong inset dividers class="margin-top-half" v-if="!loading && customers.length">
+            <f7-list-item swipeout
+                          :id="getCustomerDomId(customer)"
+                          :title="customer.name"
+                          :footer="customer.contactName"
+                          :key="customer.id"
+                          v-for="customer in customers">
+                <f7-swipeout-actions :left="textDirection === TextDirection.RTL"
+                                     :right="textDirection === TextDirection.LTR">
+                    <f7-swipeout-button color="orange" close :text="tt('Edit')" @click="edit(customer)"></f7-swipeout-button>
+                    <f7-swipeout-button color="red" class="padding-horizontal" :aria-label="tt('Delete')" @click="remove(customer, false)">
+                        <f7-icon f7="trash"></f7-icon>
+                    </f7-swipeout-button>
+                </f7-swipeout-actions>
+            </f7-list-item>
+        </f7-list>
+
+        <f7-actions close-by-outside-click close-on-escape :opened="showDeleteActionSheet" @actions:closed="showDeleteActionSheet = false">
+            <f7-actions-group>
+                <f7-actions-label>{{ tt('Are you sure you want to delete this customer?') }}</f7-actions-label>
+                <f7-actions-button color="red" @click="remove(customerToDelete, true)">{{ tt('Delete') }}</f7-actions-button>
+            </f7-actions-group>
+            <f7-actions-group>
+                <f7-actions-button bold close>{{ tt('Cancel') }}</f7-actions-button>
+            </f7-actions-group>
+        </f7-actions>
+    </f7-page>
+</template>
+
+<script setup lang="ts">
+import { ref, computed } from 'vue';
+import type { Router } from 'framework7/types';
+
+import { useI18n } from '@/locales/helpers.ts';
+import { useI18nUIComponents, showLoading, hideLoading, onSwipeoutDeleted } from '@/lib/ui/mobile.ts';
+
+import { useInvoicesStore } from '@/stores/invoice.ts';
+
+import { TextDirection } from '@/core/text.ts';
+import type { Customer } from '@/models/invoice.ts';
+
+const props = defineProps<{
+    f7route: Router.Route;
+    f7router: Router.Router;
+}>();
+
+const { tt, getCurrentLanguageTextDirection } = useI18n();
+const { showAlert, showToast, routeBackOnError } = useI18nUIComponents();
+
+const invoicesStore = useInvoicesStore();
+
+const loading = ref<boolean>(true);
+const loadingError = ref<unknown | null>(null);
+const customerToDelete = ref<Customer | null>(null);
+const showDeleteActionSheet = ref<boolean>(false);
+
+const textDirection = computed<TextDirection>(() => getCurrentLanguageTextDirection());
+const customers = computed<Customer[]>(() => invoicesStore.allCustomers);
+
+function getCustomerDomId(customer: Customer): string {
+    return 'customer_' + customer.id;
+}
+
+function init(): void {
+    loading.value = true;
+
+    invoicesStore.loadAllCustomers({ force: false }).then(() => {
+        loading.value = false;
+    }).catch(error => {
+        if (error.processed) {
+            loading.value = false;
+        } else {
+            loadingError.value = error;
+            showToast(error.message || error);
+        }
+    });
+}
+
+function reload(done?: () => void): void {
+    const force = !!done;
+
+    invoicesStore.loadAllCustomers({ force: force }).then(() => {
+        done?.();
+
+        if (force) {
+            showToast('Customer list has been updated');
+        }
+    }).catch(error => {
+        done?.();
+
+        if (error.isUpToDate) {
+            showToast('Customer list is up to date');
+        } else if (!error.processed) {
+            showToast(error.message || error);
+        }
+    });
+}
+
+function edit(customer: Customer): void {
+    props.f7router.navigate(`/invoice/customer/edit?id=${customer.id}`);
+}
+
+function remove(customer: Customer | null, confirm: boolean): void {
+    if (!customer) {
+        showAlert('An error occurred');
+        return;
+    }
+
+    if (!confirm) {
+        customerToDelete.value = customer;
+        showDeleteActionSheet.value = true;
+        return;
+    }
+
+    showDeleteActionSheet.value = false;
+    customerToDelete.value = null;
+    showLoading();
+
+    invoicesStore.deleteCustomer({
+        customer: customer,
+        beforeResolve: (done) => {
+            onSwipeoutDeleted(getCustomerDomId(customer), done);
+        }
+    }).then(() => {
+        hideLoading();
+    }).catch(error => {
+        hideLoading();
+
+        if (!error.processed) {
+            showToast(error.message || error);
+        }
+    });
+}
+
+function onPageAfterIn(): void {
+    routeBackOnError(props.f7router, loadingError);
+}
+
+init();
+</script>
+```
+
+- [ ] **Step 5: Create `src/views/mobile/invoices/CustomerEditPage.vue`** (pattern: `src/views/mobile/categories/EditPage.vue` / `accounts/EditPage.vue`)
+
+```vue
+<template>
+    <f7-page @page:afterin="onPageAfterIn">
+        <f7-navbar>
+            <f7-nav-left :class="{ 'disabled': loading }" :back-link="tt('Back')"></f7-nav-left>
+            <f7-nav-title :title="tt(title)"></f7-nav-title>
+            <f7-nav-right :class="{ 'disabled': loading }">
+                <f7-link icon-f7="checkmark_alt" :class="{ 'disabled': inputIsEmpty || submitting }" :aria-label="tt('Save')" @click="save"></f7-link>
+            </f7-nav-right>
+        </f7-navbar>
+
+        <f7-list form strong inset dividers class="margin-vertical">
+            <f7-list-input type="text" autocomplete="off" clear-button
+                           :label="tt('Customer Name')" :placeholder="tt('Customer Name')"
+                           v-model:value="customer.name"></f7-list-input>
+            <f7-list-input type="text" autocomplete="off" clear-button
+                           :label="tt('Contact Person')" :placeholder="tt('Contact Person (optional)')"
+                           v-model:value="customer.contactName"></f7-list-input>
+            <f7-list-input type="textarea" style="height: auto" autocomplete="off"
+                           :label="tt('Address')" :placeholder="tt('Address')"
+                           v-textarea-auto-size v-model:value="customer.addressLines"></f7-list-input>
+            <f7-list-input type="email" autocomplete="off" clear-button
+                           :label="tt('Email')" :placeholder="tt('Email (optional)')"
+                           v-model:value="customer.email"></f7-list-input>
+        </f7-list>
+    </f7-page>
+</template>
+
+<script setup lang="ts">
+import { ref } from 'vue';
+import type { Router } from 'framework7/types';
+
+import { useI18n } from '@/locales/helpers.ts';
+import { useI18nUIComponents, showLoading, hideLoading } from '@/lib/ui/mobile.ts';
+import { useCustomerEditPageBase } from '@/views/base/invoices/CustomerEditPageBase.ts';
+
+import { useInvoicesStore } from '@/stores/invoice.ts';
+
+const props = defineProps<{
+    f7route: Router.Route;
+    f7router: Router.Router;
+}>();
+
+const { tt } = useI18n();
+const { showAlert, showToast, routeBackOnError } = useI18nUIComponents();
+const {
+    editCustomerId,
+    loading,
+    submitting,
+    customer,
+    title,
+    inputEmptyProblemMessage,
+    inputIsEmpty
+} = useCustomerEditPageBase();
+
+const invoicesStore = useInvoicesStore();
+
+const loadingError = ref<unknown | null>(null);
+
+function init(): void {
+    const customerId = props.f7route.query['id'];
+
+    if (!customerId) {
+        return;
+    }
+
+    loading.value = true;
+    editCustomerId.value = customerId;
+
+    invoicesStore.loadAllCustomers({ force: false }).then(() => {
+        const existing = invoicesStore.allCustomersMap[customerId];
+
+        if (!existing) {
+            loadingError.value = 'Unable to retrieve customer';
+            showToast('Unable to retrieve customer');
+            return;
+        }
+
+        customer.value = existing.clone();
+        loading.value = false;
+    }).catch(error => {
+        if (error.processed) {
+            loading.value = false;
+        } else {
+            loadingError.value = error;
+            showToast(error.message || error);
+        }
+    });
+}
+
+function save(): void {
+    const router = props.f7router;
+    const problemMessage = inputEmptyProblemMessage.value;
+
+    if (problemMessage) {
+        showAlert(problemMessage);
+        return;
+    }
+
+    submitting.value = true;
+    showLoading(() => submitting.value);
+
+    invoicesStore.saveCustomer({ customer: customer.value, isEdit: !!editCustomerId.value }).then(() => {
+        submitting.value = false;
+        hideLoading();
+        showToast(editCustomerId.value ? 'You have saved this customer' : 'You have added a new customer');
+        router.back();
+    }).catch(error => {
+        submitting.value = false;
+        hideLoading();
+
+        if (!error.processed) {
+            showToast(error.message || error);
+        }
+    });
+}
+
+function onPageAfterIn(): void {
+    routeBackOnError(props.f7router, loadingError);
+}
+
+init();
+</script>
+```
+
+- [ ] **Step 6: Type-check, lint, and check on a phone-sized browser**
+
+Run: `npx vue-tsc --noEmit && npx eslint src/views/mobile/invoices src/router/mobile.ts src/views/mobile/SettingsPage.vue`
+Expected: clean.
+
+Open the mobile UI (`/mobile` entry, phone-size viewport): Settings shows "Invoices" after Buckets (it opens the placeholder page for now). Navigate to `#!/invoice/profile` directly: profile loads with the values saved on desktop; change the website, tap the checkmark, toast, back. `#!/invoice/customer/list`: Quber Tech listed; swipe left → Edit opens the edit page with values; Add (plus) creates a second customer; swipe → Delete asks via action sheet; deleting Quber Tech fails with "This customer is used by invoices…" if an invoice exists.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/views/mobile/invoices src/router/mobile.ts src/views/mobile/SettingsPage.vue
+git commit --no-verify -m "invoices: mobile routes, invoice profile and customers"
+```
+
+---
+
+### Task 13: Mobile invoice list, edit and detail pages
+
+**Files:**
+- Create (replace placeholders): `src/views/mobile/invoices/ListPage.vue`, `EditPage.vue`, `DetailPage.vue`
+
+**Interfaces:**
+- Consumes: Task 6 store, Task 7 `useInvoiceListPageBase`, `useInvoiceEditPageBase`, `useInvoiceDetailPageBase`, `getInvoiceDisplayStatusName`; Task 8 `InvoiceDocument`; global mobile components `list-item-selection-popup`, `date-selection-sheet`, `number-pad-sheet`, `list-number-input`.
+- Produces: the three routes from Task 12.
+
+- [ ] **Step 1: Replace `src/views/mobile/invoices/ListPage.vue`** (pattern: `src/views/mobile/templates/ListPage.vue`; amount rows like `accounts/ListPage.vue:69-79`)
+
+```vue
+<template>
+    <f7-page ptr @ptr:refresh="reload" @page:afterin="onPageAfterIn">
+        <f7-navbar>
+            <f7-nav-left :class="{ 'disabled': loading }" :back-link="tt('Back')"></f7-nav-left>
+            <f7-nav-title :title="tt('Invoices')"></f7-nav-title>
+            <f7-nav-right :class="{ 'navbar-compact-icons': true, 'disabled': loading }">
+                <f7-link icon-f7="ellipsis" :aria-label="tt('More')" @click="showMoreActionSheet = true"></f7-link>
+                <f7-link icon-f7="plus" :aria-label="tt('Add')" href="/invoice/add"></f7-link>
+            </f7-nav-right>
+        </f7-navbar>
+
+        <f7-list strong inset dividers class="margin-top-half" :class="{ 'skeleton-text': loading }">
+            <f7-list-item :title="tt('Outstanding')" :after="loading ? '₹0.00' : formatAmount(outstandingTotal)"></f7-list-item>
+            <f7-list-item :title="tt('Overdue')" :after="loading ? '₹0.00' : formatAmount(overdueTotal)"></f7-list-item>
+        </f7-list>
+
+        <f7-list strong inset dividers class="margin-top-half skeleton-text" v-if="loading">
+            <f7-list-item title="CA/2026-27/01" after="₹000,000.00" footer="Customer · Unpaid" :key="itemIdx" v-for="itemIdx in [ 1, 2, 3 ]"></f7-list-item>
+        </f7-list>
+
+        <f7-list strong inset dividers class="margin-top-half" v-if="!loading && noAvailableInvoice">
+            <f7-list-item :title="tt('No available invoice')"></f7-list-item>
+        </f7-list>
+
+        <f7-list strong inset dividers class="margin-top-half" v-if="!loading && !noAvailableInvoice">
+            <f7-list-item swipeout
+                          :id="getInvoiceDomId(invoice)"
+                          :title="invoice.number"
+                          :after="formatAmount(getInvoiceBalanceDue(invoice))"
+                          :link="'/invoice/detail?id=' + invoice.id"
+                          :key="invoice.id"
+                          v-for="invoice in displayInvoices">
+                <template #footer>
+                    <div>{{ invoice.billToName }} · {{ tt(getDisplayStatusName(invoice)) }} · {{ formatDate(invoice.dueDate) }}</div>
+                </template>
+                <f7-swipeout-actions :left="textDirection === TextDirection.RTL"
+                                     :right="textDirection === TextDirection.LTR">
+                    <f7-swipeout-button color="orange" close :text="tt('Edit')" @click="edit(invoice)"></f7-swipeout-button>
+                    <f7-swipeout-button color="red" class="padding-horizontal" :aria-label="tt('Delete')" @click="remove(invoice, false)">
+                        <f7-icon f7="trash"></f7-icon>
+                    </f7-swipeout-button>
+                </f7-swipeout-actions>
+            </f7-list-item>
+        </f7-list>
+
+        <f7-actions close-by-outside-click close-on-escape :opened="showMoreActionSheet" @actions:closed="showMoreActionSheet = false">
+            <f7-actions-group>
+                <f7-actions-button v-if="!showPaid" @click="showPaid = true">{{ tt('Show Paid Invoices') }}</f7-actions-button>
+                <f7-actions-button v-if="showPaid" @click="showPaid = false">{{ tt('Hide Paid Invoices') }}</f7-actions-button>
+                <f7-actions-button @click="f7router.navigate('/invoice/customer/list')">{{ tt('Customers') }}</f7-actions-button>
+                <f7-actions-button @click="f7router.navigate('/invoice/profile')">{{ tt('Invoice Profile') }}</f7-actions-button>
+            </f7-actions-group>
+            <f7-actions-group>
+                <f7-actions-button bold close>{{ tt('Cancel') }}</f7-actions-button>
+            </f7-actions-group>
+        </f7-actions>
+
+        <f7-actions close-by-outside-click close-on-escape :opened="showDeleteActionSheet" @actions:closed="showDeleteActionSheet = false">
+            <f7-actions-group>
+                <f7-actions-label>{{ tt('Are you sure you want to delete this invoice?') }}</f7-actions-label>
+                <f7-actions-button color="red" @click="remove(invoiceToDelete, true)">{{ tt('Delete') }}</f7-actions-button>
+            </f7-actions-group>
+            <f7-actions-group>
+                <f7-actions-button bold close>{{ tt('Cancel') }}</f7-actions-button>
+            </f7-actions-group>
+        </f7-actions>
+    </f7-page>
+</template>
+
+<script setup lang="ts">
+import { ref, computed } from 'vue';
+import type { Router } from 'framework7/types';
+
+import { useI18n } from '@/locales/helpers.ts';
+import { useI18nUIComponents, showLoading, hideLoading, onSwipeoutDeleted } from '@/lib/ui/mobile.ts';
+import { useInvoiceListPageBase } from '@/views/base/invoices/InvoiceListPageBase.ts';
+
+import { useInvoicesStore } from '@/stores/invoice.ts';
+
+import { TextDirection } from '@/core/text.ts';
+import type { Invoice } from '@/models/invoice.ts';
+
+import { getInvoiceBalanceDue } from '@/lib/invoice.ts';
+
+const props = defineProps<{
+    f7route: Router.Route;
+    f7router: Router.Router;
+}>();
+
+const { tt, getCurrentLanguageTextDirection } = useI18n();
+const { showAlert, showToast, routeBackOnError } = useI18nUIComponents();
+const {
+    loading,
+    showPaid,
+    displayInvoices,
+    noAvailableInvoice,
+    outstandingTotal,
+    overdueTotal,
+    formatAmount,
+    formatDate,
+    getDisplayStatusName
+} = useInvoiceListPageBase();
+
+const invoicesStore = useInvoicesStore();
+
+const loadingError = ref<unknown | null>(null);
+const invoiceToDelete = ref<Invoice | null>(null);
+const showMoreActionSheet = ref<boolean>(false);
+const showDeleteActionSheet = ref<boolean>(false);
+
+const textDirection = computed<TextDirection>(() => getCurrentLanguageTextDirection());
+
+function getInvoiceDomId(invoice: Invoice): string {
+    return 'invoice_' + invoice.id;
+}
+
+function init(): void {
+    loading.value = true;
+
+    invoicesStore.loadAllInvoices({ force: false }).then(() => {
+        loading.value = false;
+    }).catch(error => {
+        if (error.processed) {
+            loading.value = false;
+        } else {
+            loadingError.value = error;
+            showToast(error.message || error);
+        }
+    });
+}
+
+function reload(done?: () => void): void {
+    const force = !!done;
+
+    invoicesStore.loadAllInvoices({ force: force }).then(() => {
+        done?.();
+
+        if (force) {
+            showToast('Invoice list has been updated');
+        }
+    }).catch(error => {
+        done?.();
+
+        if (error.isUpToDate) {
+            showToast('Invoice list is up to date');
+        } else if (!error.processed) {
+            showToast(error.message || error);
+        }
+    });
+}
+
+function edit(invoice: Invoice): void {
+    props.f7router.navigate(`/invoice/edit?id=${invoice.id}`);
+}
+
+function remove(invoice: Invoice | null, confirm: boolean): void {
+    if (!invoice) {
+        showAlert('An error occurred');
+        return;
+    }
+
+    if (!confirm) {
+        invoiceToDelete.value = invoice;
+        showDeleteActionSheet.value = true;
+        return;
+    }
+
+    showDeleteActionSheet.value = false;
+    invoiceToDelete.value = null;
+    showLoading();
+
+    invoicesStore.deleteInvoice({
+        invoice: invoice,
+        beforeResolve: (done) => {
+            onSwipeoutDeleted(getInvoiceDomId(invoice), done);
+        }
+    }).then(() => {
+        hideLoading();
+    }).catch(error => {
+        hideLoading();
+
+        if (!error.processed) {
+            showToast(error.message || error);
+        }
+    });
+}
+
+function onPageAfterIn(): void {
+    if (!loading.value) {
+        reload();
+    }
+
+    routeBackOnError(props.f7router, loadingError);
+}
+
+init();
+</script>
+```
+
+- [ ] **Step 2: Replace `src/views/mobile/invoices/EditPage.vue`** (pattern: `src/views/mobile/accounts/EditPage.vue`, including per-child lists like its sub-accounts at lines 447-466)
+
+```vue
+<template>
+    <f7-page @page:afterin="onPageAfterIn">
+        <f7-navbar>
+            <f7-nav-left :class="{ 'disabled': loading }" :back-link="tt('Back')"></f7-nav-left>
+            <f7-nav-title :title="tt(title)"></f7-nav-title>
+            <f7-nav-right :class="{ 'navbar-compact-icons': true, 'disabled': loading }">
+                <f7-link icon-f7="ellipsis" :aria-label="tt('More')" @click="showMoreActionSheet = true"></f7-link>
+                <f7-link icon-f7="checkmark_alt" :class="{ 'disabled': inputIsEmpty || submitting }" :aria-label="tt('Save')" @click="save"></f7-link>
+            </f7-nav-right>
+        </f7-navbar>
+
+        <f7-list strong inset dividers class="margin-vertical skeleton-text" v-if="loading">
+            <f7-list-item class="list-item-with-header-and-title" header="Customer" title="Customer Name"></f7-list-item>
+            <f7-list-item class="list-item-with-header-and-title" header="Invoice Number" title="CA/2026-27/01"></f7-list-item>
+            <f7-list-item class="list-item-with-header-and-title" header="Invoice Date" title="April 23, 2026"></f7-list-item>
+        </f7-list>
+
+        <template v-else>
+            <f7-list form strong inset dividers class="margin-vertical">
+                <f7-list-item class="list-item-with-header-and-title" link="#"
+                              :header="tt('Customer')"
+                              :title="selectedCustomerName"
+                              @click="showCustomerPopup = true">
+                    <list-item-selection-popup value-type="item"
+                                               key-field="id" value-field="id"
+                                               title-field="name"
+                                               :title="tt('Customer')"
+                                               :enable-filter="true"
+                                               :filter-placeholder="tt('Customer')"
+                                               :filter-no-items-text="tt('No results')"
+                                               :items="allCustomers"
+                                               v-model:show="showCustomerPopup"
+                                               v-model="invoice.customerId">
+                    </list-item-selection-popup>
+                </f7-list-item>
+                <f7-list-input type="text" autocomplete="off" clear-button
+                               :label="tt('Invoice Number')" :placeholder="tt('Invoice Number')"
+                               v-model:value="invoice.number"></f7-list-input>
+                <f7-list-item class="list-item-with-header-and-title" link="#" no-chevron
+                              :header="tt('Invoice Date')"
+                              :title="formatDate(invoice.invoiceDate)"
+                              @click="showInvoiceDateSheet = true">
+                    <date-selection-sheet v-model:show="showInvoiceDateSheet"
+                                          :model-value="invoice.invoiceDate"
+                                          @update:model-value="onInvoiceDateChanged">
+                    </date-selection-sheet>
+                </f7-list-item>
+                <f7-list-item class="list-item-with-header-and-title" link="#" no-chevron
+                              :header="tt('Payment Due')"
+                              :title="formatDate(invoice.dueDate)"
+                              @click="showDueDateSheet = true">
+                    <date-selection-sheet v-model:show="showDueDateSheet"
+                                          v-model="invoice.dueDate">
+                    </date-selection-sheet>
+                </f7-list-item>
+            </f7-list>
+
+            <f7-block class="no-padding no-margin">
+                <f7-list strong inset dividers class="margin-vertical"
+                         :key="index" v-for="(line, index) in invoice.lines">
+                    <f7-list-item group-title>
+                        <small>{{ tt('Line') + ' #' + (index + 1) }}</small>
+                        <f7-button rasied fill color="red" icon-f7="trash" icon-size="16px" :aria-label="tt('Remove')"
+                                   :class="{ 'disabled': invoice.lines.length <= 1 }"
+                                   @click="removeLine(index)"></f7-button>
+                    </f7-list-item>
+                    <f7-list-input type="text" autocomplete="off" clear-button
+                                   :label="tt('Item')" :placeholder="tt('Item')"
+                                   v-model:value="line.itemName"></f7-list-input>
+                    <f7-list-input type="textarea" style="height: auto" autocomplete="off"
+                                   :label="tt('Description')" :placeholder="tt('Description (optional)')"
+                                   v-textarea-auto-size v-model:value="line.description"></f7-list-input>
+                    <list-number-input :label="tt('Qty')" :placeholder="tt('Qty')"
+                                       :min-value="1" :max-value="10000" :max-decimal-count="0"
+                                       v-model="line.quantity"></list-number-input>
+                    <f7-list-item link="#" no-chevron class="list-item-with-header-and-title"
+                                  :header="tt('Rate')"
+                                  :title="formatAmount(line.rate)"
+                                  @click="rateSheetLineIndex = index">
+                        <number-pad-sheet :min-value="0"
+                                          :max-value="TRANSACTION_MAX_AMOUNT"
+                                          :currency="invoice.currency"
+                                          :show="rateSheetLineIndex === index"
+                                          @update:show="rateSheetLineIndex = $event ? index : -1"
+                                          v-model="line.rate"></number-pad-sheet>
+                    </f7-list-item>
+                </f7-list>
+            </f7-block>
+
+            <f7-list strong inset dividers class="margin-vertical">
+                <f7-list-item :title="tt('Total')" :after="formatAmount(totals.total)"></f7-list-item>
+                <f7-list-input type="textarea" style="height: auto" autocomplete="off"
+                               :label="tt('Notes / Terms')" :placeholder="tt('Notes / Terms')"
+                               v-textarea-auto-size v-model:value="invoice.notes"></f7-list-input>
+            </f7-list>
+        </template>
+
+        <f7-actions close-by-outside-click close-on-escape :opened="showMoreActionSheet" @actions:closed="showMoreActionSheet = false">
+            <f7-actions-group>
+                <f7-actions-button @click="addLine">{{ tt('Add Line') }}</f7-actions-button>
+                <f7-actions-button @click="f7router.navigate('/invoice/customer/add')">{{ tt('Add Customer') }}</f7-actions-button>
+            </f7-actions-group>
+            <f7-actions-group>
+                <f7-actions-button bold close>{{ tt('Cancel') }}</f7-actions-button>
+            </f7-actions-group>
+        </f7-actions>
+    </f7-page>
+</template>
+
+<script setup lang="ts">
+import { ref, computed } from 'vue';
+import type { Router } from 'framework7/types';
+
+import { useI18n } from '@/locales/helpers.ts';
+import { useI18nUIComponents, showLoading, hideLoading } from '@/lib/ui/mobile.ts';
+import { useInvoiceEditPageBase } from '@/views/base/invoices/InvoiceEditPageBase.ts';
+
+import { useInvoicesStore } from '@/stores/invoice.ts';
+
+import type { TextualYearMonthDay } from '@/core/datetime.ts';
+import { TRANSACTION_MAX_AMOUNT } from '@/consts/transaction.ts';
+import type { InvoiceProfile } from '@/models/invoice.ts';
+
+const props = defineProps<{
+    f7route: Router.Route;
+    f7router: Router.Router;
+}>();
+
+const { tt } = useI18n();
+const { showAlert, showToast, routeBackOnError } = useI18nUIComponents();
+const {
+    editInvoiceId,
+    loading,
+    submitting,
+    invoice,
+    allCustomers,
+    title,
+    inputEmptyProblemMessage,
+    inputIsEmpty,
+    totals,
+    addLine,
+    removeLine,
+    setInvoice,
+    prepareNewInvoice,
+    setInvoiceDate,
+    formatAmount,
+    formatDate
+} = useInvoiceEditPageBase();
+
+const invoicesStore = useInvoicesStore();
+
+const loadingError = ref<unknown | null>(null);
+const profile = ref<InvoiceProfile | null>(null);
+const showMoreActionSheet = ref<boolean>(false);
+const showCustomerPopup = ref<boolean>(false);
+const showInvoiceDateSheet = ref<boolean>(false);
+const showDueDateSheet = ref<boolean>(false);
+const rateSheetLineIndex = ref<number>(-1);
+
+const selectedCustomerName = computed<string>(() => invoicesStore.allCustomersMap[invoice.value.customerId]?.name ?? tt('None'));
+
+function suggestNumber(): void {
+    invoicesStore.getNextInvoiceNumber({ invoiceDate: invoice.value.invoiceDate }).then(number => {
+        invoice.value.number = number;
+    }).catch(error => {
+        if (!error.processed) {
+            showToast(error.message || error);
+        }
+    });
+}
+
+function init(): void {
+    const query = props.f7route.query;
+    loading.value = true;
+    editInvoiceId.value = query['id'] || null;
+
+    Promise.all([
+        invoicesStore.loadAllCustomers({ force: false }),
+        invoicesStore.loadInvoiceProfile({ force: false }),
+        query['id'] ? invoicesStore.getInvoice({ invoiceId: query['id'] }) : Promise.resolve(null),
+        query['duplicateFrom'] ? invoicesStore.getInvoice({ invoiceId: query['duplicateFrom'] }) : Promise.resolve(null)
+    ]).then(([, loadedProfile, loadedInvoice, duplicateFrom]) => {
+        profile.value = loadedProfile;
+
+        if (loadedInvoice) {
+            setInvoice(loadedInvoice);
+        } else {
+            prepareNewInvoice(loadedProfile, duplicateFrom);
+            suggestNumber();
+        }
+
+        loading.value = false;
+    }).catch(error => {
+        if (error.processed) {
+            loading.value = false;
+        } else {
+            loadingError.value = error;
+            showToast(error.message || error);
+        }
+    });
+}
+
+function onInvoiceDateChanged(date: TextualYearMonthDay): void {
+    setInvoiceDate(date, profile.value?.defaultTermsDays ?? 7);
+
+    if (!editInvoiceId.value) {
+        suggestNumber();
+    }
+}
+
+function save(): void {
+    const router = props.f7router;
+    const problemMessage = inputEmptyProblemMessage.value;
+
+    if (problemMessage) {
+        showAlert(problemMessage);
+        return;
+    }
+
+    submitting.value = true;
+    showLoading(() => submitting.value);
+
+    invoicesStore.saveInvoice({ invoice: invoice.value, isEdit: !!editInvoiceId.value }).then(() => {
+        submitting.value = false;
+        hideLoading();
+        showToast(editInvoiceId.value ? 'You have saved this invoice' : 'You have added a new invoice');
+        router.back();
+    }).catch(error => {
+        submitting.value = false;
+        hideLoading();
+
+        if (!error.processed) {
+            showToast(error.message || error);
+        }
+    });
+}
+
+function onPageAfterIn(): void {
+    routeBackOnError(props.f7router, loadingError);
+}
+
+init();
+</script>
+```
+
+- [ ] **Step 3: Replace `src/views/mobile/invoices/DetailPage.vue`**
+
+```vue
+<template>
+    <f7-page @page:afterin="onPageAfterIn">
+        <f7-navbar>
+            <f7-nav-left :class="{ 'disabled': loading }" :back-link="tt('Back')"></f7-nav-left>
+            <f7-nav-title :title="invoice ? invoice.number : tt('Invoice')"></f7-nav-title>
+            <f7-nav-right :class="{ 'navbar-compact-icons': true, 'disabled': loading || updating }">
+                <f7-link icon-f7="ellipsis" :aria-label="tt('More')" @click="showMoreActionSheet = true"></f7-link>
+            </f7-nav-right>
+        </f7-navbar>
+
+        <f7-list strong inset dividers class="margin-vertical skeleton-text" v-if="loading">
+            <f7-list-item title="Status" after="Unpaid"></f7-list-item>
+            <f7-list-item title="Total" after="₹000,000.00"></f7-list-item>
+            <f7-list-item title="Balance Due" after="₹000,000.00"></f7-list-item>
+        </f7-list>
+
+        <template v-if="!loading && invoice && profile">
+            <f7-list strong inset dividers class="margin-vertical">
+                <f7-list-item :title="tt('Status')" :after="tt(displayStatusName)"></f7-list-item>
+                <f7-list-item :title="tt('Customer')" :after="invoice.billToName"></f7-list-item>
+                <f7-list-item :title="tt('Payment Due')" :after="formatDate(invoice.dueDate)"></f7-list-item>
+                <f7-list-item :title="tt('Total')" :after="formatAmount(invoice.total)"></f7-list-item>
+                <f7-list-item :title="tt('Received')" :after="formatAmount(invoice.received)"></f7-list-item>
+                <f7-list-item :title="tt('Bank Charges')" :after="formatAmount(bankCharges)" v-if="bankCharges > 0"></f7-list-item>
+                <f7-list-item :title="tt('Balance Due')" :after="formatAmount(balanceDue)" v-else></f7-list-item>
+            </f7-list>
+
+            <f7-list strong inset dividers class="margin-vertical">
+                <f7-list-item group-title>
+                    <small>{{ tt('Payments') }}</small>
+                </f7-list-item>
+                <f7-list-item :title="tt('No payments linked yet.')" v-if="!invoice.payments.length"></f7-list-item>
+                <f7-list-item swipeout
+                              :title="formatAmount(payment.amount)"
+                              :footer="formatPaymentDescription(payment)"
+                              :key="payment.transactionId"
+                              v-for="payment in invoice.payments">
+                    <f7-swipeout-actions :left="textDirection === TextDirection.RTL"
+                                         :right="textDirection === TextDirection.LTR">
+                        <f7-swipeout-button color="red" close :text="tt('Unlink')" @click="unlink(payment)"></f7-swipeout-button>
+                    </f7-swipeout-actions>
+                </f7-list-item>
+            </f7-list>
+
+            <f7-list strong inset dividers class="margin-vertical" v-if="displayStatus !== 'paid'">
+                <f7-list-item group-title>
+                    <small>{{ tt('Suggested Matches') }}</small>
+                </f7-list-item>
+                <f7-list-item :title="tt('No matching income transactions found yet.')" v-if="!suggestions.length"></f7-list-item>
+                <f7-list-item :title="formatAmount(suggestion.amount)"
+                              :footer="formatPaymentDescription(suggestion)"
+                              :key="suggestion.transactionId"
+                              v-for="suggestion in suggestions">
+                    <template #after>
+                        <f7-button small fill :class="{ 'disabled': updating }" :text="tt('Link')" @click="link(suggestion)"></f7-button>
+                    </template>
+                </f7-list-item>
+            </f7-list>
+
+            <f7-block class="invoice-document-preview">
+                <invoice-document :invoice="invoice" :profile="profile" />
+            </f7-block>
+        </template>
+
+        <f7-actions close-by-outside-click close-on-escape :opened="showMoreActionSheet" @actions:closed="showMoreActionSheet = false">
+            <f7-actions-group>
+                <f7-actions-button @click="f7router.navigate(`/invoice/edit?id=${invoiceId}`)">{{ tt('Edit') }}</f7-actions-button>
+                <f7-actions-button @click="f7router.navigate(`/invoice/add?duplicateFrom=${invoiceId}`)">{{ tt('Duplicate') }}</f7-actions-button>
+                <f7-actions-button @click="toggleClosed">{{ invoice?.closedManually ? tt('Reopen') : tt('Mark as Paid') }}</f7-actions-button>
+                <f7-actions-button @click="printInvoice">{{ tt('Print / Save PDF') }}</f7-actions-button>
+            </f7-actions-group>
+            <f7-actions-group>
+                <f7-actions-button color="red" @click="showDeleteActionSheet = true">{{ tt('Delete') }}</f7-actions-button>
+            </f7-actions-group>
+            <f7-actions-group>
+                <f7-actions-button bold close>{{ tt('Cancel') }}</f7-actions-button>
+            </f7-actions-group>
+        </f7-actions>
+
+        <f7-actions close-by-outside-click close-on-escape :opened="showDeleteActionSheet" @actions:closed="showDeleteActionSheet = false">
+            <f7-actions-group>
+                <f7-actions-label>{{ tt('Are you sure you want to delete this invoice?') }}</f7-actions-label>
+                <f7-actions-button color="red" @click="remove">{{ tt('Delete') }}</f7-actions-button>
+            </f7-actions-group>
+            <f7-actions-group>
+                <f7-actions-button bold close>{{ tt('Cancel') }}</f7-actions-button>
+            </f7-actions-group>
+        </f7-actions>
+    </f7-page>
+</template>
+
+<script setup lang="ts">
+import { ref, computed } from 'vue';
+import type { Router } from 'framework7/types';
+
+import InvoiceDocument from '@/components/common/InvoiceDocument.vue';
+
+import { useI18n } from '@/locales/helpers.ts';
+import { useI18nUIComponents, showLoading, hideLoading } from '@/lib/ui/mobile.ts';
+import { useInvoiceDetailPageBase } from '@/views/base/invoices/InvoiceDetailPageBase.ts';
+
+import { useInvoicesStore } from '@/stores/invoice.ts';
+import { useAccountsStore } from '@/stores/account.ts';
+
+import { TextDirection } from '@/core/text.ts';
+import type { InvoicePayment } from '@/models/invoice.ts';
+
+const props = defineProps<{
+    f7route: Router.Route;
+    f7router: Router.Router;
+}>();
+
+const { tt, getCurrentLanguageTextDirection } = useI18n();
+const { showToast, routeBackOnError } = useI18nUIComponents();
+const {
+    loading,
+    updating,
+    invoice,
+    profile,
+    suggestions,
+    displayStatus,
+    displayStatusName,
+    balanceDue,
+    bankCharges,
+    formatAmount,
+    formatDate,
+    formatPaymentDescription,
+    printInvoice
+} = useInvoiceDetailPageBase();
+
+const invoicesStore = useInvoicesStore();
+const accountsStore = useAccountsStore();
+
+const loadingError = ref<unknown | null>(null);
+const invoiceId = ref<string>(props.f7route.query['id'] || '');
+const showMoreActionSheet = ref<boolean>(false);
+const showDeleteActionSheet = ref<boolean>(false);
+
+const textDirection = computed<TextDirection>(() => getCurrentLanguageTextDirection());
+
+function load(): void {
+    Promise.all([
+        invoicesStore.getInvoice({ invoiceId: invoiceId.value }),
+        invoicesStore.loadInvoiceProfile({ force: false }),
+        accountsStore.loadAllAccounts({ force: false })
+    ]).then(([loadedInvoice, loadedProfile]) => {
+        invoice.value = loadedInvoice;
+        profile.value = loadedProfile;
+        loading.value = false;
+
+        if (displayStatus.value === 'paid') {
+            suggestions.value = [];
+            return;
+        }
+
+        invoicesStore.getInvoicePaymentSuggestions({ invoiceId: loadedInvoice.id }).then(result => {
+            suggestions.value = result;
+        }).catch(error => {
+            if (!error.processed) {
+                showToast(error.message || error);
+            }
+        });
+    }).catch(error => {
+        if (error.processed) {
+            loading.value = false;
+        } else {
+            loadingError.value = error;
+            showToast(error.message || error);
+        }
+    });
+}
+
+function runAndReload(action: () => Promise<unknown>): void {
+    updating.value = true;
+    showLoading(() => updating.value);
+
+    action().then(() => {
+        updating.value = false;
+        hideLoading();
+        load();
+    }).catch(error => {
+        updating.value = false;
+        hideLoading();
+
+        if (!error.processed) {
+            showToast(error.message || error);
+        }
+    });
+}
+
+function link(suggestion: InvoicePayment): void {
+    runAndReload(() => invoicesStore.linkInvoicePayment({ invoiceId: invoiceId.value, transactionId: suggestion.transactionId }));
+}
+
+function unlink(payment: InvoicePayment): void {
+    runAndReload(() => invoicesStore.unlinkInvoicePayment({ invoiceId: invoiceId.value, transactionId: payment.transactionId }));
+}
+
+function toggleClosed(): void {
+    if (invoice.value) {
+        const current = invoice.value;
+        runAndReload(() => invoicesStore.setInvoiceClosed({ invoice: current, closed: !current.closedManually }));
+    }
+}
+
+function remove(): void {
+    if (!invoice.value) {
+        return;
+    }
+
+    const router = props.f7router;
+    showDeleteActionSheet.value = false;
+    updating.value = true;
+    showLoading(() => updating.value);
+
+    invoicesStore.deleteInvoice({ invoice: invoice.value }).then(() => {
+        updating.value = false;
+        hideLoading();
+        router.back();
+    }).catch(error => {
+        updating.value = false;
+        hideLoading();
+
+        if (!error.processed) {
+            showToast(error.message || error);
+        }
+    });
+}
+
+function onPageAfterIn(): void {
+    if (!loading.value) {
+        load(); // back from the edit page
+    }
+
+    routeBackOnError(props.f7router, loadingError);
+}
+
+load();
+</script>
+
+<style>
+.invoice-document-preview {
+    overflow-x: auto;
+}
+</style>
+```
+
+- [ ] **Step 4: Type-check, lint, and check on a phone-sized browser**
+
+Run: `npx vue-tsc --noEmit && npx eslint src/views/mobile/invoices`
+Expected: clean.
+
+In the mobile UI (phone viewport):
+- Settings → Invoices: Outstanding/Overdue summary, then `CA/2026-27/01` with balance due and "Quber Tech · Overdue · April 30, 2026". Pull to refresh shows a toast. Ellipsis: Show/Hide Paid Invoices, Customers, Invoice Profile.
+- Plus → Add Invoice: customer popup with filter, number pre-suggested, invoice date sheet (changing it moves the due date by the profile's terms and re-suggests the number), Line #1 with item, description, Qty, and Rate via the number pad; ellipsis → Add Line adds Line #2, its trash button removes it; Total updates; checkmark saves, toast, back to list showing the new invoice.
+- Tap an invoice → detail: status, totals, Payments (empty), Suggested Matches with a Link button, and the invoice document (scrolls horizontally on a narrow screen). Link a suggestion → Paid / Bank Charges as on desktop; swipe the payment → Unlink. Ellipsis → Edit (edit page, back returns to an updated detail), Duplicate (add page prefilled), Mark as Paid / Reopen, Print / Save PDF (iOS Safari: share sheet → Save to Files gives a PDF of only the document), Delete (confirm, back to list).
+- Swipe an invoice in the list → Edit / Delete work.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/views/mobile/invoices
+git commit --no-verify -m "invoices: mobile invoice list, edit and detail pages"
+```
+
+---
+
+### Task 14: Locale strings and full verification
 
 **Files:**
 - Modify: `src/locales/en.json`
 
-- [ ] **Step 1: Add UI strings** as top-level keys (next to `"Buckets"`, ~line 2845):
+- [ ] **Step 1: Collect every new key.** Run:
 
-```json
-    "Invoices": "Invoices",
-    "Invoice Profile": "Invoice Profile",
-    "These details are printed on every invoice.": "These details are printed on every invoice.",
-    "Business Name": "Business Name",
-    "Invoice Number Prefix": "Invoice Number Prefix",
-    "Payment Terms (days)": "Payment Terms (days)",
-    "Address": "Address",
-    "Phone": "Phone",
-    "Website": "Website",
-    "Default Notes / Terms": "Default Notes / Terms",
-    "Choose Logo": "Choose Logo",
-    "Remove Logo": "Remove Logo",
-    "Logo must be smaller than 250 KB": "Logo must be smaller than 250 KB",
-    "Invoice profile saved": "Invoice profile saved",
-    "Add Customer": "Add Customer",
-    "Edit Customer": "Edit Customer",
-    "Customer": "Customer",
-    "Customer Name": "Customer Name",
-    "Contact Person": "Contact Person",
-    "New Invoice": "New Invoice",
-    "Edit Invoice": "Edit Invoice",
-    "Invoice Number": "Invoice Number",
-    "Invoice Date": "Invoice Date",
-    "Payment Due": "Payment Due",
-    "Services": "Services",
-    "Item": "Item",
-    "Qty": "Qty",
-    "Rate": "Rate",
-    "Add Line": "Add Line",
-    "Notes / Terms": "Notes / Terms",
-    "Outstanding": "Outstanding",
-    "Overdue": "Overdue",
-    "Paid": "Paid",
-    "Unpaid": "Unpaid",
-    "Partially Paid": "Partially Paid",
-    "Number": "Number",
-    "Received": "Received",
-    "Balance Due": "Balance Due",
-    "Bank Charges": "Bank Charges",
-    "No invoices": "No invoices",
-    "Payments": "Payments",
-    "Suggested Matches": "Suggested Matches",
-    "No matching income transactions found yet.": "No matching income transactions found yet.",
-    "Link": "Link",
-    "Unlink": "Unlink",
-    "Mark as Paid": "Mark as Paid",
-    "Reopen": "Reopen",
-    "Print / Save PDF": "Print / Save PDF",
-    "Are you sure you want to delete this invoice?": "Are you sure you want to delete this invoice?",
-    "Unable to process invoice request": "Unable to process invoice request",
+```bash
+grep -rhoE "(tt|showMessage|showToast|showAlert|confirmDialog\.value\?\.open)\('[^']+'" \
+  src/views/desktop/invoices src/views/mobile/invoices src/views/desktop/settings/InvoiceProfileSettingPage.vue \
+  src/components/desktop/MainPageLayout.vue src/views/desktop/settings/SettingsPageLayout.vue src/views/mobile/SettingsPage.vue \
+  | sed -E "s/^[^']*'//; s/'$//" | sort -u > /tmp/invoice-keys.txt
+grep -rhoE "return '[^']+'" src/views/base/invoices src/stores/invoice.ts | sed -E "s/^return '//; s/'$//" | sort -u >> /tmp/invoice-keys.txt
+grep -rhoE "message: '[^']+'" src/views/base/invoices src/stores/invoice.ts | sed -E "s/^message: '//; s/'$//" | sort -u >> /tmp/invoice-keys.txt
+grep -rhoE "'(Unpaid|Partially Paid|Paid|Overdue)'" src/views/base/invoices | tr -d "'" >> /tmp/invoice-keys.txt
+python3 - <<'PY'
+import json
+d = json.load(open('src/locales/en.json'))
+keys = sorted(set(l.strip() for l in open('/tmp/invoice-keys.txt') if l.strip()))
+missing = [k for k in keys if k not in d]
+print('\n'.join(missing))
+PY
 ```
 
-Before adding each key, search `en.json` for it (`Total`, `Description`, `Email`, `Status`, `Duplicate`, `Edit`, `Delete`, `All`, `Save`, `Cancel`, `Refresh`, `Save Changes`, `Budgets`, `Buckets` already exist; several above, such as `Address`, `Customer` or `Paid`, may exist too). Keys must stay unique; skip any that are already present.
+Expected: the list of keys not yet in `en.json`.
 
-- [ ] **Step 2: Add error strings** inside the `"error"` object:
+- [ ] **Step 2: Add the missing keys** as flat top-level entries next to `"Buckets"` (~line 2845), each `"Key": "Key"`. They include at least: `Invoices`, `Invoice`, `Invoice Profile`, `These details are printed on every invoice.`, `Business Name`, `Address`, `Phone`, `Website`, `Logo`, `Update Logo`, `Remove Logo`, `Invoice Number Prefix`, `Payment Terms (days)`, `Default Notes / Terms`, `Customers`, `Customer`, `Customer Name`, `Contact Person`, `Contact Person (optional)`, `Email (optional)`, `Add Customer`, `Edit Customer`, `Add Invoice`, `Edit Invoice`, `Invoice Number`, `Invoice Date`, `Payment Due`, `Item`, `Description (optional)`, `Qty`, `Rate`, `Line`, `Add Line`, `Notes / Terms`, `Outstanding`, `Overdue`, `Paid`, `Unpaid`, `Partially Paid`, `Received`, `Balance Due`, `Bank Charges`, `Payments`, `Suggested Matches`, `No payments linked yet.`, `No matching income transactions found yet.`, `Link`, `Unlink`, `Mark as Paid`, `Reopen`, `Print / Save PDF`, `Show Paid Invoices`, `Hide Paid Invoices`, `No available invoice`, `No available customer`, `Are you sure you want to delete this invoice?`, `Are you sure you want to delete this customer?`, `You have added a new invoice`, `You have saved this invoice`, `You have added a new customer`, `You have saved this customer`, `Invoice profile has been saved`, `Invoice list has been updated`, `Invoice list is up to date`, `Customer list has been updated`, `Customer list is up to date`, `Customer cannot be blank`, `Customer name cannot be blank`, `Invoice number cannot be blank`, `Due date cannot be before the invoice date`, `Invoice must have at least one line`, `Item name cannot be blank`, `Quantity and rate must be greater than zero`, `Invoice number prefix cannot be blank`, `Payment terms must be between 0 and 365 days`, `The logo must be a PNG or JPEG image`, `Logo must be smaller than 250 KB`, `Unable to read this file`, and every `Unable to …` message from `src/stores/invoice.ts`. Skip any key already present (keys must stay unique; `Total`, `Edit`, `Delete`, `Duplicate`, `Status`, `Email`, `Description`, `Add`, `Save`, `Cancel`, `Close`, `Refresh`, `More`, `Operation`, `Budgets`, `Buckets`, `None`, `No results`, `Save Changes`, `Reset` already exist).
+
+- [ ] **Step 3: Add backend error strings** inside the `"error"` object:
 
 ```json
         "invoice id is invalid": "Invoice ID is invalid",
@@ -4000,9 +6447,9 @@ Before adding each key, search `en.json` for it (`Total`, `Description`, `Email`
         "invoice logo must be a png or jpeg image": "The logo must be a PNG or JPEG image",
 ```
 
-- [ ] **Step 3: Validate JSON and run everything**
+- [ ] **Step 4: Re-run Step 1** — expected: no output (no missing keys).
 
-Run:
+- [ ] **Step 5: Full verification**
 
 ```bash
 python3 -c "import json; json.load(open('src/locales/en.json'))" \
@@ -4011,15 +6458,15 @@ python3 -c "import json; json.load(open('src/locales/en.json'))" \
   && npx vue-tsc --noEmit && npx eslint src && npx vitest run
 ```
 
-Expected: every command succeeds. (`go test ./pkg/exchangerates` hits live bank APIs and may time out; it is unrelated and not part of this run.)
+Expected: every command succeeds. (`go test ./pkg/exchangerates` calls live bank APIs and may time out; it is unrelated and not part of this run.)
 
-- [ ] **Step 4: Error-path check in the browser**
+- [ ] **Step 6: Error paths in the browser**
 
-- Create a second invoice with number `CA/2026-27/01` → snackbar "Invoice number already exists".
-- Set the due date before the invoice date by typing it → Save stays disabled (the server also refuses it with "Due date cannot be before the invoice date").
-- There is no delete-customer UI in this phase; check the guard with curl: `POST /api/v1/customers/delete.json {"id":"<Quber Tech id>"}` → `"customer is used by invoices"`.
+- Desktop: create a second invoice numbered `CA/2026-27/01` → snackbar "Invoice number already exists".
+- Desktop: Customers → delete Quber Tech while an invoice uses it → "This customer is used by invoices and cannot be deleted".
+- Desktop edit dialog with an empty item name: Save is disabled and its tooltip reads "Item name cannot be blank"; on mobile the checkmark is disabled.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add src/locales/en.json
@@ -4032,17 +6479,18 @@ git commit --no-verify -m "invoices: locale strings"
 
 | Spec item | Task |
 |---|---|
-| Profile, customer, invoice, line, payment tables; snapshot; currency/kind columns | 1, 2, 3 |
-| Number uniqueness, FY numbering, suggested next number | 3 |
-| Totals computed in one place | 3 (Go), 6 (TS) |
-| Status (unpaid/partial/paid/overdue), 3% tolerance, bank charges, manual close | 6, 8, 9 |
-| Multiple payments, link/unlink, deleted transaction drops out | 4, 9 |
-| Suggestions (window, currency, unlinked, ranking, top 10) | 4, 9 |
-| Validation at the API boundary; ownership | 1 (binding tags), 3, 4, 5 |
-| Print-to-PDF layout matching the sample, file name | 9 |
-| Header nav for Budgets/Buckets/Invoices; Planning removed from settings | 7 |
-| Invoice profile settings incl. logo | 7 |
-| List page with filters, Outstanding/Overdue totals | 8 |
-| Edit dialog, add customer inline, duplicate | 8, 9 |
-| Locale strings | 10 |
-| Future extensions | not built (by design); seams: `Kind`, `Currency`, `computeInvoiceTotal`, `CreateInvoice`, pure `InvoiceDocument` |
+| Tables, snapshot, `currency`/`kind` seams | 1, 2, 3 |
+| Number uniqueness, FY numbering, next number | 3; UI 10, 13 |
+| Totals in one place | 3 (Go), 6 (TS) |
+| Status, 3% tolerance, bank charges, manual close, overdue | 6; UI 10, 11, 13 |
+| Multiple payments, link/unlink, deleted transaction drops out | 4; UI 11, 13 |
+| Suggestions | 4; UI 11, 13 |
+| Validation and ownership | 1, 3, 4, 5; client-side problem messages 7 |
+| Print-to-PDF matching the sample, file name | 8; actions 11 (desktop), 13 (mobile) |
+| Header buttons for Budgets/Buckets/Invoices | 9 |
+| Invoice profile with logo | 9 (desktop), 12 (mobile) |
+| List with Outstanding/Overdue, show/hide paid, customers | 10 (desktop), 12–13 (mobile) |
+| Edit with inline add customer, duplicate | 10, 11 (desktop), 13 (mobile) |
+| Existing UI structure on desktop and mobile, shared logic in `views/base` | 6–13 |
+| Locale strings | 14 |
+| Future extensions | not built; seams: `Kind`, `Currency`, `computeInvoiceTotal(s)`, `CreateInvoice`, pure `InvoiceDocument` |
