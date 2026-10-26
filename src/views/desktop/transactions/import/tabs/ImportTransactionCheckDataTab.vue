@@ -96,7 +96,7 @@
                 <v-chip label color="default" variant="outlined" size="x-small" v-else>{{ tt('Unknown') }}</v-chip>
             </template>
             <template #item.matchedTransactionId="{ item }">
-                <v-chip label color="info" variant="outlined" size="x-small" v-if="item.matchedTransactionId">
+                <v-chip label color="primary" variant="outlined" size="x-small" v-if="item.matchedTransactionId">
                     {{ tt('Already recorded from SMS') }}
                     <v-tooltip activator="parent">{{ tt('This row matches a transaction already recorded from an SMS alert. Left unticked, it is not imported again and the SMS transaction is marked as verified by the statement. Tick it only to import it as a separate transaction.') }}</v-tooltip>
                 </v-chip>

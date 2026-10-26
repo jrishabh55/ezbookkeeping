@@ -159,7 +159,7 @@ const confirmDialog = useTemplateRef<ConfirmDialogType>('confirmDialog');
 const snackbar = useTemplateRef<SnackBarType>('snackbar');
 const invoiceEditDialog = useTemplateRef<InvoiceEditDialogType>('invoiceEditDialog');
 
-const statusColors: Record<InvoiceDisplayStatus, string> = { unpaid: 'warning', partial: 'info', paid: 'success', overdue: 'error' };
+const statusColors: Record<InvoiceDisplayStatus, string> = { unpaid: 'warning', partial: 'primary', paid: 'success', overdue: 'error' };
 
 let resolveFunc: ((value: InvoiceDetailResponse) => void) | null = null;
 let rejectFunc: ((reason?: unknown) => void) | null = null;

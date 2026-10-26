@@ -112,7 +112,8 @@ const showDeleteActionSheet = ref<boolean>(false);
 const textDirection = computed<TextDirection>(() => getCurrentLanguageTextDirection());
 
 // the 4 progress states need to stay visually distinct from each other in Framework7's colour set
-function getF7ProgressColor(budget: Budget): string {
+// undefined keeps Framework7's theme colour for the normal state, like upstream progress bars
+function getF7ProgressColor(budget: Budget): string | undefined {
     const color: BudgetProgressColor = getProgressColor(budget);
 
     switch (color) {
@@ -123,7 +124,7 @@ function getF7ProgressColor(budget: Budget): string {
         case 'error':
             return 'red';
         default:
-            return 'blue';
+            return undefined;
     }
 }
 

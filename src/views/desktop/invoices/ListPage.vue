@@ -218,7 +218,7 @@ const invoiceEditDialog = useTemplateRef<InvoiceEditDialogType>('invoiceEditDial
 const invoiceDetailDialog = useTemplateRef<InvoiceDetailDialogType>('invoiceDetailDialog');
 const customerEditDialog = useTemplateRef<CustomerEditDialogType>('customerEditDialog');
 
-const statusColors: Record<InvoiceDisplayStatus, string> = { unpaid: 'warning', partial: 'info', paid: 'success', overdue: 'error' };
+const statusColors: Record<InvoiceDisplayStatus, string> = { unpaid: 'warning', partial: 'primary', paid: 'success', overdue: 'error' };
 
 const activeView = ref<'invoices' | 'customers'>('invoices');
 const updating = ref<boolean>(false);

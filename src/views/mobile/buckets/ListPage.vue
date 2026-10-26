@@ -31,7 +31,7 @@
                           v-for="bucket in displayBuckets">
                 <template #footer>
                     <div><span v-if="bucket.targetAmount > 0">{{ tt('Target') }}: {{ formatAmount(bucket.targetAmount, bucket.currency) }} · </span>{{ tt(getStatusDisplayName(bucket)) }}<span v-if="bucket.hidden"> · {{ tt('Hidden') }}</span></div>
-                    <f7-progressbar :progress="getProgressPercentage(bucket)" :color="bucket.isCompleted() ? 'green' : 'blue'" v-if="bucket.targetAmount > 0"></f7-progressbar>
+                    <f7-progressbar :progress="getProgressPercentage(bucket)" :color="bucket.isCompleted() ? 'green' : undefined" v-if="bucket.targetAmount > 0"></f7-progressbar>
                 </template>
                 <f7-swipeout-actions :left="textDirection === TextDirection.RTL"
                                      :right="textDirection === TextDirection.LTR">

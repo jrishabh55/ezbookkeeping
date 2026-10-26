@@ -36,7 +36,7 @@
                 <v-card-text class="pb-0">
                     <v-row>
                         <v-col cols="12">
-                            <v-alert type="info" variant="tonal" density="compact"
+                            <v-alert variant="tonal" density="compact"
                                      :text="tt('Buckets help you save money for specific goals like vacations, emergency funds, or large purchases.')" />
                         </v-col>
                     </v-row>
@@ -55,7 +55,7 @@
 
                                 <v-card-text>
                                     <div class="d-flex justify-space-between align-center mb-2">
-                                        <span class="text-muted">{{ tt('Current Balance') }}</span>
+                                        <span class="text-medium-emphasis">{{ tt('Current Balance') }}</span>
                                         <v-skeleton-loader class="skeleton-no-margin" width="80px" type="text" :loading="true"></v-skeleton-loader>
                                     </div>
 
@@ -87,14 +87,14 @@
 
                                 <v-card-text>
                                     <div class="d-flex justify-space-between mb-2">
-                                        <span class="text-muted">{{ tt('Current Balance') }}</span>
+                                        <span class="text-medium-emphasis">{{ tt('Current Balance') }}</span>
                                         <span class="font-weight-bold">
                                             {{ formatAmount(bucket.currentBalance, bucket.currency) }}
                                         </span>
                                     </div>
 
                                     <div class="d-flex justify-space-between mb-2" v-if="bucket.targetAmount > 0">
-                                        <span class="text-muted">{{ tt('Target') }}</span>
+                                        <span class="text-medium-emphasis">{{ tt('Target') }}</span>
                                         <span>{{ formatAmount(bucket.targetAmount, bucket.currency) }}</span>
                                     </div>
 
@@ -107,7 +107,7 @@
                                         class="mb-2"
                                     />
 
-                                    <div class="text-caption text-muted" v-if="bucket.comment">
+                                    <div class="text-caption text-medium-emphasis" v-if="bucket.comment">
                                         {{ bucket.comment }}
                                     </div>
                                 </v-card-text>

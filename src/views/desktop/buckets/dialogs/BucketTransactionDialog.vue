@@ -3,7 +3,7 @@
         <one-column-dialog-layout :disabled="submitting" :title="tt(title)" :cancel-button-title="tt('Cancel')"
                                   @cancel="cancel">
             <template #content>
-                <v-alert type="info" variant="tonal" density="compact" class="mb-4" v-if="bucket">
+                <v-alert variant="tonal" density="compact" class="mb-4" v-if="bucket">
                     {{ tt('Current Balance') }}: {{ formatAmount(bucket.currentBalance, bucket.currency) }}
                 </v-alert>
 

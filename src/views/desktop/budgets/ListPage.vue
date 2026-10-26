@@ -36,7 +36,7 @@
                 <v-card-text class="pb-0">
                     <v-row>
                         <v-col cols="12">
-                            <v-alert type="info" variant="tonal" density="compact"
+                            <v-alert variant="tonal" density="compact"
                                      :text="tt('Budgets help you track spending against limits you set for specific time periods.')" />
                         </v-col>
                     </v-row>
@@ -54,7 +54,7 @@
 
                                 <v-card-text>
                                     <div class="d-flex justify-space-between align-center mb-2">
-                                        <span class="text-muted">{{ tt('Budget Amount') }}</span>
+                                        <span class="text-medium-emphasis">{{ tt('Budget Amount') }}</span>
                                         <v-skeleton-loader class="skeleton-no-margin" width="80px" type="text" :loading="true"></v-skeleton-loader>
                                     </div>
 
@@ -88,7 +88,7 @@
 
                                 <v-card-text>
                                     <div class="d-flex justify-space-between mb-2">
-                                        <span class="text-muted">{{ tt('Budget Amount') }}</span>
+                                        <span class="text-medium-emphasis">{{ tt('Budget Amount') }}</span>
                                         <span class="font-weight-bold">
                                             {{ formatAmount(budget.amount, budget.currency) }}
                                         </span>
