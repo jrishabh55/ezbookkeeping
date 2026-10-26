@@ -3,6 +3,8 @@ import { describe, expect, test } from 'vitest';
 import {
     computeInvoiceTotals,
     formatInvoiceQuantity,
+    formatInvoiceTaxRate,
+    getInvoiceTaxRows,
     getInvoiceBalanceDue,
     getInvoiceStatus,
     isInvoiceOverdue,
@@ -20,15 +22,48 @@ import type { TextualYearMonthDay } from '@/core/datetime.ts';
 const invoice = (total: number, received: number, closedManually = false, dueDate: TextualYearMonthDay = '2026-04-30') =>
     ({ total, received, closedManually, dueDate });
 
+const noTax = { subtotal: 0, taxAmount: 0, cgst: 0, sgst: 0, total: 0 };
+
 describe('computeInvoiceTotals', () => {
     test('sums quantity (hundredths) × rate', () => {
-        expect(computeInvoiceTotals([{ quantity: 100, rate: 37000000 }, { quantity: 300, rate: 150000 }])).toEqual({ subtotal: 37450000, total: 37450000 });
-        expect(computeInvoiceTotals([])).toEqual({ subtotal: 0, total: 0 });
+        expect(computeInvoiceTotals([{ quantity: 100, rate: 37000000 }, { quantity: 300, rate: 150000 }], 'none', 0)).toEqual({ ...noTax, subtotal: 37450000, total: 37450000 });
+        expect(computeInvoiceTotals([], 'none', 0)).toEqual(noTax);
     });
 
     test('rounds a fractional quantity to the paisa', () => {
-        expect(computeInvoiceTotals([{ quantity: 750, rate: 33333 }])).toEqual({ subtotal: 249998, total: 249998 });
-        expect(computeInvoiceTotals([{ quantity: 1, rate: 1 }])).toEqual({ subtotal: 0, total: 0 });
+        expect(computeInvoiceTotals([{ quantity: 750, rate: 33333 }], 'none', 0)).toEqual({ ...noTax, subtotal: 249998, total: 249998 });
+        expect(computeInvoiceTotals([{ quantity: 1, rate: 1 }], 'none', 0)).toEqual(noTax);
+    });
+
+    test('18% on ₹1,00,000.01 rounds once and splits evenly', () => {
+        expect(computeInvoiceTotals([{ quantity: 100, rate: 10000001 }], 'cgst_sgst', 1800))
+            .toEqual({ subtotal: 10000001, taxAmount: 1800000, cgst: 900000, sgst: 900000, total: 11800001 });
+        expect(computeInvoiceTotals([{ quantity: 100, rate: 10000001 }], 'igst', 1800).total).toBe(11800001);
+    });
+
+    test('an odd tax paisa goes to SGST', () => {
+        expect(computeInvoiceTotals([{ quantity: 100, rate: 5 }], 'cgst_sgst', 1800)).toEqual({ subtotal: 5, taxAmount: 1, cgst: 0, sgst: 1, total: 6 });
+    });
+
+    test('none yields zero tax whatever the rate', () => {
+        expect(computeInvoiceTotals([{ quantity: 100, rate: 10000001 }], 'none', 1800)).toEqual({ ...noTax, subtotal: 10000001, total: 10000001 });
+    });
+});
+
+describe('getInvoiceTaxRows', () => {
+    test('one IGST row, two CGST + SGST halves with the odd paisa on SGST, none without tax', () => {
+        expect(getInvoiceTaxRows('igst', 1800, 1800000)).toEqual([{ name: 'IGST', rate: 1800, amount: 1800000 }]);
+        expect(getInvoiceTaxRows('cgst_sgst', 1800, 1)).toEqual([{ name: 'CGST', rate: 900, amount: 0 }, { name: 'SGST', rate: 900, amount: 1 }]);
+        expect(getInvoiceTaxRows('none', 1800, 0)).toEqual([]);
+    });
+});
+
+describe('formatInvoiceTaxRate', () => {
+    test('basis points as a trimmed percentage', () => {
+        expect(formatInvoiceTaxRate(1800)).toBe('18%');
+        expect(formatInvoiceTaxRate(900)).toBe('9%');
+        expect(formatInvoiceTaxRate(1250)).toBe('12.5%');
+        expect(formatInvoiceTaxRate(925)).toBe('9.25%');
     });
 });
 

@@ -2,6 +2,16 @@ import type { TextualYearMonthDay } from '@/core/datetime.ts';
 
 export const INVOICE_CURRENCY: string = 'INR';
 
+// mirrors models.INVOICE_TAX_TYPE_* in pkg/models/invoice.go
+export type InvoiceTaxType = 'none' | 'igst' | 'cgst_sgst';
+
+// the tax type choices with their locale keys, in menu order
+export const INVOICE_TAX_TYPES: { readonly type: InvoiceTaxType, readonly name: string }[] = [
+    { type: 'none', name: 'None' },
+    { type: 'igst', name: 'IGST' },
+    { type: 'cgst_sgst', name: 'CGST + SGST' }
+];
+
 export interface InvoiceProfileInfoResponse {
     readonly businessName: string;
     readonly addressLines: string;
@@ -11,6 +21,8 @@ export interface InvoiceProfileInfoResponse {
     readonly defaultNotes: string;
     readonly numberPrefix: string;
     readonly defaultTermsDays: number;
+    readonly gstin: string;
+    readonly defaultSac: string;
 }
 
 export type InvoiceProfileUpdateRequest = InvoiceProfileInfoResponse;
@@ -27,6 +39,9 @@ export interface CustomerInfoResponse {
     readonly pan: string;
     readonly termsDays: number;
     readonly notes: string;
+    readonly gstin: string;
+    readonly taxType: InvoiceTaxType;
+    readonly taxRate: number; // basis points
 }
 
 export interface CustomerCreateRequest {
@@ -40,6 +55,9 @@ export interface CustomerCreateRequest {
     readonly pan: string;
     readonly termsDays: number;
     readonly notes: string;
+    readonly gstin: string;
+    readonly taxType: InvoiceTaxType;
+    readonly taxRate: number; // basis points
 }
 
 export interface CustomerModifyRequest extends CustomerCreateRequest {
@@ -52,6 +70,7 @@ export interface InvoiceLine {
     quantity: number;
     rate: number;
     amount: number;
+    sac: string;
 }
 
 export interface InvoicePayment {
@@ -73,11 +92,16 @@ export interface InvoiceInfoResponse {
     readonly billToEmail: string;
     readonly billToPhone: string;
     readonly billToPan: string;
+    readonly billToGstin: string;
     readonly currency: string;
     readonly invoiceDate: TextualYearMonthDay;
     readonly dueDate: TextualYearMonthDay;
     readonly notes: string;
     readonly total: number;
+    readonly taxType: InvoiceTaxType;
+    readonly taxRate: number; // basis points
+    readonly subtotal: number; // 0 on invoices saved before GST
+    readonly taxAmount: number;
     readonly received: number;
     readonly closedManually: boolean;
     readonly lines?: InvoiceLine[];
@@ -89,6 +113,7 @@ export interface InvoiceLineRequest {
     readonly description: string;
     readonly quantity: number;
     readonly rate: number;
+    readonly sac: string;
 }
 
 export interface InvoiceCreateRequest {
@@ -97,6 +122,8 @@ export interface InvoiceCreateRequest {
     readonly invoiceDate: string;
     readonly dueDate: string;
     readonly notes: string;
+    readonly taxType: InvoiceTaxType;
+    readonly taxRate: number;
     readonly lines: InvoiceLineRequest[];
 }
 
@@ -113,6 +140,8 @@ export class InvoiceProfile implements InvoiceProfileInfoResponse {
     public defaultNotes: string = '';
     public numberPrefix: string = 'INV';
     public defaultTermsDays: number = 7;
+    public gstin: string = '';
+    public defaultSac: string = '';
 
     public fillFrom(other: InvoiceProfileInfoResponse): void {
         this.businessName = other.businessName;
@@ -123,6 +152,8 @@ export class InvoiceProfile implements InvoiceProfileInfoResponse {
         this.defaultNotes = other.defaultNotes;
         this.numberPrefix = other.numberPrefix;
         this.defaultTermsDays = other.defaultTermsDays;
+        this.gstin = other.gstin;
+        this.defaultSac = other.defaultSac;
     }
 
     public toUpdateRequest(): InvoiceProfileUpdateRequest {
@@ -134,7 +165,9 @@ export class InvoiceProfile implements InvoiceProfileInfoResponse {
             logoDataUrl: this.logoDataUrl,
             defaultNotes: this.defaultNotes,
             numberPrefix: this.numberPrefix.trim(),
-            defaultTermsDays: this.defaultTermsDays
+            defaultTermsDays: this.defaultTermsDays,
+            gstin: this.gstin.trim().toUpperCase(),
+            defaultSac: this.defaultSac.trim()
         };
     }
 
@@ -165,6 +198,9 @@ export class Customer implements CustomerInfoResponse {
     public pan: string = '';
     public termsDays: number = 0; // 0 = the profile's default terms
     public notes: string = '';
+    public gstin: string = '';
+    public taxType: InvoiceTaxType = 'none';
+    public taxRate: number = 0; // basis points
 
     public fillFrom(other: CustomerInfoResponse): void {
         this.id = other.id;
@@ -178,6 +214,9 @@ export class Customer implements CustomerInfoResponse {
         this.pan = other.pan;
         this.termsDays = other.termsDays;
         this.notes = other.notes;
+        this.gstin = other.gstin;
+        this.taxType = other.taxType || 'none';
+        this.taxRate = other.taxRate;
     }
 
     public toCreateRequest(): CustomerCreateRequest {
@@ -191,7 +230,10 @@ export class Customer implements CustomerInfoResponse {
             accountNumber: this.accountNumber,
             pan: this.pan.trim().toUpperCase(),
             termsDays: this.termsDays,
-            notes: this.notes
+            notes: this.notes,
+            gstin: this.gstin.trim().toUpperCase(),
+            taxType: this.taxType,
+            taxRate: this.taxType === 'none' ? 0 : this.taxRate
         };
     }
 
@@ -232,11 +274,16 @@ export class Invoice implements InvoiceInfoResponse {
     public billToEmail: string = '';
     public billToPhone: string = '';
     public billToPan: string = '';
+    public billToGstin: string = '';
     public currency: string = INVOICE_CURRENCY;
     public invoiceDate: TextualYearMonthDay = '0-0-0';
     public dueDate: TextualYearMonthDay = '0-0-0';
     public notes: string = '';
     public total: number = 0;
+    public taxType: InvoiceTaxType = 'none';
+    public taxRate: number = 0; // basis points
+    public subtotal: number = 0;
+    public taxAmount: number = 0;
     public received: number = 0;
     public closedManually: boolean = false;
     public lines: InvoiceLine[] = [];
@@ -253,11 +300,16 @@ export class Invoice implements InvoiceInfoResponse {
         this.billToEmail = other.billToEmail;
         this.billToPhone = other.billToPhone;
         this.billToPan = other.billToPan;
+        this.billToGstin = other.billToGstin;
         this.currency = other.currency;
         this.invoiceDate = other.invoiceDate;
         this.dueDate = other.dueDate;
         this.notes = other.notes;
         this.total = other.total;
+        this.taxType = other.taxType || 'none'; // invoices saved before GST have no tax type
+        this.taxRate = other.taxRate;
+        this.subtotal = other.subtotal;
+        this.taxAmount = other.taxAmount;
         this.received = other.received;
         this.closedManually = other.closedManually;
         this.lines = (other.lines ?? []).map(line => ({ ...line }));
@@ -271,11 +323,14 @@ export class Invoice implements InvoiceInfoResponse {
             invoiceDate: this.invoiceDate,
             dueDate: this.dueDate,
             notes: this.notes,
+            taxType: this.taxType,
+            taxRate: this.taxType === 'none' ? 0 : this.taxRate,
             lines: this.lines.map(line => ({
                 itemName: line.itemName.trim(),
                 description: line.description,
                 quantity: line.quantity,
-                rate: line.rate
+                rate: line.rate,
+                sac: line.sac.trim()
             }))
         };
     }
@@ -316,7 +371,7 @@ export class Invoice implements InvoiceInfoResponse {
         return invoice;
     }
 
-    public static createNewLine(): InvoiceLine {
-        return { itemName: '', description: '', quantity: 100, rate: 0, amount: 0 }; // quantity in hundredths
+    public static createNewLine(sac: string = ''): InvoiceLine {
+        return { itemName: '', description: '', quantity: 100, rate: 0, amount: 0, sac }; // quantity in hundredths
     }
 }
