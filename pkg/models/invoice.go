@@ -76,7 +76,13 @@ type Invoice struct {
 	CreatedUnixTime    int64
 	UpdatedUnixTime    int64
 	DeletedUnixTime    int64
+	// ponytail: a plain (non-unique) index: empty means "no public link" and would collide under UNIQUE on every
+	// database, while two equal 256-bit random tokens will not happen; works unchanged on SQLite, MySQL and Postgres
+	PublicToken string `xorm:"VARCHAR(43) INDEX(IDX_invoice_public_token) NOT NULL DEFAULT ''"`
 }
+
+// InvoicePublicTokenLength is the length of a public invoice token (32 random bytes, base64url without padding)
+const InvoicePublicTokenLength = 43
 
 // InvoiceLine represents one service line of an invoice stored in database
 type InvoiceLine struct {
@@ -214,6 +220,22 @@ type InvoicePaymentLinkRequest struct {
 	TransactionId int64 `json:"transactionId,string" binding:"required,min=1"`
 }
 
+// InvoicePublicLinkUpdateRequest represents all parameters of enabling (a fresh token every time), or disabling, an invoice's public link
+type InvoicePublicLinkUpdateRequest struct {
+	Id      int64 `json:"id,string" binding:"required,min=1"`
+	Enabled bool  `json:"enabled"`
+}
+
+// InvoicePublicLinkResponse carries the current public token of an invoice (empty when the link is disabled)
+type InvoicePublicLinkResponse struct {
+	PublicToken string `json:"publicToken"`
+}
+
+// InvoicePublicViewRequest represents all parameters of the unauthenticated invoice view request
+type InvoicePublicViewRequest struct {
+	Token string `form:"token" binding:"max=64"`
+}
+
 // InvoiceLineResponse represents a view-object of invoice line
 type InvoiceLineResponse struct {
 	ItemName    string `json:"itemName"`
@@ -253,6 +275,37 @@ type InvoiceInfoResponse struct {
 	ClosedManually     bool                      `json:"closedManually"`
 	Lines              []*InvoiceLineResponse    `json:"lines,omitempty"`
 	Payments           []*InvoicePaymentResponse `json:"payments,omitempty"`
+	PublicToken        string                    `json:"publicToken,omitempty"`
+}
+
+// PublicInvoiceProfileResponse is the part of the invoice profile a recipient of a public link may see
+type PublicInvoiceProfileResponse struct {
+	BusinessName string `json:"businessName"`
+	AddressLines string `json:"addressLines"`
+	Phone        string `json:"phone"`
+	Website      string `json:"website"`
+	LogoDataUrl  string `json:"logoDataUrl"`
+}
+
+// PublicInvoiceResponse is what a recipient of a public link sees: the printed document plus the amount received.
+// It carries no ids, customer ids, payment details or the token itself.
+type PublicInvoiceResponse struct {
+	Number             string                        `json:"number"`
+	BillToName         string                        `json:"billToName"`
+	BillToContactName  string                        `json:"billToContactName"`
+	BillToAddressLines string                        `json:"billToAddressLines"`
+	BillToEmail        string                        `json:"billToEmail"`
+	BillToPhone        string                        `json:"billToPhone"`
+	BillToPan          string                        `json:"billToPan"`
+	Currency           string                        `json:"currency"`
+	InvoiceDate        string                        `json:"invoiceDate"`
+	DueDate            string                        `json:"dueDate"`
+	Notes              string                        `json:"notes"`
+	Total              int64                         `json:"total"`
+	Received           int64                         `json:"received"`
+	ClosedManually     bool                          `json:"closedManually"`
+	Lines              []*InvoiceLineResponse        `json:"lines"`
+	Profile            *PublicInvoiceProfileResponse `json:"profile"`
 }
 
 // ToInvoiceProfileResponse returns a view-object according to database model
@@ -339,6 +392,48 @@ func (i *Invoice) ToInvoiceInfoResponse(lines []*InvoiceLine, payments []*Transa
 
 		for idx, payment := range payments {
 			resp.Payments[idx] = ToInvoicePaymentResponse(payment)
+		}
+
+		resp.PublicToken = i.PublicToken // detail view only; the list never needs the links
+	}
+
+	return resp
+}
+
+// ToPublicInvoiceResponse returns the view-object served to a recipient of the public link
+func (i *Invoice) ToPublicInvoiceResponse(lines []*InvoiceLine, received int64, profile *InvoiceProfile) *PublicInvoiceResponse {
+	resp := &PublicInvoiceResponse{
+		Number:             i.Number,
+		BillToName:         i.BillToName,
+		BillToContactName:  i.BillToContactName,
+		BillToAddressLines: i.BillToAddressLines,
+		BillToEmail:        i.BillToEmail,
+		BillToPhone:        i.BillToPhone,
+		BillToPan:          i.BillToPan,
+		Currency:           i.Currency,
+		InvoiceDate:        i.InvoiceDate,
+		DueDate:            i.DueDate,
+		Notes:              i.Notes,
+		Total:              i.Total,
+		Received:           received,
+		ClosedManually:     i.ClosedManually,
+		Lines:              make([]*InvoiceLineResponse, len(lines)),
+		Profile: &PublicInvoiceProfileResponse{
+			BusinessName: profile.BusinessName,
+			AddressLines: profile.AddressLines,
+			Phone:        profile.Phone,
+			Website:      profile.Website,
+			LogoDataUrl:  profile.LogoDataUrl,
+		},
+	}
+
+	for idx, line := range lines {
+		resp.Lines[idx] = &InvoiceLineResponse{
+			ItemName:    line.ItemName,
+			Description: line.Description,
+			Quantity:    line.Quantity,
+			Rate:        line.Rate,
+			Amount:      line.Amount,
 		}
 	}
 

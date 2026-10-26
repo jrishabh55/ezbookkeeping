@@ -412,3 +412,43 @@ func (a *InvoicesApi) InvoicePaymentUnlinkHandler(c *core.WebContext) (any, *err
 		return a.invoices.UnlinkPayment(c, uid, invoiceId, transactionId)
 	})
 }
+
+// InvoicePublicLinkUpdateHandler enables (with a fresh token) or disables the public link of an invoice of current user
+func (a *InvoicesApi) InvoicePublicLinkUpdateHandler(c *core.WebContext) (any, *errs.Error) {
+	var req models.InvoicePublicLinkUpdateRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Warnf(c, "[invoices.InvoicePublicLinkUpdateHandler] parse request failed, because %s", err.Error())
+		return nil, errs.NewIncompleteOrIncorrectSubmissionError(err)
+	}
+
+	uid := c.GetCurrentUid()
+	token, err := a.invoices.SetInvoicePublicToken(c, uid, req.Id, req.Enabled)
+
+	if err != nil {
+		log.Errorf(c, "[invoices.InvoicePublicLinkUpdateHandler] failed to update public link of invoice \"id:%d\" for user \"uid:%d\", because %s", req.Id, uid, err.Error())
+		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+
+	return &models.InvoicePublicLinkResponse{PublicToken: token}, nil
+}
+
+// InvoicePublicViewHandler returns the invoice behind a public link; no login, so the response carries no ids
+func (a *InvoicesApi) InvoicePublicViewHandler(c *core.WebContext) (any, *errs.Error) {
+	var req models.InvoicePublicViewRequest
+
+	if err := c.ShouldBindQuery(&req); err != nil {
+		log.Warnf(c, "[invoices.InvoicePublicViewHandler] parse request failed, because %s", err.Error())
+		return nil, errs.NewIncompleteOrIncorrectSubmissionError(err)
+	}
+
+	invoice, lines, received, profile, err := a.invoices.GetInvoiceByPublicToken(c, req.Token)
+
+	if err != nil {
+		// the token is a secret: never log it
+		log.Warnf(c, "[invoices.InvoicePublicViewHandler] failed to get invoice by public token, because %s", err.Error())
+		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+
+	return invoice.ToPublicInvoiceResponse(lines, received, profile), nil
+}

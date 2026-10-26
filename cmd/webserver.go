@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"time"
 
@@ -567,11 +568,27 @@ func startWebServer(c *core.CliContext) error {
 			apiV1Route.GET("/invoices/payment/suggestions.json", bindApi(api.Invoices.InvoicePaymentSuggestionsHandler, config))
 			apiV1Route.POST("/invoices/payment/link.json", bindApi(api.Invoices.InvoicePaymentLinkHandler, config))
 			apiV1Route.POST("/invoices/payment/unlink.json", bindApi(api.Invoices.InvoicePaymentUnlinkHandler, config))
+			apiV1Route.POST("/invoices/public_link/update.json", bindApi(api.Invoices.InvoicePublicLinkUpdateHandler, config))
 
 			// System
 			apiV1Route.GET("/systems/version.json", bindApi(api.Systems.VersionHandler, config))
 		}
 	}
+
+	// Public invoice links: no JWT, request id and request log only. Unlike the forget-password endpoints
+	// (which have no per-IP limiter either) there is nothing to limit here beyond the 256-bit token.
+	publicApiRoute := router.Group("/api/public")
+	publicApiRoute.Use(bindMiddleware(middlewares.RequestId(config), config))
+	publicApiRoute.Use(bindMiddleware(middlewares.RequestLog, config))
+	{
+		publicApiRoute.GET("/invoices/view.json", bindApi(api.Invoices.InvoicePublicViewHandler, config))
+		// phase 7 registers publicApiRoute.GET("/invoices/pdf", ...) here
+	}
+
+	// The short link printed on invoices and emails: /i/<token> opens the desktop document page (it renders on phones too)
+	router.GET("/i/:token", func(ginCtx *gin.Context) {
+		ginCtx.Redirect(http.StatusFound, "/desktop#/public/invoice/"+url.PathEscape(ginCtx.Param("token")))
+	})
 
 	listenAddr := fmt.Sprintf("%s:%d", config.HttpAddr, config.HttpPort)
 

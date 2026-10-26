@@ -1,6 +1,8 @@
 package services
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"sort"
 	"strconv"
@@ -774,4 +776,105 @@ func (s *InvoiceService) UnlinkPayment(c core.Context, uid int64, invoiceId int6
 
 		return nil
 	})
+}
+
+// generateInvoicePublicToken returns 32 bytes from crypto/rand as base64url without padding (43 characters)
+func generateInvoicePublicToken() (string, error) {
+	buf := make([]byte, 32)
+
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+
+	return base64.RawURLEncoding.EncodeToString(buf), nil
+}
+
+// SetInvoicePublicToken enables the public link of an invoice with a fresh token (every call invalidates the old one)
+// or disables it (enable=false clears the token). It returns the token now stored, empty when disabled.
+func (s *InvoiceService) SetInvoicePublicToken(c core.Context, uid int64, invoiceId int64, enable bool) (string, error) {
+	if uid <= 0 {
+		return "", errs.ErrUserIdInvalid
+	}
+
+	if invoiceId <= 0 {
+		return "", errs.ErrInvoiceIdInvalid
+	}
+
+	token := ""
+
+	if enable {
+		generated, err := generateInvoicePublicToken()
+
+		if err != nil {
+			return "", err
+		}
+
+		token = generated
+	}
+
+	err := s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+		updatedRows, err := sess.Cols("public_token", "updated_unix_time").Where("uid=? AND deleted=? AND invoice_id=?", uid, false, invoiceId).
+			Update(&models.Invoice{PublicToken: token, UpdatedUnixTime: time.Now().Unix()})
+
+		if err != nil {
+			return err
+		} else if updatedRows < 1 {
+			return errs.ErrInvoiceNotFound
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return "", err
+	}
+
+	return token, nil
+}
+
+// GetInvoiceByPublicToken returns the invoice behind a public link with its lines, the amount received and the
+// owner's invoice profile. An empty, unknown or disabled token is a plain not-found, with nothing to tell them apart.
+func (s *InvoiceService) GetInvoiceByPublicToken(c core.Context, token string) (*models.Invoice, []*models.InvoiceLine, int64, *models.InvoiceProfile, error) {
+	if len(token) != models.InvoicePublicTokenLength {
+		return nil, nil, 0, nil, errs.ErrInvoiceNotFound
+	}
+
+	// ponytail: a public link carries no uid, so the lookup goes to the first user-data store; Choose() ignores
+	// its key today (a single store), so this is the same database every user's invoices live in
+	sess := s.UserDataDB(0).NewSession(c)
+
+	invoice := &models.Invoice{}
+	has, err := sess.Where("public_token=? AND deleted=?", token, false).Get(invoice)
+
+	if err != nil {
+		return nil, nil, 0, nil, err
+	} else if !has {
+		return nil, nil, 0, nil, errs.ErrInvoiceNotFound
+	}
+
+	invoice, lines, err := s.GetInvoice(c, invoice.Uid, invoice.InvoiceId)
+
+	if err != nil {
+		return nil, nil, 0, nil, err
+	}
+
+	payments, err := s.getInvoicePayments(s.UserDataDB(invoice.Uid).NewSession(c), invoice.Uid, []int64{invoice.InvoiceId})
+
+	if err != nil {
+		return nil, nil, 0, nil, err
+	}
+
+	received := int64(0)
+
+	for _, payment := range payments[invoice.InvoiceId] {
+		received += payment.Amount
+	}
+
+	profile, err := s.GetProfile(c, invoice.Uid)
+
+	if err != nil {
+		return nil, nil, 0, nil, err
+	}
+
+	return invoice, lines, received, profile, nil
 }
