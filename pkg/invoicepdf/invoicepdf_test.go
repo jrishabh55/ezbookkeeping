@@ -7,6 +7,7 @@ import (
 	"image/color"
 	"image/png"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -156,4 +157,81 @@ func TestRenderManyLinesSpansPages(t *testing.T) {
 	assert.Nil(t, err)
 	// more than one page object
 	assert.True(t, bytes.Count(pdf, []byte("/Type /Page\n")) >= 2 || bytes.Count(pdf, []byte("/Type /Page/")) >= 2 || bytes.Count(pdf, []byte("/Type /Page ")) >= 2)
+}
+
+func TestFormatTaxRate(t *testing.T) {
+	assert.Equal(t, "18%", formatTaxRate(1800))
+	assert.Equal(t, "9%", formatTaxRate(900))
+	assert.Equal(t, "9.25%", formatTaxRate(925))
+	assert.Equal(t, "0.5%", formatTaxRate(50))
+}
+
+func totalsLabels(rows []totalsRow) []string {
+	labels := make([]string, len(rows))
+
+	for i, row := range rows {
+		labels[i] = row.label + " " + row.value
+	}
+
+	return labels
+}
+
+func TestTotalsRowsMirrorTheDocument(t *testing.T) {
+	// no tax: Total / Payments received / Amount Due, exactly as before GST
+	plain := &models.Invoice{Currency: "INR", Total: 100000, TaxType: models.INVOICE_TAX_TYPE_NONE}
+	assert.Equal(t, []string{"Total: ₹1,000.00", "Payments received: −₹400.00", "Amount Due (INR): ₹600.00"}, totalsLabels(totalsRows(plain, 40000)))
+
+	// rows saved before GST have an empty tax type and no subtotal: same as none
+	old := &models.Invoice{Currency: "INR", Total: 100000}
+	assert.Equal(t, []string{"Total: ₹1,000.00", "Amount Due (INR): ₹1,000.00"}, totalsLabels(totalsRows(old, 0)))
+
+	igst := &models.Invoice{Currency: "INR", Subtotal: 100000, TaxType: models.INVOICE_TAX_TYPE_IGST, TaxRate: 1800, TaxAmount: 18000, Total: 118000}
+	assert.Equal(t, []string{"Subtotal: ₹1,000.00", "IGST (18%): ₹180.00", "Total: ₹1,180.00", "Amount Due (INR): ₹1,180.00"}, totalsLabels(totalsRows(igst, 0)))
+
+	// the odd paisa goes to SGST, like computeInvoiceTotals
+	split := &models.Invoice{Currency: "INR", Subtotal: 100001, TaxType: models.INVOICE_TAX_TYPE_CGST_SGST, TaxRate: 1800, TaxAmount: 18001, Total: 118002}
+	assert.Equal(t, []string{"Subtotal: ₹1,000.01", "CGST (9%): ₹90.00", "SGST (9%): ₹90.01", "Total: ₹1,180.02", "Amount Due (INR): ₹1,180.02"}, totalsLabels(totalsRows(split, 0)))
+}
+
+func sampleGstInvoice() (*models.Invoice, []*models.InvoiceLine) {
+	invoice, lines := sampleInvoice()
+	invoice.BillToGstin = "06AAAPB1234C1Z5"
+	invoice.TaxType = models.INVOICE_TAX_TYPE_CGST_SGST
+	invoice.TaxRate = 1800
+	invoice.Subtotal = invoice.Total
+	invoice.TaxAmount = invoice.Subtotal * 18 / 100
+	invoice.Total = invoice.Subtotal + invoice.TaxAmount
+	lines[0].Sac = "998313"
+
+	return invoice, lines
+}
+
+// TestRenderGstInvoiceText checks the printed text with pdftotext (skipped when it is not installed) and
+// writes the sample to INVOICE_PDF_SAMPLE_DIR when set
+func TestRenderGstInvoiceText(t *testing.T) {
+	profile := sampleProfile()
+	profile.Gstin = "09ABCDE1234F1Z5"
+	invoice, lines := sampleGstInvoice()
+
+	pdf, err := Render(profile, invoice, lines, 0, "https://books.codeation.io/i/abc")
+	assert.Nil(t, err)
+	assert.True(t, bytes.HasPrefix(pdf, []byte("%PDF")))
+
+	if dir := os.Getenv("INVOICE_PDF_SAMPLE_DIR"); dir != "" {
+		assert.Nil(t, os.WriteFile(filepath.Join(dir, "invoice-gst-sample.pdf"), pdf, 0644))
+	}
+
+	if _, err := exec.LookPath("pdftotext"); err != nil {
+		t.Skip("pdftotext not installed")
+	}
+
+	file := filepath.Join(t.TempDir(), "gst.pdf")
+	assert.Nil(t, os.WriteFile(file, pdf, 0644))
+	out, err := exec.Command("pdftotext", "-layout", file, "-").Output()
+	assert.Nil(t, err)
+	text := string(out)
+
+	for _, expected := range []string{"GSTIN: 09ABCDE1234F1Z5", "GSTIN: 06AAAPB1234C1Z5", "SAC", "998313", "Subtotal:", "CGST (9%):", "SGST (9%):", "Total:", "Amount Due (INR):", "Verify this invoice at https://books.codeation.io/i/abc"} {
+		assert.Contains(t, text, expected)
+	}
 }

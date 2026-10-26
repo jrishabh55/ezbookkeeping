@@ -223,7 +223,7 @@ func (r *renderer) drawHeader(profile *models.InvoiceProfile) float64 {
 		y = r.column(x, y, width, profile.AddressLines, "R")
 	}
 
-	if profile.Phone != "" || profile.Website != "" {
+	if profile.Phone != "" || profile.Website != "" || profile.Gstin != "" {
 		y += blockGap
 	}
 
@@ -233,6 +233,10 @@ func (r *renderer) drawHeader(profile *models.InvoiceProfile) float64 {
 
 	if profile.Website != "" {
 		y = r.column(x, y, width, profile.Website, "R")
+	}
+
+	if profile.Gstin != "" {
+		y = r.column(x, y, width, "GSTIN: "+profile.Gstin, "R")
 	}
 
 	return max(bottom, y)
@@ -314,6 +318,10 @@ func (r *renderer) drawParties(invoice *models.Invoice, received int64, y float6
 		left = r.column(r.left, left, width, "PAN: "+invoice.BillToPan, "L")
 	}
 
+	if invoice.BillToGstin != "" {
+		left = r.column(r.left, left, width, "GSTIN: "+invoice.BillToGstin, "L")
+	}
+
 	rows := []struct {
 		label     string
 		value     string
@@ -346,7 +354,7 @@ func (r *renderer) drawParties(invoice *models.Invoice, received int64, y float6
 }
 
 type lineColumns struct {
-	services, quantity, rate, amount float64
+	services, sac, quantity, rate, amount float64
 }
 
 func (r *renderer) drawLinesHeader(columns lineColumns, y float64) float64 {
@@ -356,6 +364,11 @@ func (r *renderer) drawLinesHeader(columns lineColumns, y float64) float64 {
 	x := r.left
 	r.cell(x, y+padding, columns.services, "Services", "L")
 	x += columns.services
+
+	if columns.sac > 0 {
+		r.cell(x, y+padding, columns.sac, "SAC", "R")
+		x += columns.sac
+	}
 
 	if columns.quantity > 0 {
 		r.cell(x, y+padding, columns.quantity, "Quantity", "R")
@@ -381,11 +394,14 @@ func (r *renderer) drawLines(invoice *models.Invoice, lines []*models.InvoiceLin
 	for _, line := range lines {
 		if line.Quantity != quantityScale {
 			columns.quantity = 24
-			break
+		}
+
+		if line.Sac != "" {
+			columns.sac = 22
 		}
 	}
 
-	columns.services = r.width - columns.quantity - columns.rate - columns.amount
+	columns.services = r.width - columns.sac - columns.quantity - columns.rate - columns.amount
 
 	y = r.ensureSpace(y, 3*lineHeight+4*padding)
 	y = r.drawLinesHeader(columns, y)
@@ -425,6 +441,11 @@ func (r *renderer) drawLines(invoice *models.Invoice, lines []*models.InvoiceLin
 		r.font(false, baseFontSize, colorBlack)
 		x := r.left + columns.services
 
+		if columns.sac > 0 {
+			r.cell(x, y+padding, columns.sac, line.Sac, "R")
+			x += columns.sac
+		}
+
 		if columns.quantity > 0 {
 			r.cell(x, y+padding, columns.quantity, formatQuantity(line.Quantity), "R")
 			x += columns.quantity
@@ -441,35 +462,44 @@ func (r *renderer) drawLines(invoice *models.Invoice, lines []*models.InvoiceLin
 	return y
 }
 
-// drawTotals prints the right-aligned totals block; it returns the y below it.
-// ponytail: only Total / Payments received / Amount Due exist today; the GST pass adds its rows here.
+// totalsRow is one line of the totals block; due marks the Amount Due line (rule above, bold value)
+type totalsRow struct {
+	label string
+	value string
+	due   bool
+}
+
+// totalsRows mirrors the totals table of InvoiceDocumentContent.vue: Subtotal and the tax rows only when the
+// invoice is taxed (invoices saved before GST have no tax type and render as untaxed), then Total,
+// Payments received when something was received, and Amount Due
+func totalsRows(invoice *models.Invoice, received int64) []totalsRow {
+	var rows []totalsRow
+
+	if taxes := taxRows(invoice); len(taxes) > 0 {
+		rows = append(rows, totalsRow{"Subtotal:", formatAmount(invoice.Subtotal, invoice.Currency), false})
+
+		for _, tax := range taxes {
+			rows = append(rows, totalsRow{tax.name + " (" + formatTaxRate(tax.rate) + "):", formatAmount(tax.amount, invoice.Currency), false})
+		}
+	}
+
+	rows = append(rows, totalsRow{"Total:", formatAmount(invoice.Total, invoice.Currency), false})
+
+	if received > 0 {
+		rows = append(rows, totalsRow{"Payments received:", "−" + formatAmount(min(received, invoice.Total), invoice.Currency), false})
+	}
+
+	return append(rows, totalsRow{"Amount Due (" + invoice.Currency + "):", formatAmount(balanceDue(invoice, received), invoice.Currency), true})
+}
+
+// drawTotals prints the right-aligned totals block; it returns the y below it
 func (r *renderer) drawTotals(invoice *models.Invoice, received int64, y float64) float64 {
 	const (
 		labelPadding = 12.0 // 48px
 		rowPadding   = 2.0  // 8px
 	)
 
-	rows := []struct {
-		label string
-		value string
-		due   bool
-	}{
-		{"Total:", formatAmount(invoice.Total, invoice.Currency), false},
-	}
-
-	if received > 0 {
-		rows = append(rows, struct {
-			label string
-			value string
-			due   bool
-		}{"Payments received:", "−" + formatAmount(min(received, invoice.Total), invoice.Currency), false})
-	}
-
-	rows = append(rows, struct {
-		label string
-		value string
-		due   bool
-	}{"Amount Due (" + invoice.Currency + "):", formatAmount(balanceDue(invoice, received), invoice.Currency), true})
+	rows := totalsRows(invoice, received)
 
 	r.font(true, baseFontSize, colorBlack)
 	labelWidth, valueWidth := 0.0, 0.0

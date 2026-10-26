@@ -3,6 +3,7 @@ package invoicepdf
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -82,6 +83,47 @@ func formatQuantity(hundredths int64) string {
 	text = strings.TrimRight(text, "0")
 
 	return strings.TrimSuffix(text, ".")
+}
+
+// formatTaxRate prints basis points as a percentage with trailing zeros trimmed (1800 → "18%", 925 → "9.25%"),
+// mirroring formatInvoiceTaxRate in src/lib/invoice.ts; the rate is a float because CGST / SGST get half the rate
+func formatTaxRate(basisPoints float64) string {
+	return strconv.FormatFloat(basisPoints/100, 'f', -1, 64) + "%"
+}
+
+// taxRow is one tax line between subtotal and total, mirroring InvoiceTaxRow in src/lib/invoice.ts
+type taxRow struct {
+	name   string
+	rate   float64 // basis points
+	amount int64
+}
+
+// taxRows mirrors getInvoiceTaxRows: one row for IGST, two halves for CGST + SGST (the odd paisa goes to SGST), none otherwise
+func taxRows(invoice *models.Invoice) []taxRow {
+	switch invoice.TaxType {
+	case models.INVOICE_TAX_TYPE_IGST:
+		return []taxRow{{"IGST", float64(invoice.TaxRate), invoice.TaxAmount}}
+	case models.INVOICE_TAX_TYPE_CGST_SGST:
+		cgst := invoice.TaxAmount / 2
+		return []taxRow{{"CGST", float64(invoice.TaxRate) / 2, cgst}, {"SGST", float64(invoice.TaxRate) / 2, invoice.TaxAmount - cgst}}
+	}
+
+	return nil
+}
+
+// FormatAmount is formatAmount for callers outside the package (the invoice email summary)
+func FormatAmount(minorUnits int64, currency string) string {
+	return formatAmount(minorUnits, currency)
+}
+
+// FormatDate is formatDate for callers outside the package (the invoice email summary)
+func FormatDate(date string) string {
+	return formatDate(date)
+}
+
+// BalanceDue is balanceDue for callers outside the package (the invoice email summary)
+func BalanceDue(invoice *models.Invoice, received int64) int64 {
+	return balanceDue(invoice, received)
 }
 
 // formatDate prints "2026-04-30" as "April 30, 2026", mirroring formatInvoiceDocumentDate in src/lib/invoice.ts
