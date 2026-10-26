@@ -1,236 +1,245 @@
 <template>
-    <v-dialog v-model="showDialog" max-width="600" persistent>
-        <v-card>
-            <v-card-title>
-                {{ isEdit ? tt('Edit Bucket') : tt('Add Bucket') }}
-            </v-card-title>
-
-            <v-card-text>
-                <v-form ref="form" v-model="formValid">
+    <v-dialog width="800" :persistent="isBucketModified" v-model="showState">
+        <one-column-dialog-layout :disabled="loading || submitting" :loading="loading"
+                                  :title="tt(title)" :cancel-button-title="tt('Cancel')"
+                                  @cancel="cancel">
+            <template #content>
+                <v-form class="mt-2">
                     <v-row>
-                        <v-col cols="12">
+                        <v-col cols="12" md="12">
                             <v-text-field
-                                v-model="formData.name"
+                                type="text"
+                                autocomplete="off"
+                                persistent-placeholder
+                                :disabled="loading || submitting"
                                 :label="tt('Name')"
-                                :rules="[rules.required]"
-                                variant="outlined"
-                                density="compact"
+                                :placeholder="tt('Name')"
+                                v-model="bucket.name"
                             />
                         </v-col>
-
                         <v-col cols="12" md="6">
-                            <v-text-field
-                                v-model.number="formData.targetAmount"
-                                :label="tt('Target Amount (optional)')"
-                                type="number"
-                                :rules="[rules.nonNegative]"
-                                variant="outlined"
-                                density="compact"
+                            <amount-input
+                                persistent-placeholder
+                                :disabled="loading || submitting"
+                                :currency="bucket.currency"
+                                :show-currency="true"
+                                :label="tt('Target Amount')"
+                                :placeholder="tt('Target Amount')"
+                                v-model="bucket.targetAmount"
                             />
                         </v-col>
-
                         <v-col cols="12" md="6">
-                            <v-select
-                                v-model="formData.currency"
+                            <currency-select
+                                :disabled="loading || submitting"
                                 :label="tt('Currency')"
-                                :items="currencies"
-                                :rules="[rules.required]"
-                                variant="outlined"
-                                density="compact"
+                                :placeholder="tt('Currency')"
+                                v-model="bucket.currency"
                             />
                         </v-col>
-
                         <v-col cols="12" md="6">
-                            <v-text-field
-                                v-model="formData.color"
-                                :label="tt('Color')"
-                                :rules="[rules.required]"
-                                variant="outlined"
-                                density="compact"
-                            >
-                                <template #prepend-inner>
-                                    <div
-                                        :style="{ backgroundColor: '#' + formData.color, width: '24px', height: '24px', borderRadius: '4px' }"
-                                    />
-                                </template>
-                            </v-text-field>
+                            <color-select :all-system-color-infos="ALL_ACCOUNT_COLORS"
+                                          :label="tt('Color')"
+                                          :disabled="loading || submitting"
+                                          v-model="bucket.color" />
                         </v-col>
-
-                        <v-col cols="12" md="6" v-if="isEdit">
+                        <v-col cols="12" md="6" v-if="editBucketId">
                             <v-select
-                                v-model="formData.status"
-                                :label="tt('Status')"
-                                :items="statuses"
                                 item-title="name"
                                 item-value="type"
-                                variant="outlined"
-                                density="compact"
+                                persistent-placeholder
+                                :disabled="loading || submitting"
+                                :label="tt('Status')"
+                                :placeholder="tt('Status')"
+                                :items="localizedStatuses"
+                                v-model="bucket.status"
                             />
                         </v-col>
-
-                        <v-col cols="12">
+                        <v-col cols="12" md="12">
                             <v-textarea
-                                v-model="formData.comment"
+                                type="text"
+                                autocomplete="off"
+                                persistent-placeholder
+                                rows="3"
+                                :disabled="loading || submitting"
                                 :label="tt('Comment')"
-                                rows="2"
-                                variant="outlined"
-                                density="compact"
+                                :placeholder="tt('Comment')"
+                                v-model="bucket.comment"
                             />
                         </v-col>
-
-                        <v-col cols="12" v-if="isEdit">
-                            <v-switch
-                                v-model="formData.visible"
-                                :label="tt('Visible')"
-                                color="primary"
-                                density="compact"
-                            />
+                        <v-col class="py-0 my-n2" cols="12" md="12" v-if="editBucketId">
+                            <v-switch :disabled="loading || submitting"
+                                      :label="tt('Visible')" v-model="bucketVisible"/>
                         </v-col>
                     </v-row>
                 </v-form>
-            </v-card-text>
+            </template>
 
-            <v-card-actions>
-                <v-spacer />
-                <v-btn variant="text" @click="close">{{ tt('Cancel') }}</v-btn>
-                <v-btn color="primary" variant="tonal" :loading="saving" :disabled="!formValid" @click="save">
-                    {{ tt('Save') }}
-                </v-btn>
-            </v-card-actions>
-        </v-card>
+            <template #footer>
+                <v-spacer/>
+                <v-tooltip :disabled="!inputIsEmpty" :text="inputEmptyProblemMessage ? tt(inputEmptyProblemMessage) : ''">
+                    <template v-slot:activator="{ props }">
+                        <div v-bind="props" class="d-inline-block">
+                            <v-btn :disabled="inputIsEmpty || loading || submitting" @click="save">
+                                {{ tt(saveButtonTitle) }}
+                                <v-progress-circular indeterminate size="22" class="ms-2" v-if="submitting"></v-progress-circular>
+                            </v-btn>
+                        </div>
+                    </template>
+                </v-tooltip>
+            </template>
+        </one-column-dialog-layout>
     </v-dialog>
 
     <snack-bar ref="snackbar" />
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, useTemplateRef } from 'vue';
-import { useI18n } from 'vue-i18n';
+import SnackBar from '@/components/desktop/SnackBar.vue';
+
+import { ref, computed, useTemplateRef } from 'vue';
+
+import { useI18n } from '@/locales/helpers.ts';
+import { useBucketEditPageBase } from '@/views/base/buckets/BucketEditPageBase.ts';
 
 import { useBucketsStore } from '@/stores/bucket.ts';
 import { useUserStore } from '@/stores/user.ts';
 
-import { Bucket, BucketStatus } from '@/models/bucket.ts';
+import { Bucket } from '@/models/bucket.ts';
+
+import type { ColorValue } from '@/core/color.ts';
+import { ALL_ACCOUNT_COLORS } from '@/consts/color.ts';
+
+import { isEquals } from '@/lib/common.ts';
 import { generateRandomUUID } from '@/lib/misc.ts';
 
-import SnackBar from '@/components/desktop/SnackBar.vue';
+interface BucketEditResponse {
+    message: string;
+}
+
+// matches the color a new bucket has always defaulted to in this dialog
+// (not the model's own createNewBucket() default, which other code may still rely on)
+const DEFAULT_NEW_BUCKET_COLOR: ColorValue = '4CAF50';
 
 type SnackBarType = InstanceType<typeof SnackBar>;
 
-const { t: tt } = useI18n();
+const { tt } = useI18n();
+const {
+    editBucketId,
+    clientSessionId,
+    loading,
+    submitting,
+    bucket,
+    title,
+    saveButtonTitle,
+    inputEmptyProblemMessage,
+    inputIsEmpty,
+    allStatuses,
+    setBucket
+} = useBucketEditPageBase();
+
 const bucketsStore = useBucketsStore();
 const userStore = useUserStore();
 
-const props = defineProps<{
-    show: boolean;
-    bucket: Bucket | null;
-    isEdit: boolean;
-}>();
-
-const emit = defineEmits<{
-    (e: 'update:show', value: boolean): void;
-    (e: 'saved'): void;
-}>();
-
-const showDialog = computed({
-    get: () => props.show,
-    set: (value) => emit('update:show', value)
-});
-
-const formValid = ref(false);
-const saving = ref(false);
 const snackbar = useTemplateRef<SnackBarType>('snackbar');
 
-const formData = ref<{
-    name: string;
-    targetAmount: number;
-    currency: string;
-    color: string;
-    comment: string;
-    status: number;
-    visible: boolean;
-}>({
-    name: '',
-    targetAmount: 0,
-    currency: 'USD',
-    color: '4CAF50',
-    comment: '',
-    status: BucketStatus.InProgress.type,
-    visible: true
-});
+let resolveFunc: ((value: BucketEditResponse) => void) | null = null;
+let rejectFunc: ((reason?: unknown) => void) | null = null;
 
-const statuses = [
-    BucketStatus.InProgress,
-    BucketStatus.Completed
-];
+const showState = ref<boolean>(false);
+const initBucket = ref<Bucket | null>(null);
 
-const currencies = computed(() => {
-    return ['USD', 'EUR', 'GBP', 'CNY', 'JPY', 'INR', 'CAD', 'AUD'];
-});
-
-const rules = {
-    required: (v: string | number) => !!v || tt('This field is required'),
-    nonNegative: (v: number) => v >= 0 || tt('Must be zero or positive')
-};
-
-watch(() => props.show, (newVal) => {
-    if (newVal && props.bucket) {
-        formData.value = {
-            name: props.bucket.name,
-            targetAmount: props.bucket.targetAmount / 100,
-            currency: props.bucket.currency || userStore.currentUserDefaultCurrency || 'USD',
-            color: props.bucket.color || '4CAF50',
-            comment: props.bucket.comment,
-            status: props.bucket.status,
-            visible: !props.bucket.hidden
-        };
-    } else if (newVal) {
-        formData.value = {
-            name: '',
-            targetAmount: 0,
-            currency: userStore.currentUserDefaultCurrency || 'USD',
-            color: '4CAF50',
-            comment: '',
-            status: BucketStatus.InProgress.type,
-            visible: true
-        };
+const isBucketModified = computed<boolean>(() => {
+    if (!editBucketId.value) { // Add
+        return !!initBucket.value && !isEquals(bucket.value.toCreateRequest(clientSessionId.value), initBucket.value.toCreateRequest(clientSessionId.value));
+    } else { // Edit
+        return !!initBucket.value && !isEquals(bucket.value.toModifyRequest(), initBucket.value.toModifyRequest());
     }
 });
 
-function close(): void {
-    showDialog.value = false;
+const bucketVisible = computed<boolean>({
+    get: () => !bucket.value.hidden,
+    set: (value: boolean) => {
+        bucket.value.hidden = !value;
+    }
+});
+
+const localizedStatuses = computed<{ type: number, name: string }[]>(() => allStatuses.map(item => ({ type: item.type, name: tt(item.name) })));
+
+function open(options: { id?: string; currentBucket?: Bucket }): Promise<BucketEditResponse> {
+    showState.value = true;
+    loading.value = true;
+    submitting.value = false;
+    editBucketId.value = options.id ?? null;
+
+    initBucket.value = Bucket.createNewBucket(userStore.currentUserDefaultCurrency);
+    initBucket.value.color = DEFAULT_NEW_BUCKET_COLOR;
+    setBucket(initBucket.value);
+
+    if (options.id) {
+        if (options.currentBucket) {
+            setBucket(options.currentBucket);
+        }
+
+        bucketsStore.getBucket({
+            bucketId: options.id
+        }).then(response => {
+            setBucket(response);
+            initBucket.value = response.clone();
+            loading.value = false;
+        }).catch(error => {
+            loading.value = false;
+            showState.value = false;
+
+            if (!error.processed) {
+                rejectFunc?.(error);
+            }
+        });
+    } else {
+        clientSessionId.value = generateRandomUUID();
+        loading.value = false;
+    }
+
+    return new Promise((resolve, reject) => {
+        resolveFunc = resolve;
+        rejectFunc = reject;
+    });
 }
 
 function save(): void {
-    if (!formValid.value) return;
+    const problemMessage = inputEmptyProblemMessage.value;
 
-    saving.value = true;
+    if (problemMessage) {
+        snackbar.value?.showMessage(problemMessage);
+        return;
+    }
 
-    const request = {
-        id: props.isEdit && props.bucket ? props.bucket.id : undefined,
-        name: formData.value.name,
-        targetAmount: Math.round(formData.value.targetAmount * 100),
-        currency: formData.value.currency,
-        icon: props.isEdit && props.bucket ? props.bucket.icon : '1',
-        color: formData.value.color,
-        comment: formData.value.comment,
-        status: formData.value.status,
-        visible: formData.value.visible,
-        clientSessionId: generateRandomUUID()
-    };
+    submitting.value = true;
 
-    bucketsStore.saveBucket({ bucket: request, isEdit: props.isEdit })
-        .then(() => {
-            emit('saved');
-            close();
-        })
-        .catch(error => {
-            if (!error.processed) {
-                snackbar.value?.showError(error);
-            }
-        })
-        .finally(() => {
-            saving.value = false;
-        });
+    bucketsStore.saveBucket({
+        bucket: editBucketId.value ? bucket.value.toModifyRequest() : bucket.value.toCreateRequest(clientSessionId.value),
+        isEdit: !!editBucketId.value
+    }).then(() => {
+        submitting.value = false;
+
+        const message = editBucketId.value ? 'You have saved this bucket' : 'You have added a new bucket';
+
+        resolveFunc?.({ message });
+        showState.value = false;
+    }).catch(error => {
+        submitting.value = false;
+
+        if (!error.processed) {
+            snackbar.value?.showError(error);
+        }
+    });
 }
+
+function cancel(): void {
+    rejectFunc?.();
+    showState.value = false;
+}
+
+defineExpose({
+    open
+});
 </script>

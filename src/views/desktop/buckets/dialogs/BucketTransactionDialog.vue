@@ -1,158 +1,158 @@
 <template>
-    <v-dialog v-model="showDialog" max-width="500" persistent>
-        <v-card>
-            <v-card-title>
-                {{ transactionType === 'allocate' ? tt('Add Money to Bucket') : tt('Withdraw from Bucket') }}
-            </v-card-title>
+    <v-dialog width="500" :persistent="submitting" v-model="showState">
+        <one-column-dialog-layout :disabled="submitting" :title="tt(title)" :cancel-button-title="tt('Cancel')"
+                                  @cancel="cancel">
+            <template #content>
+                <v-alert type="info" variant="tonal" density="compact" class="mb-4" v-if="bucket">
+                    {{ tt('Current Balance') }}: {{ formatAmount(bucket.currentBalance, bucket.currency) }}
+                </v-alert>
 
-            <v-card-text>
-                <v-form ref="form" v-model="formValid">
+                <v-form>
                     <v-row>
                         <v-col cols="12">
-                            <v-text-field
-                                v-model.number="formData.amount"
-                                :label="tt('Amount')"
-                                :rules="[rules.required, rules.positive]"
-                                type="number"
-                                variant="outlined"
-                                density="compact"
+                            <amount-input
+                                persistent-placeholder
                                 autofocus
+                                :disabled="submitting"
+                                :currency="bucket?.currency"
+                                :show-currency="true"
+                                :label="tt('Amount')"
+                                :placeholder="tt('Amount')"
+                                v-model="amount"
                             />
                         </v-col>
-
                         <v-col cols="12">
                             <v-textarea
-                                v-model="formData.comment"
-                                :label="tt('Comment (optional)')"
-                                rows="2"
-                                variant="outlined"
-                                density="compact"
+                                type="text"
+                                autocomplete="off"
+                                persistent-placeholder
+                                rows="3"
+                                :disabled="submitting"
+                                :label="tt('Comment')"
+                                :placeholder="tt('Comment')"
+                                v-model="comment"
                             />
                         </v-col>
                     </v-row>
                 </v-form>
+            </template>
 
-                <v-alert v-if="bucket" type="info" variant="tonal" density="compact" class="mt-2">
-                    {{ tt('Current Balance') }}: {{ formatAmount(bucket.currentBalance, bucket.currency) }}
-                </v-alert>
-            </v-card-text>
-
-            <v-card-actions>
-                <v-spacer />
-                <v-btn variant="text" @click="close">{{ tt('Cancel') }}</v-btn>
-                <v-btn
-                    :color="transactionType === 'allocate' ? 'success' : 'warning'"
-                    variant="tonal"
-                    :loading="saving"
-                    :disabled="!formValid"
-                    @click="save"
-                >
-                    {{ transactionType === 'allocate' ? tt('Add') : tt('Withdraw') }}
-                </v-btn>
-            </v-card-actions>
-        </v-card>
+            <template #footer>
+                <v-spacer/>
+                <v-tooltip :disabled="!inputIsEmpty" :text="inputEmptyProblemMessage ? tt(inputEmptyProblemMessage) : ''">
+                    <template v-slot:activator="{ props }">
+                        <div v-bind="props" class="d-inline-block">
+                            <v-btn :disabled="inputIsEmpty || submitting" @click="save">
+                                {{ tt(saveButtonTitle) }}
+                                <v-progress-circular indeterminate size="22" class="ms-2" v-if="submitting"></v-progress-circular>
+                            </v-btn>
+                        </div>
+                    </template>
+                </v-tooltip>
+            </template>
+        </one-column-dialog-layout>
     </v-dialog>
 
     <snack-bar ref="snackbar" />
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, useTemplateRef } from 'vue';
-import { useI18n } from 'vue-i18n';
+import SnackBar from '@/components/desktop/SnackBar.vue';
+
+import { ref, useTemplateRef } from 'vue';
+
+import { useI18n } from '@/locales/helpers.ts';
+import { useBucketTransactionPageBase } from '@/views/base/buckets/BucketTransactionPageBase.ts';
 
 import { useBucketsStore } from '@/stores/bucket.ts';
 
 import { Bucket } from '@/models/bucket.ts';
+
 import { generateRandomUUID } from '@/lib/misc.ts';
 
-import SnackBar from '@/components/desktop/SnackBar.vue';
+interface BucketTransactionResponse {
+    message: string;
+}
 
 type SnackBarType = InstanceType<typeof SnackBar>;
 
-const { t: tt } = useI18n();
+const { tt } = useI18n();
+const {
+    bucket,
+    transactionType,
+    amount,
+    comment,
+    clientSessionId,
+    submitting,
+    title,
+    saveButtonTitle,
+    inputEmptyProblemMessage,
+    inputIsEmpty,
+    buildAllocateRequest,
+    buildWithdrawRequest,
+    formatAmount
+} = useBucketTransactionPageBase();
+
 const bucketsStore = useBucketsStore();
 
-const props = defineProps<{
-    show: boolean;
-    bucket: Bucket | null;
-    transactionType: 'allocate' | 'withdraw';
-}>();
-
-const emit = defineEmits<{
-    (e: 'update:show', value: boolean): void;
-    (e: 'saved'): void;
-}>();
-
-const showDialog = computed({
-    get: () => props.show,
-    set: (value) => emit('update:show', value)
-});
-
-const formValid = ref(false);
-const saving = ref(false);
 const snackbar = useTemplateRef<SnackBarType>('snackbar');
 
-const formData = ref({
-    amount: 0,
-    comment: ''
-});
+let resolveFunc: ((value: BucketTransactionResponse) => void) | null = null;
+let rejectFunc: ((reason?: unknown) => void) | null = null;
 
-const rules = {
-    required: (v: number) => !!v || tt('This field is required'),
-    positive: (v: number) => v > 0 || tt('Must be a positive number')
-};
+const showState = ref<boolean>(false);
 
-function formatAmount(amount: number, currency: string): string {
-    const displayAmount = amount / 100;
-    return new Intl.NumberFormat(undefined, {
-        style: 'currency',
-        currency: currency || 'USD'
-    }).format(displayAmount);
-}
+function open(options: { bucket: Bucket; type: 'allocate' | 'withdraw' }): Promise<BucketTransactionResponse> {
+    showState.value = true;
+    submitting.value = false;
+    bucket.value = options.bucket;
+    transactionType.value = options.type;
+    amount.value = 0;
+    comment.value = '';
+    clientSessionId.value = generateRandomUUID();
 
-watch(() => props.show, (newVal) => {
-    if (newVal) {
-        formData.value = {
-            amount: 0,
-            comment: ''
-        };
-    }
-});
-
-function close(): void {
-    showDialog.value = false;
+    return new Promise((resolve, reject) => {
+        resolveFunc = resolve;
+        rejectFunc = reject;
+    });
 }
 
 function save(): void {
-    if (!formValid.value || !props.bucket) return;
+    const problemMessage = inputEmptyProblemMessage.value;
 
-    saving.value = true;
+    if (problemMessage) {
+        snackbar.value?.showMessage(problemMessage);
+        return;
+    }
 
-    const request = {
-        bucketId: props.bucket.id,
-        amount: Math.round(formData.value.amount * 100),
-        transactionTime: Math.floor(Date.now() / 1000),
-        utcOffset: new Date().getTimezoneOffset() * -1,
-        comment: formData.value.comment,
-        clientSessionId: generateRandomUUID()
-    };
+    submitting.value = true;
 
-    const promise = props.transactionType === 'allocate'
-        ? bucketsStore.allocateToBucket({ request })
-        : bucketsStore.withdrawFromBucket({ request });
+    const promise = transactionType.value === 'allocate'
+        ? bucketsStore.allocateToBucket({ request: buildAllocateRequest() })
+        : bucketsStore.withdrawFromBucket({ request: buildWithdrawRequest() });
 
-    promise
-        .then(() => {
-            emit('saved');
-            close();
-        })
-        .catch(error => {
-            if (!error.processed) {
-                snackbar.value?.showError(error);
-            }
-        })
-        .finally(() => {
-            saving.value = false;
-        });
+    promise.then(() => {
+        submitting.value = false;
+
+        const message = transactionType.value === 'allocate' ? 'Money has been added to the bucket' : 'Money has been withdrawn from the bucket';
+
+        resolveFunc?.({ message });
+        showState.value = false;
+    }).catch(error => {
+        submitting.value = false;
+
+        if (!error.processed) {
+            snackbar.value?.showError(error);
+        }
+    });
 }
+
+function cancel(): void {
+    rejectFunc?.();
+    showState.value = false;
+}
+
+defineExpose({
+    open
+});
 </script>

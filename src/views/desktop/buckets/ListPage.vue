@@ -5,19 +5,30 @@
                 <template #title>
                     <div class="title-and-toolbar d-flex align-center">
                         <span>{{ tt('Buckets') }}</span>
-                        <v-btn density="compact" color="default" variant="text" size="24"
-                               class="ms-2" :icon="true" :loading="loading" @click="reload">
+                        <v-btn class="ms-3" color="default" variant="outlined"
+                               :disabled="loading" @click="add">{{ tt('Add') }}</v-btn>
+                        <v-btn density="compact" color="default" variant="text" class="ms-2"
+                               :aria-label="tt('Refresh')" :icon="true" :loading="loading" @click="reload(true)">
                             <template #loader>
                                 <v-progress-circular indeterminate size="20"/>
                             </template>
                             <v-icon :icon="mdiRefresh" size="24" />
                             <v-tooltip activator="parent">{{ tt('Refresh') }}</v-tooltip>
                         </v-btn>
-                        <v-spacer />
-                        <v-btn color="primary" variant="tonal" size="small"
-                               :disabled="loading" @click="add">
-                            <v-icon :icon="mdiPlus" size="20" start />
-                            {{ tt('Add') }}
+                        <v-spacer/>
+                        <v-btn density="comfortable" color="default" variant="text" class="ms-2"
+                               :aria-label="tt('More')" :disabled="loading" :icon="true">
+                            <v-icon :icon="mdiDotsVertical" />
+                            <v-menu activator="parent">
+                                <v-list>
+                                    <v-list-item :prepend-icon="mdiEyeOutline"
+                                                 :title="tt('Show Hidden Buckets')"
+                                                 v-if="!showHidden" @click="showHidden = true"></v-list-item>
+                                    <v-list-item :prepend-icon="mdiEyeOffOutline"
+                                                 :title="tt('Hide Hidden Buckets')"
+                                                 v-if="showHidden" @click="showHidden = false"></v-list-item>
+                                </v-list>
+                            </v-menu>
                         </v-btn>
                     </div>
                 </template>
@@ -32,26 +43,36 @@
                 </v-card-text>
 
                 <v-card-text>
-                    <v-row v-if="loading && !allBuckets.length">
-                        <v-col cols="12" class="d-flex justify-center">
-                            <v-progress-circular indeterminate />
+                    <v-row v-if="loading && noAvailableBucket">
+                        <v-col v-for="itemIdx in [ 1, 2, 3 ]" :key="itemIdx" cols="12" md="6" lg="4">
+                            <v-card variant="outlined" class="bucket-card">
+                                <v-card-title class="d-flex align-center">
+                                    <v-skeleton-loader class="skeleton-no-margin" type="avatar" :loading="true"></v-skeleton-loader>
+                                    <v-skeleton-loader class="skeleton-no-margin ms-2" width="120px" type="text" :loading="true"></v-skeleton-loader>
+                                    <v-spacer />
+                                    <v-skeleton-loader class="skeleton-no-margin" width="60px" type="text" :loading="true"></v-skeleton-loader>
+                                </v-card-title>
+
+                                <v-card-text>
+                                    <div class="d-flex justify-space-between align-center mb-2">
+                                        <span class="text-muted">{{ tt('Current Balance') }}</span>
+                                        <v-skeleton-loader class="skeleton-no-margin" width="80px" type="text" :loading="true"></v-skeleton-loader>
+                                    </div>
+
+                                    <v-skeleton-loader class="skeleton-no-margin mb-2" height="8" type="image" :loading="true"></v-skeleton-loader>
+                                </v-card-text>
+                            </v-card>
                         </v-col>
                     </v-row>
 
-                    <v-row v-else-if="!allBuckets.length">
+                    <v-row v-else-if="!loading && noAvailableBucket">
                         <v-col cols="12">
-                            <div class="text-center text-muted py-8">
-                                <v-icon :icon="mdiPiggyBankOutline" size="48" class="mb-4" />
-                                <p>{{ tt('No buckets') }}</p>
-                                <v-btn color="primary" variant="tonal" size="small" @click="add">
-                                    {{ tt('Add Bucket') }}
-                                </v-btn>
-                            </div>
+                            <span class="text-body-medium">{{ tt('No available bucket') }}</span>
                         </v-col>
                     </v-row>
 
                     <v-row v-else>
-                        <v-col v-for="bucket in allBuckets" :key="bucket.id" cols="12" md="6" lg="4">
+                        <v-col v-for="bucket in displayBuckets" :key="bucket.id" cols="12" md="6" lg="4">
                             <v-card variant="outlined" class="bucket-card">
                                 <v-card-title class="d-flex align-center">
                                     <v-avatar :color="'#' + bucket.color" size="32" class="me-2">
@@ -79,7 +100,7 @@
 
                                     <v-progress-linear
                                         v-if="bucket.targetAmount > 0"
-                                        :model-value="bucket.progress"
+                                        :model-value="getProgressPercentage(bucket)"
                                         :color="bucket.isCompleted() ? 'success' : 'primary'"
                                         height="8"
                                         rounded
@@ -92,18 +113,18 @@
                                 </v-card-text>
 
                                 <v-card-actions>
-                                    <v-btn color="success" variant="text" size="small" @click="allocateToBucket(bucket)">
+                                    <v-btn color="success" variant="text" size="small" :disabled="loading" @click="allocate(bucket)">
                                         {{ tt('Add Money') }}
                                     </v-btn>
-                                    <v-btn color="warning" variant="text" size="small" @click="withdrawFromBucket(bucket)">
+                                    <v-btn color="warning" variant="text" size="small" :disabled="loading" @click="withdraw(bucket)">
                                         {{ tt('Withdraw') }}
                                     </v-btn>
                                     <v-spacer />
-                                    <v-btn variant="text" size="small" :icon="true" @click="editBucket(bucket)">
+                                    <v-btn variant="text" size="small" :icon="true" :disabled="loading" @click="edit(bucket)">
                                         <v-icon :icon="mdiPencilOutline" size="18" />
                                         <v-tooltip activator="parent">{{ tt('Edit') }}</v-tooltip>
                                     </v-btn>
-                                    <v-btn variant="text" size="small" :icon="true" @click="confirmDeleteBucket(bucket)">
+                                    <v-btn variant="text" size="small" :icon="true" :disabled="loading" @click="confirmDeleteBucket(bucket)">
                                         <v-icon :icon="mdiDeleteOutline" size="18" />
                                         <v-tooltip activator="parent">{{ tt('Delete') }}</v-tooltip>
                                     </v-btn>
@@ -116,31 +137,28 @@
         </v-col>
     </v-row>
 
-    <bucket-edit-dialog v-model:show="showEditDialog"
-                        :bucket="editingBucket"
-                        :is-edit="isEditMode"
-                        @saved="onBucketSaved" />
-
-    <bucket-transaction-dialog v-model:show="showTransactionDialog"
-                               :bucket="transactionBucket"
-                               :transaction-type="transactionType"
-                               @saved="onTransactionSaved" />
+    <bucket-edit-dialog ref="editDialog" />
+    <bucket-transaction-dialog ref="transactionDialog" />
 
     <confirm-dialog ref="confirmDialog"/>
     <snack-bar ref="snackbar" />
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, useTemplateRef } from 'vue';
-import { useI18n } from 'vue-i18n';
+import { useTemplateRef } from 'vue';
 
 import {
     mdiRefresh,
-    mdiPlus,
+    mdiDotsVertical,
+    mdiEyeOutline,
+    mdiEyeOffOutline,
     mdiPencilOutline,
     mdiDeleteOutline,
     mdiPiggyBankOutline
 } from '@mdi/js';
+
+import { useI18n } from '@/locales/helpers.ts';
+import { useBucketListPageBase } from '@/views/base/buckets/BucketListPageBase.ts';
 
 import { useBucketsStore } from '@/stores/bucket.ts';
 
@@ -153,88 +171,131 @@ import SnackBar from '@/components/desktop/SnackBar.vue';
 
 type ConfirmDialogType = InstanceType<typeof ConfirmDialog>;
 type SnackBarType = InstanceType<typeof SnackBar>;
+type BucketEditDialogType = InstanceType<typeof BucketEditDialog>;
+type BucketTransactionDialogType = InstanceType<typeof BucketTransactionDialog>;
 
-const { t: tt } = useI18n();
+const { tt } = useI18n();
+
+const {
+    loading,
+    showHidden,
+    displayBuckets,
+    noAvailableBucket,
+    formatAmount,
+    getProgressPercentage
+} = useBucketListPageBase();
+
 const bucketsStore = useBucketsStore();
 
-const loading = ref(false);
-const showEditDialog = ref(false);
-const showTransactionDialog = ref(false);
 const confirmDialog = useTemplateRef<ConfirmDialogType>('confirmDialog');
 const snackbar = useTemplateRef<SnackBarType>('snackbar');
-const editingBucket = ref<Bucket | null>(null);
-const transactionBucket = ref<Bucket | null>(null);
-const transactionType = ref<'allocate' | 'withdraw'>('allocate');
-const isEditMode = ref(false);
+const editDialog = useTemplateRef<BucketEditDialogType>('editDialog');
+const transactionDialog = useTemplateRef<BucketTransactionDialogType>('transactionDialog');
 
-const allBuckets = computed(() => bucketsStore.allBuckets);
+function init(): void {
+    bucketsStore.loadAllBuckets({ force: false }).then(() => {
+        loading.value = false;
+    }).catch(error => {
+        loading.value = false;
 
-function formatAmount(amount: number, currency: string): string {
-    const displayAmount = amount / 100;
-    return new Intl.NumberFormat(undefined, {
-        style: 'currency',
-        currency: currency || 'USD'
-    }).format(displayAmount);
+        if (!error.processed) {
+            snackbar.value?.showError(error);
+        }
+    });
 }
 
-function reload(): void {
+function reload(force: boolean): void {
     loading.value = true;
-    bucketsStore.loadAllBuckets({ force: true }).finally(() => {
+
+    bucketsStore.loadAllBuckets({ force: force }).then(() => {
         loading.value = false;
+
+        if (force) {
+            snackbar.value?.showMessage('Bucket list has been updated');
+        }
+    }).catch(error => {
+        loading.value = false;
+
+        if (!error.processed) {
+            snackbar.value?.showError(error);
+        }
     });
 }
 
 function add(): void {
-    editingBucket.value = Bucket.createNewBucket();
-    isEditMode.value = false;
-    showEditDialog.value = true;
+    editDialog.value?.open({}).then(result => {
+        if (result && result.message) {
+            snackbar.value?.showMessage(result.message);
+        }
+    }).catch(error => {
+        if (error) {
+            snackbar.value?.showError(error);
+        }
+    });
 }
 
-function editBucket(bucket: Bucket): void {
-    editingBucket.value = bucket;
-    isEditMode.value = true;
-    showEditDialog.value = true;
+function edit(bucket: Bucket): void {
+    editDialog.value?.open({
+        id: bucket.id,
+        currentBucket: bucket
+    }).then(result => {
+        if (result && result.message) {
+            snackbar.value?.showMessage(result.message);
+        }
+    }).catch(error => {
+        if (error) {
+            snackbar.value?.showError(error);
+        }
+    });
 }
 
-function allocateToBucket(bucket: Bucket): void {
-    transactionBucket.value = bucket;
-    transactionType.value = 'allocate';
-    showTransactionDialog.value = true;
+function allocate(bucket: Bucket): void {
+    transactionDialog.value?.open({
+        bucket: bucket,
+        type: 'allocate'
+    }).then(result => {
+        if (result && result.message) {
+            snackbar.value?.showMessage(result.message);
+        }
+    }).catch(error => {
+        if (error) {
+            snackbar.value?.showError(error);
+        }
+    });
 }
 
-function withdrawFromBucket(bucket: Bucket): void {
-    transactionBucket.value = bucket;
-    transactionType.value = 'withdraw';
-    showTransactionDialog.value = true;
+function withdraw(bucket: Bucket): void {
+    transactionDialog.value?.open({
+        bucket: bucket,
+        type: 'withdraw'
+    }).then(result => {
+        if (result && result.message) {
+            snackbar.value?.showMessage(result.message);
+        }
+    }).catch(error => {
+        if (error) {
+            snackbar.value?.showError(error);
+        }
+    });
 }
 
 function confirmDeleteBucket(bucket: Bucket): void {
     confirmDialog.value?.open('Are you sure you want to delete this bucket?').then(() => {
         loading.value = true;
 
-        bucketsStore.deleteBucket({ bucket }).catch(error => {
+        bucketsStore.deleteBucket({ bucket }).then(() => {
+            loading.value = false;
+        }).catch(error => {
+            loading.value = false;
+
             if (!error.processed) {
                 snackbar.value?.showError(error);
             }
-        }).finally(() => {
-            loading.value = false;
         });
     });
 }
 
-function onBucketSaved(): void {
-    showEditDialog.value = false;
-    reload();
-}
-
-function onTransactionSaved(): void {
-    showTransactionDialog.value = false;
-    reload();
-}
-
-onMounted(() => {
-    reload();
-});
+init();
 </script>
 
 <style scoped>
