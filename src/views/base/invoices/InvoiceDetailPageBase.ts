@@ -8,7 +8,7 @@ import { useInvoicesStore } from '@/stores/invoice.ts';
 import services from '@/lib/services.ts';
 
 import type { TextualYearMonthDay } from '@/core/datetime.ts';
-import { type Invoice, type InvoicePayment, type InvoiceProfile, INVOICE_CURRENCY } from '@/models/invoice.ts';
+import { type Invoice, type InvoicePayment, type InvoiceProfile, type InvoiceSendRequest, INVOICE_CURRENCY } from '@/models/invoice.ts';
 
 import { parseBigDecimal } from '@/lib/numeral.ts';
 import { parseDateTimeFromUnixTimeWithTimezoneOffset, getTimezoneOffsetMinutes } from '@/lib/datetime.ts';
@@ -25,7 +25,7 @@ import {
 import { getInvoiceDisplayStatusName } from './InvoiceListPageBase.ts';
 
 export function useInvoiceDetailPageBase() {
-    const { formatAmountToLocalizedNumeralsWithCurrency, formatGregorianTextualYearMonthDayToLongDate, formatDateTimeToLongDate } = useI18n();
+    const { tt, formatAmountToLocalizedNumeralsWithCurrency, formatGregorianTextualYearMonthDayToLongDate, formatDateTimeToLongDate } = useI18n();
 
     const accountsStore = useAccountsStore();
     const invoicesStore = useInvoicesStore();
@@ -52,6 +52,8 @@ export function useInvoiceDetailPageBase() {
         return '';
     });
     const publicLinkUrl = computed<string>(() => invoice.value?.publicToken ? getInvoicePublicLinkUrl(invoice.value.publicToken) : '');
+    // "Sent on" date once the invoice was emailed, empty otherwise
+    const sentOnText = computed<string>(() => invoice.value && invoice.value.sentUnixTime > 0 ? formatUnixTime(invoice.value.sentUnixTime) : '');
 
     function formatAmount(paise: number): string {
         return formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(paise), INVOICE_CURRENCY);
@@ -61,11 +63,63 @@ export function useInvoiceDetailPageBase() {
         return formatGregorianTextualYearMonthDayToLongDate(date);
     }
 
+    function formatUnixTime(unixTime: number): string {
+        return formatDateTimeToLongDate(parseDateTimeFromUnixTimeWithTimezoneOffset(unixTime, getTimezoneOffsetMinutes(unixTime)));
+    }
+
     // "April 29, 2026 · PNB Savings · NEFT-QUBER TECH"
     function formatPaymentDescription(payment: InvoicePayment): string {
-        const date = formatDateTimeToLongDate(parseDateTimeFromUnixTimeWithTimezoneOffset(payment.transactionTime, getTimezoneOffsetMinutes(payment.transactionTime)));
+        const date = formatUnixTime(payment.transactionTime);
         const accountName = accountsStore.allAccountsMap[payment.accountId]?.name ?? '';
         return [date, accountName, payment.comment].filter(part => !!part).join(' · ');
+    }
+
+    // the prefilled email: To from the bill-to email, the subject the server would default to, and a message with
+    // the amount due, the due date, the public link and a thank-you line
+    function buildSendRequest(): InvoiceSendRequest {
+        const current = invoice.value;
+
+        if (!current) {
+            return { id: '', to: '', subject: '', message: '' };
+        }
+
+        const businessName = profile.value?.businessName ?? '';
+        const paragraphs = [
+            tt('Hi {name},', { name: current.billToContactName || current.billToName }),
+            '',
+            tt('Please find attached invoice {number}. The amount due is {amount}, payable by {date}.', { number: current.number, amount: formatAmount(balanceDue.value), date: formatDate(current.dueDate) }),
+            tt('You can view the invoice online at {url}', { url: publicLinkUrl.value }),
+            '',
+            tt('Thank you for your business.')
+        ];
+
+        return {
+            id: current.id,
+            to: current.billToEmail,
+            subject: businessName ? `${tt('Invoice')} ${current.number} ${tt('from')} ${businessName}` : `${tt('Invoice')} ${current.number}`,
+            message: paragraphs.join('\n')
+        };
+    }
+
+    // "Send" creates the public link first (the server would too) so the prefilled message can carry its URL
+    function prepareSendRequest(): Promise<InvoiceSendRequest> {
+        if (invoice.value?.publicToken) {
+            return Promise.resolve(buildSendRequest());
+        }
+
+        return setPublicLink(true).then(() => buildSendRequest());
+    }
+
+    // emails the invoice; the detail keeps the stored sent time and public token afterwards
+    function sendInvoice(req: InvoiceSendRequest): Promise<Invoice> {
+        return invoicesStore.sendInvoice(req).then(sent => {
+            if (invoice.value && invoice.value.id === sent.id) {
+                invoice.value.publicToken = sent.publicToken;
+                invoice.value.sentUnixTime = sent.sentUnixTime;
+            }
+
+            return sent;
+        });
     }
 
     function printInvoice(): void {
@@ -120,6 +174,7 @@ export function useInvoiceDetailPageBase() {
         shortfall,
         shortfallName,
         publicLinkUrl,
+        sentOnText,
         // functions
         formatAmount,
         formatDate,
@@ -128,6 +183,9 @@ export function useInvoiceDetailPageBase() {
         setPublicLink,
         copyPublicLink
 ,
-        downloadInvoicePdf
+        downloadInvoicePdf,
+        buildSendRequest,
+        prepareSendRequest,
+        sendInvoice
     };
 }

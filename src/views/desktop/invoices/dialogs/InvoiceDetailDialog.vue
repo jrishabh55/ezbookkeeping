@@ -6,6 +6,7 @@
             <template #after-title>
                 <v-chip class="ms-3" size="small" variant="tonal" :color="displayStatus ? statusColors[displayStatus] : 'default'"
                         v-if="invoice">{{ tt(displayStatusName) }}</v-chip>
+                <span class="text-caption text-medium-emphasis ms-2" v-if="sentOnText">{{ tt('Sent on') }} {{ sentOnText }}</span>
             </template>
 
             <template #toolbar>
@@ -49,6 +50,11 @@
                        :aria-label="tt('Download PDF')" :disabled="!invoice || loading" @click="downloadInvoicePdf">
                     <v-icon :icon="mdiDownloadOutline" />
                     <v-tooltip activator="parent">{{ tt('Download PDF') }}</v-tooltip>
+                </v-btn>
+                <v-btn density="comfortable" color="default" variant="text" class="ms-1" :icon="true"
+                       :aria-label="tt('Send')" :disabled="!invoice || !profile || loading || updating" @click="openSend">
+                    <v-icon :icon="mdiEmailOutline" />
+                    <v-tooltip activator="parent">{{ tt('Send') }}</v-tooltip>
                 </v-btn>
             </template>
 
@@ -132,6 +138,36 @@
             </v-card-actions>
         </v-card>
     </v-dialog>
+
+    <v-dialog width="640" :persistent="sending" v-model="showSendDialog">
+        <v-card class="dialog-layout-card">
+            <v-toolbar color="primary">
+                <v-toolbar-title>{{ tt('Send Invoice') }}</v-toolbar-title>
+            </v-toolbar>
+            <v-card-text class="pa-4">
+                <v-text-field type="email" autocomplete="off" persistent-placeholder class="mb-2"
+                              :disabled="sending"
+                              :label="tt('To')" :placeholder="tt('Email')"
+                              v-model="sendRequest.to" />
+                <v-text-field type="text" autocomplete="off" persistent-placeholder class="mb-2"
+                              :disabled="sending"
+                              :label="tt('Subject')" :placeholder="tt('Subject')"
+                              v-model="sendRequest.subject" />
+                <v-textarea type="text" autocomplete="off" persistent-placeholder rows="6" auto-grow
+                            :disabled="sending"
+                            :label="tt('Message')" :placeholder="tt('Message')"
+                            v-model="sendRequest.message" />
+            </v-card-text>
+            <v-card-actions class="px-4 pb-4">
+                <v-spacer />
+                <v-btn color="gray" :disabled="sending" @click="showSendDialog = false">{{ tt('Cancel') }}</v-btn>
+                <v-btn color="primary" :disabled="sending || !sendRequest.to" @click="send">
+                    {{ tt('Send') }}
+                    <v-progress-circular indeterminate size="22" class="ms-2" v-if="sending"></v-progress-circular>
+                </v-btn>
+            </v-card-actions>
+        </v-card>
+    </v-dialog>
 </template>
 
 <script setup lang="ts">
@@ -147,7 +183,8 @@ import {
     mdiDownloadOutline,
     mdiLinkOff,
     mdiRepeat,
-    mdiShareVariantOutline
+    mdiShareVariantOutline,
+    mdiEmailOutline
 } from '@mdi/js';
 
 import ConfirmDialog from '@/components/desktop/ConfirmDialog.vue';
@@ -162,7 +199,7 @@ import { useInvoiceDetailPageBase } from '@/views/base/invoices/InvoiceDetailPag
 import { useInvoicesStore } from '@/stores/invoice.ts';
 import { useAccountsStore } from '@/stores/account.ts';
 
-import type { InvoicePayment } from '@/models/invoice.ts';
+import type { InvoicePayment, InvoiceSendForm } from '@/models/invoice.ts';
 
 import type { InvoiceDisplayStatus } from '@/lib/invoice.ts';
 
@@ -188,13 +225,16 @@ const {
     shortfall,
     shortfallName,
     publicLinkUrl,
+    sentOnText,
     formatAmount,
     formatPaymentDescription,
     printInvoice,
     setPublicLink,
     copyPublicLink
 ,
-    downloadInvoicePdf
+    downloadInvoicePdf,
+    prepareSendRequest,
+    sendInvoice
 } = useInvoiceDetailPageBase();
 
 const invoicesStore = useInvoicesStore();
@@ -214,6 +254,9 @@ const showState = ref<boolean>(false);
 const invoiceId = ref<string>('');
 const changed = ref<boolean>(false);
 const showShareDialog = ref<boolean>(false);
+const showSendDialog = ref<boolean>(false);
+const sending = ref<boolean>(false);
+const sendRequest = ref<InvoiceSendForm>({ id: '', to: '', subject: '', message: '' });
 
 // resolves open()'s promise on every dismissal (X/Close, Escape, backdrop click), not just the explicit close() call
 watch(showState, value => {
@@ -408,6 +451,45 @@ function copyLink(): void {
 // no clipboard (plain http): select the URL so it can be copied by hand
 function selectLinkField(event: FocusEvent): void {
     (event.target as HTMLInputElement | null)?.select();
+}
+
+// creates the public link when the invoice has none, then opens the prefilled email form
+function openSend(): void {
+    if (!invoice.value) {
+        return;
+    }
+
+    updating.value = true;
+
+    prepareSendRequest().then(request => {
+        updating.value = false;
+        changed.value = true; // the link may have been created
+        sendRequest.value = { ...request };
+        showSendDialog.value = true;
+    }).catch(error => {
+        updating.value = false;
+
+        if (!error.processed) {
+            snackbar.value?.showError(error);
+        }
+    });
+}
+
+function send(): void {
+    sending.value = true;
+
+    sendInvoice(sendRequest.value).then(() => {
+        sending.value = false;
+        showSendDialog.value = false;
+        changed.value = true;
+        snackbar.value?.showMessage('Invoice has been sent');
+    }).catch(error => {
+        sending.value = false;
+
+        if (!error.processed) {
+            snackbar.value?.showError(error);
+        }
+    });
 }
 
 function close(): void {

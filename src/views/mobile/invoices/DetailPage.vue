@@ -17,6 +17,7 @@
         <template v-if="!loading && invoice && profile">
             <f7-list strong inset dividers class="margin-vertical">
                 <f7-list-item :title="tt('Status')" :after="tt(displayStatusName)"></f7-list-item>
+                <f7-list-item :title="tt('Sent on')" :after="sentOnText" v-if="sentOnText"></f7-list-item>
                 <f7-list-item :title="tt('Customer')" :after="invoice.billToName"></f7-list-item>
                 <f7-list-item :title="tt('Payment Due')" :after="formatDate(invoice.dueDate)"></f7-list-item>
                 <f7-list-item :title="tt('Total')" :after="formatAmount(invoice.total)"></f7-list-item>
@@ -71,6 +72,7 @@
                 <f7-actions-button @click="showRepeatMonthlyPopup = true">{{ tt('Repeat Monthly') }}</f7-actions-button>
                 <f7-actions-button @click="share">{{ tt('Share Link') }}</f7-actions-button>
                 <f7-actions-button @click="downloadInvoicePdf">{{ tt('Download PDF') }}</f7-actions-button>
+                <f7-actions-button @click="f7router.navigate(`/invoice/send?id=${invoiceId}`)">{{ tt('Send') }}</f7-actions-button>
             </f7-actions-group>
             <f7-actions-group>
                 <f7-actions-button color="red" @click="showDeleteActionSheet = true">{{ tt('Delete') }}</f7-actions-button>
@@ -142,6 +144,7 @@ const {
     shortfall,
     shortfallName,
     publicLinkUrl,
+    sentOnText,
     formatAmount,
     formatDate,
     formatPaymentDescription,

@@ -107,7 +107,19 @@ export interface InvoiceInfoResponse {
     readonly lines?: InvoiceLine[];
     readonly payments?: InvoicePayment[];
     readonly publicToken?: string;
+    readonly sentUnixTime?: number; // when the invoice was last emailed; absent = never
 }
+
+// emailing an invoice: a blank subject gets the server default "Invoice <number> from <business name>"
+export interface InvoiceSendRequest {
+    readonly id: string;
+    readonly to: string;
+    readonly subject: string;
+    readonly message: string;
+}
+
+// the editable form behind a send request
+export type InvoiceSendForm = { -readonly [K in keyof InvoiceSendRequest]: InvoiceSendRequest[K] };
 
 export interface InvoiceLineRequest {
     readonly itemName: string;
@@ -340,6 +352,7 @@ export class Invoice implements InvoiceInfoResponse {
     public lines: InvoiceLine[] = [];
     public payments: InvoicePayment[] = [];
     public publicToken: string = ''; // empty = no public link
+    public sentUnixTime: number = 0; // 0 = never emailed
 
     public fillFrom(other: InvoiceInfoResponse): void {
         this.id = other.id;
@@ -367,6 +380,7 @@ export class Invoice implements InvoiceInfoResponse {
         this.lines = (other.lines ?? []).map(line => ({ ...line }));
         this.payments = (other.payments ?? []).map(payment => ({ ...payment }));
         this.publicToken = other.publicToken ?? '';
+        this.sentUnixTime = other.sentUnixTime ?? 0;
     }
 
     public toCreateRequest(): InvoiceCreateRequest {

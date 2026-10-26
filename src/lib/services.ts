@@ -226,7 +226,8 @@ import type {
     RecurringInvoiceModifyRequest
 ,
     InvoicePublicLinkResponse,
-    PublicInvoiceResponse
+    PublicInvoiceResponse,
+    InvoiceSendRequest
 } from '@/models/invoice.ts';
 
 import {
@@ -1112,6 +1113,9 @@ export default {
     },
     updateInvoicePublicLink: (req: { id: string, enabled: boolean }): ApiResponsePromise<InvoicePublicLinkResponse> => {
         return axios.post<ApiResponse<InvoicePublicLinkResponse>>('v1/invoices/public_link/update.json', req);
+    },
+    sendInvoice: (req: InvoiceSendRequest): ApiResponsePromise<InvoiceInfoResponse> => {
+        return axios.post<ApiResponse<InvoiceInfoResponse>>('v1/invoices/send.json', req);
     },
     // unauthenticated: no bearer token, and a failure must never clear the login of whoever opened the link
     getPublicInvoice: ({ token }: { token: string }): ApiResponsePromise<PublicInvoiceResponse> => {

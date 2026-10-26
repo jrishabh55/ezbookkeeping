@@ -3,6 +3,7 @@ import { defineStore } from 'pinia';
 
 import {
     type InvoicePayment,
+    type InvoiceSendRequest,
     InvoiceProfile,
     Customer,
     Invoice,
@@ -148,6 +149,11 @@ export const useInvoicesStore = defineStore('invoices', () => {
         return request(services.updateInvoicePublicLink({ id: invoiceId, enabled }), 'Unable to update public link').then(result => result.publicToken);
     }
 
+    // emails the invoice (public link + PDF); resolves the invoice as stored afterwards (public token, sent time)
+    function sendInvoice(req: InvoiceSendRequest): Promise<Invoice> {
+        return request(services.sendInvoice(req), 'Unable to send invoice').then(result => Invoice.of(result));
+    }
+
     function loadAllCustomers({ force }: { force?: boolean }): Promise<Customer[]> {
         if (!force && !customerListStateInvalid.value) {
             return Promise.resolve(allCustomers.value);
@@ -280,6 +286,7 @@ export const useInvoicesStore = defineStore('invoices', () => {
         linkInvoicePayment,
         unlinkInvoicePayment,
         updateInvoicePublicLink,
+        sendInvoice,
         loadAllCustomers,
         saveCustomer,
         deleteCustomer,
