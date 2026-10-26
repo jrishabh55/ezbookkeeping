@@ -138,7 +138,7 @@
         </v-card>
     </v-dialog>
 
-    <v-dialog width="640" :persistent="sending" v-model="showSendDialog">
+    <v-dialog width="1200" :persistent="sending" v-model="showSendDialog">
         <v-card class="dialog-layout-card">
             <v-toolbar color="primary">
                 <v-toolbar-title>{{ tt('Send Invoice') }}</v-toolbar-title>
@@ -150,7 +150,7 @@
                               v-model="sendRequest.to" />
                 <invoice-email-template-form v-if="showSendDialog" :key="sendRequest.id"
                                              v-model:subject="sendRequest.subject" v-model:body="sendRequest.bodyHtml"
-                                             :invoice-id="sendRequest.id" :disabled="sending"
+                                             :invoice-id="sendRequest.id" :disabled="sending" split
                                              @validity-change="emailTemplateValid = $event" />
             </v-card-text>
             <v-card-actions class="px-4 pb-4">

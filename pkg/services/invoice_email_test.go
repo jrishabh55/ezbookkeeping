@@ -231,3 +231,14 @@ func TestInvoiceEmailPreviewUsesCrossCurrencySettledPayments(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, preview.BodyHtml, "₹250.00 ₹750.00")
 }
+
+// Loading the preview profile with a defaults-filled struct turns those defaults into query filters and drops business values.
+func TestInvoiceEmailPreviewFillsBusinessValuesForNonDefaultProfile(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	require.NoError(t, Invoices.SaveBusinessProfile(ctx, &models.InvoiceProfile{Uid: uid, NumberPrefix: "CDN", DefaultTermsDays: 15, BusinessName: "Codeation", Phone: "98765", Website: "https://codeation.io"}))
+	preview, err := Invoices.PreviewInvoiceEmail(ctx, uid, 0, nil, nil)
+	require.NoError(t, err)
+	for _, value := range []string{"Codeation", "98765", "https://codeation.io"} {
+		require.Contains(t, preview.BodyHtml, value)
+	}
+}

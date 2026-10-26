@@ -1,28 +1,30 @@
 <template>
-    <section class="invoice-email-template-form" :class="{ 'invoice-email-template-split': split }" :aria-label="tt('Invoice Email Template')">
-        <div class="invoice-email-draft">
-            <label>{{ tt('Subject') }}</label>
-            <invoice-email-subject-editor :model-value="subject" :variables="variables" :disabled="disabled"
-                                          :aria-label="tt('Subject')" @update:model-value="updateSubject" />
-            <label class="invoice-email-body-label">{{ tt('Message') }}</label>
-            <invoice-email-body-editor :model-value="body" :variables="variables" :disabled="disabled"
-                                       :aria-label="tt('Message')" @update:model-value="updateBody" />
-            <button type="button" class="invoice-email-template-button" :disabled="disabled || !preview"
-                    @click="restoreDefaults" v-if="allowRestore">{{ tt('Restore Default Template') }}</button>
-        </div>
-        <div class="invoice-email-preview" aria-live="polite" :aria-busy="pending">
-            <h3>{{ tt('Email Preview') }}</h3>
-            <p v-if="pending">{{ tt('Preparing email preview…') }}</p>
-            <div role="alert" v-else-if="error">
-                <p>{{ errorMessage }}</p>
-                <button type="button" class="invoice-email-template-button" :disabled="disabled" @click="refresh">{{ tt('Retry') }}</button>
+    <section class="invoice-email-template-form" :aria-label="tt('Invoice Email Template')">
+        <div class="invoice-email-template-layout" :class="{ 'invoice-email-template-split': split }">
+            <div class="invoice-email-draft">
+                <label>{{ tt('Subject') }}</label>
+                <invoice-email-subject-editor :model-value="subject" :variables="variables" :disabled="disabled"
+                                              :aria-label="tt('Subject')" @update:model-value="updateSubject" />
+                <label class="invoice-email-body-label">{{ tt('Message') }}</label>
+                <invoice-email-body-editor :model-value="body" :variables="variables" :disabled="disabled"
+                                           :aria-label="tt('Message')" @update:model-value="updateBody" />
+                <button type="button" class="invoice-email-template-button" :disabled="disabled || !preview"
+                        @click="restoreDefaults" v-if="allowRestore">{{ tt('Restore Default Template') }}</button>
             </div>
-            <template v-else-if="valid && preview">
-                <p v-if="preview.sample">{{ tt('Sample invoice preview') }}</p>
-                <p class="invoice-email-preview-subject"><strong>{{ tt('Subject') }}:</strong> {{ preview.subject }}</p>
-                <iframe class="invoice-email-preview-frame" sandbox="" referrerpolicy="no-referrer"
-                        :title="tt('Email Preview')" :srcdoc="preview.emailHtml"></iframe>
-            </template>
+            <div class="invoice-email-preview" aria-live="polite" :aria-busy="pending">
+                <h3>{{ tt('Email Preview') }}</h3>
+                <p v-if="pending">{{ tt('Preparing email preview…') }}</p>
+                <div role="alert" v-else-if="error">
+                    <p>{{ errorMessage }}</p>
+                    <button type="button" class="invoice-email-template-button" :disabled="disabled" @click="refresh">{{ tt('Retry') }}</button>
+                </div>
+                <template v-else-if="valid && preview">
+                    <p v-if="preview.sample">{{ tt('Sample invoice preview') }}</p>
+                    <p class="invoice-email-preview-subject"><strong>{{ tt('Subject') }}:</strong> {{ preview.subject }}</p>
+                    <iframe class="invoice-email-preview-frame" sandbox="" referrerpolicy="no-referrer"
+                            :title="tt('Email Preview')" :srcdoc="preview.emailHtml"></iframe>
+                </template>
+            </div>
         </div>
     </section>
 </template>
@@ -85,6 +87,8 @@ function restoreDefaults(): void {
 .invoice-email-template-form {
     min-width: 0;
     width: 100%;
+    /* Split on the form's own width, so it works inside dialogs and the settings layout alike. */
+    container-type: inline-size;
 }
 .invoice-email-draft {
     min-width: 0;
@@ -129,7 +133,7 @@ function restoreDefaults(): void {
     border-radius: 0.35rem;
     background: white;
 }
-@media (min-width: 1100px) {
+@container (min-width: 760px) {
     .invoice-email-template-split {
         display: grid;
         grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);

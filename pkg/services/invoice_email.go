@@ -64,9 +64,12 @@ func (s *InvoiceService) PreviewInvoiceEmail(c core.Context, uid, invoiceID int6
 		return nil, errs.ErrUserIdInvalid
 	}
 	// Runs on every debounced keystroke: skip the logo blob and invoice lines, which the email never uses.
-	profile := defaultInvoiceProfile(uid)
-	if _, err := s.UserDataDB(uid).NewSession(c).Where("uid=?", uid).Omit("logo_data_url").Get(profile); err != nil {
+	profile := &models.InvoiceProfile{}
+	has, err := s.UserDataDB(uid).NewSession(c).Where("uid=?", uid).Omit("logo_data_url").Get(profile)
+	if err != nil {
 		return nil, err
+	} else if !has {
+		profile = defaultInvoiceProfile(uid)
 	}
 	sample := invoiceID == 0
 	var invoice *models.Invoice
@@ -85,7 +88,6 @@ func (s *InvoiceService) PreviewInvoiceEmail(c core.Context, uid, invoiceID int6
 		received = 25000
 		publicURL = "https://example.com/i/sample-invoice"
 	} else {
-		var err error
 		invoice, err = s.getInvoiceHeader(c, uid, invoiceID)
 		if err != nil {
 			return nil, err
