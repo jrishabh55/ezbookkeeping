@@ -28,15 +28,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from 'vue';
+import { computed, defineAsyncComponent, watch } from 'vue';
 
-import InvoiceEmailBodyEditor from '@/components/common/InvoiceEmailBodyEditor.vue';
-import InvoiceEmailSubjectEditor from '@/components/common/InvoiceEmailSubjectEditor.vue';
+// The rich text editor is only needed on the send and template screens, so it loads on demand.
+const InvoiceEmailBodyEditor = defineAsyncComponent(() => import('@/components/common/InvoiceEmailBodyEditor.vue'));
+const InvoiceEmailSubjectEditor = defineAsyncComponent(() => import('@/components/common/InvoiceEmailSubjectEditor.vue'));
 
 import { useI18n } from '@/locales/helpers.ts';
 import { useInvoicesStore } from '@/stores/invoice.ts';
-import { getInvoiceEmailPreviewErrorMessage } from '@/lib/invoiceEmail.ts';
-import { INVOICE_EMAIL_EDITOR_VARIABLES } from '@/lib/invoice_email_editor.ts';
+import { INVOICE_EMAIL_EDITOR_VARIABLES, getInvoiceEmailPreviewErrorMessage } from '@/lib/invoiceEmail.ts';
 import { useInvoiceEmailPreview } from '@/composables/invoiceEmailPreview.ts';
 
 const props = defineProps<{

@@ -20,6 +20,10 @@ var alertTestDbDir string
 // TestMain removes the sqlite test database directory once, after every test in this package
 // has finished, instead of leaking a new temp directory on every `go test` invocation.
 func TestMain(m *testing.M) {
+	// Templates load from the repository root, as at runtime.
+	if err := os.Chdir("../.."); err != nil {
+		panic(err)
+	}
 	code := m.Run()
 
 	if alertTestDbDir != "" {

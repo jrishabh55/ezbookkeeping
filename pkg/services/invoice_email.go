@@ -20,32 +20,9 @@ func invoiceEmailTemplateError(err error) error {
 	return errs.NewNormalError(errs.NormalSubcategoryInvoice, 50, http.StatusBadRequest, err.Error())
 }
 
-// SaveProfileWithEmailTemplates preserves fields omitted by older clients and permits an empty rich body.
-func (s *InvoiceService) SaveProfileWithEmailTemplates(c core.Context, profile *models.InvoiceProfile, subject, body *string) error {
-	if subject == nil && body == nil {
-		return s.saveProfile(c, profile, true)
-	}
-	previous, err := s.GetProfile(c, profile.Uid)
-	if err != nil {
-		return err
-	}
-	profile.EmailSubjectTemplate, profile.EmailBodyTemplate = previous.EmailSubjectTemplate, previous.EmailBodyTemplate
-	if subject != nil {
-		if err := invoiceemail.ValidateSubject(*subject); err != nil {
-			return invoiceEmailTemplateError(err)
-		}
-		if previous.EmailSubjectTemplate == "" && body == nil {
-			_, profile.EmailBodyTemplate = invoiceemail.EffectiveTemplates(previous.EmailSubjectTemplate, previous.EmailBodyTemplate)
-		}
-		profile.EmailSubjectTemplate = *subject
-	}
-	if body != nil {
-		if profile.EmailSubjectTemplate == "" {
-			profile.EmailSubjectTemplate = invoiceemail.DefaultSubjectTemplate
-		}
-		profile.EmailBodyTemplate = *body
-	}
-	return s.SaveProfile(c, profile)
+// SaveBusinessProfile saves the business fields; templates are only written by SaveInvoiceEmailTemplate.
+func (s *InvoiceService) SaveBusinessProfile(c core.Context, profile *models.InvoiceProfile) error {
+	return s.saveProfile(c, profile, true)
 }
 
 // invoiceEmailValues uses invoice snapshots and the same formatting/balance rules as the printed document.
@@ -83,8 +60,12 @@ func renderInvoiceEmail(profile *models.InvoiceProfile, invoice *models.Invoice,
 
 // PreviewInvoiceEmail reads sample or owned invoice data. It never creates a public token or updates an invoice.
 func (s *InvoiceService) PreviewInvoiceEmail(c core.Context, uid, invoiceID int64, subject, body *string) (*models.InvoiceEmailPreviewResponse, error) {
-	profile, err := s.GetProfile(c, uid)
-	if err != nil {
+	if uid <= 0 {
+		return nil, errs.ErrUserIdInvalid
+	}
+	// Runs on every debounced keystroke: skip the logo blob and invoice lines, which the email never uses.
+	profile := defaultInvoiceProfile(uid)
+	if _, err := s.UserDataDB(uid).NewSession(c).Where("uid=?", uid).Omit("logo_data_url").Get(profile); err != nil {
 		return nil, err
 	}
 	sample := invoiceID == 0
@@ -104,7 +85,8 @@ func (s *InvoiceService) PreviewInvoiceEmail(c core.Context, uid, invoiceID int6
 		received = 25000
 		publicURL = "https://example.com/i/sample-invoice"
 	} else {
-		invoice, _, err = s.GetInvoice(c, uid, invoiceID)
+		var err error
+		invoice, err = s.getInvoiceHeader(c, uid, invoiceID)
 		if err != nil {
 			return nil, err
 		}
@@ -226,14 +208,16 @@ func (s *InvoiceService) SaveInvoiceEmailTemplate(c core.Context, uid int64, sub
 		if err != nil {
 			return err
 		}
+		now := time.Now().Unix()
 		if !exists {
-			now := time.Now().Unix()
-			profile = &models.InvoiceProfile{Uid: uid, NumberPrefix: "INV", DefaultTermsDays: 7, CreatedUnixTime: now, UpdatedUnixTime: now}
+			profile = defaultInvoiceProfile(uid)
+			profile.CreatedUnixTime = now
 		}
 		profile.EmailSubjectTemplate = subject
 		profile.EmailBodyTemplate = sanitizedBody
+		profile.UpdatedUnixTime = now
 		if exists {
-			_, err = sess.Cols("email_subject_template", "email_body_template").Where("uid=?", uid).Update(profile)
+			_, err = sess.Cols("email_subject_template", "email_body_template", "updated_unix_time").Where("uid=?", uid).Update(profile)
 		} else {
 			_, err = sess.Insert(profile)
 		}

@@ -1,5 +1,29 @@
 import type { Invoice, InvoiceProfile, InvoiceSendRequest } from '@/models/invoice.ts';
 
+// Kept out of invoice_email_editor.ts so screens can list variables without loading the editor.
+export interface InvoiceEmailEditorVariable {
+    readonly key: string;
+    readonly label: string;
+}
+
+export const INVOICE_EMAIL_EDITOR_VARIABLES: readonly InvoiceEmailEditorVariable[] = [
+    { key: 'customer_name', label: 'Customer Name' },
+    { key: 'contact_name', label: 'Contact Name' },
+    { key: 'customer_email', label: 'Customer Email' },
+    { key: 'invoice_number', label: 'Invoice Number' },
+    { key: 'invoice_date', label: 'Invoice Date' },
+    { key: 'due_date', label: 'Due Date' },
+    { key: 'invoice_total', label: 'Invoice Total' },
+    { key: 'amount_paid', label: 'Amount Paid' },
+    { key: 'amount_due', label: 'Amount Due' },
+    { key: 'currency', label: 'Currency' },
+    { key: 'invoice_url', label: 'Invoice URL' },
+    { key: 'business_name', label: 'Business Name' },
+    { key: 'business_address', label: 'Business Address' },
+    { key: 'business_phone', label: 'Business Phone' },
+    { key: 'business_website', label: 'Business Website' }
+];
+
 // Keep the saved template unresolved: the server expands it for this invoice on preview/send.
 export function createInvoiceEmailSendRequest(invoice: Pick<Invoice, 'id' | 'billToEmail'>, profile: Pick<InvoiceProfile, 'emailSubjectTemplate' | 'emailBodyTemplate'> | null): InvoiceSendRequest {
     return {

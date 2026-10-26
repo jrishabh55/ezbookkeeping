@@ -14,7 +14,7 @@ import (
 	xhtml "golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
 
-	emailtemplates "github.com/mayswind/ezbookkeeping/templates"
+	"github.com/mayswind/ezbookkeeping/pkg/templates"
 )
 
 const MaxSubjectLength = 256
@@ -44,7 +44,6 @@ var catalog = []Variable{
 	{Key: "currency", Label: "Currency"}, {Key: "invoice_url", Label: "Invoice URL"}, {Key: "business_name", Label: "Business Name"},
 	{Key: "business_address", Label: "Business Address"}, {Key: "business_phone", Label: "Business Phone"}, {Key: "business_website", Label: "Business Website"},
 }
-var documentTemplate = htmltemplate.Must(htmltemplate.New("invoice_email").Parse(emailtemplates.InvoiceEmailDocument))
 
 var emptyInline = regexp.MustCompile(`<(strong|b|em|i|u|span)>\s*</(strong|b|em|i|u|span)>`)
 var repeatedBreaks = regexp.MustCompile(`(<br/>\s*){2,}`)
@@ -163,6 +162,10 @@ func renderEmailDocument(subject, body string, values map[string]string) (*Resul
 	}
 	var document bytes.Buffer
 	// Body has been parsed, allowlisted and context-escaped; the wrapper escapes the subject itself.
+	documentTemplate, err := templates.GetTemplate(templates.TEMPLATE_INVOICE_EMAIL)
+	if err != nil {
+		return nil, err
+	}
 	if err := documentTemplate.Execute(&document, map[string]any{"Subject": subject, "Body": htmltemplate.HTML(body)}); err != nil {
 		return nil, err
 	}

@@ -87,10 +87,14 @@ func (s *InvoiceService) GetProfile(c core.Context, uid int64) (*models.InvoiceP
 	if err != nil {
 		return nil, err
 	} else if !has {
-		return &models.InvoiceProfile{Uid: uid, NumberPrefix: "INV", DefaultTermsDays: 7}, nil
+		return defaultInvoiceProfile(uid), nil
 	}
 
 	return profile, nil
+}
+
+func defaultInvoiceProfile(uid int64) *models.InvoiceProfile {
+	return &models.InvoiceProfile{Uid: uid, NumberPrefix: "INV", DefaultTermsDays: 7}
 }
 
 // SaveProfile creates or updates the invoice profile of user
@@ -390,13 +394,10 @@ func (s *InvoiceService) GetInvoice(c core.Context, uid int64, invoiceId int64) 
 		return nil, nil, errs.ErrInvoiceIdInvalid
 	}
 
-	invoice := &models.Invoice{}
-	has, err := s.UserDataDB(uid).NewSession(c).Where("uid=? AND deleted=? AND invoice_id=?", uid, false, invoiceId).Get(invoice)
+	invoice, err := s.getInvoiceHeader(c, uid, invoiceId)
 
 	if err != nil {
 		return nil, nil, err
-	} else if !has {
-		return nil, nil, errs.ErrInvoiceNotFound
 	}
 
 	var lines []*models.InvoiceLine
@@ -407,6 +408,20 @@ func (s *InvoiceService) GetInvoice(c core.Context, uid int64, invoiceId int64) 
 	}
 
 	return invoice, lines, nil
+}
+
+// getInvoiceHeader returns an owned invoice without its lines
+func (s *InvoiceService) getInvoiceHeader(c core.Context, uid int64, invoiceId int64) (*models.Invoice, error) {
+	invoice := &models.Invoice{}
+	has, err := s.UserDataDB(uid).NewSession(c).Where("uid=? AND deleted=? AND invoice_id=?", uid, false, invoiceId).Get(invoice)
+
+	if err != nil {
+		return nil, err
+	} else if !has {
+		return nil, errs.ErrInvoiceNotFound
+	}
+
+	return invoice, nil
 }
 
 // prepareInvoice validates an invoice, copies the customer's bill-to details and computes the total

@@ -168,8 +168,6 @@ func InvoiceReceivedAmount(payments []*InvoicePaymentInfo) int64 {
 
 // InvoiceProfileUpdateRequest represents all parameters of invoice profile update request
 type InvoiceProfileUpdateRequest struct {
-	EmailSubjectTemplate *string `json:"emailSubjectTemplate" binding:"omitempty,max=256"`
-	EmailBodyTemplate    *string `json:"emailBodyTemplate" binding:"omitempty,max=32000"`
 	BusinessName         string  `json:"businessName" binding:"max=128"`
 	AddressLines         string  `json:"addressLines" binding:"max=512"`
 	Phone                string  `json:"phone" binding:"max=32"`

@@ -7,11 +7,11 @@ import InvoiceEmailTemplateForm from '@/components/common/InvoiceEmailTemplateFo
 const { previewEmail } = vi.hoisted(() => ({ previewEmail: vi.fn() }));
 vi.mock('@/stores/invoice.ts', () => ({ useInvoicesStore: () => ({ previewInvoiceEmail: previewEmail }) }));
 vi.mock('@/locales/helpers.ts', () => ({ useI18n: () => ({ tt: (text: string) => text }) }));
-vi.mock('@/components/common/InvoiceEmailSubjectEditor.vue', () => ({ default: defineComponent({
+vi.mock('@/components/common/InvoiceEmailSubjectEditor.vue', () => ({ __esModule: true, default: defineComponent({
     props: ['modelValue', 'variables'], emits: ['update:modelValue'],
     setup(props, { emit }) { return () => h('input', { class: 'subject-editor', value: props.modelValue, 'data-variable-count': props.variables.length, onInput: (event: Event) => emit('update:modelValue', (event.target as HTMLInputElement).value) }); }
 }) }));
-vi.mock('@/components/common/InvoiceEmailBodyEditor.vue', () => ({ default: defineComponent({
+vi.mock('@/components/common/InvoiceEmailBodyEditor.vue', () => ({ __esModule: true, default: defineComponent({
     props: ['modelValue'], emits: ['update:modelValue'],
     setup(props, { emit }) { return () => h('textarea', { class: 'body-editor', value: props.modelValue, onInput: (event: Event) => emit('update:modelValue', (event.target as HTMLTextAreaElement).value) }); }
 }) }));
@@ -20,7 +20,7 @@ let app: App;
 let root: HTMLDivElement;
 afterEach(() => { app?.unmount(); root?.remove(); vi.useRealTimers(); });
 
-function mount(disabled = false) {
+async function mount(disabled = false) {
     vi.useFakeTimers();
     const subject = ref('{{invoice_number}}');
     const body = ref('<p>{{customer_name}}</p>');
@@ -34,6 +34,11 @@ function mount(disabled = false) {
         onValidityChange: (value: boolean) => { valid.value = value; }
     }) });
     app.mount(root);
+    // The editors are async components; let them resolve before interacting.
+    for (let i = 0; i < 10 && !root.querySelector('.subject-editor'); i++) {
+        await vi.dynamicImportSettled();
+        await vi.advanceTimersByTimeAsync(0);
+    }
     return { subject, body, valid };
 }
 
@@ -45,7 +50,7 @@ const rendered = {
 
 test('renders the complete server email in a restricted iframe without replacing saved template keys', async () => {
     previewEmail.mockResolvedValue(rendered);
-    const state = mount();
+    const state = await mount();
     expect(Number(root.querySelector('.subject-editor')?.getAttribute('data-variable-count'))).toBeGreaterThan(0);
     expect(state.valid.value).toBe(false);
     await vi.advanceTimersByTimeAsync(250);
@@ -60,7 +65,7 @@ test('renders the complete server email in a restricted iframe without replacing
 
 test('guards model writes while disabled, including restore default and child update events', async () => {
     previewEmail.mockResolvedValue(rendered);
-    const state = mount(true);
+    const state = await mount(true);
     await vi.advanceTimersByTimeAsync(250);
     await nextTick();
     const input = root.querySelector<HTMLInputElement>('.subject-editor')!;
@@ -74,7 +79,7 @@ test('guards model writes while disabled, including restore default and child up
 
 test('a renderer validation error invalidates the current email and exposes its explanation', async () => {
     previewEmail.mockResolvedValue(rendered);
-    const state = mount();
+    const state = await mount();
     await vi.advanceTimersByTimeAsync(250);
     await nextTick();
     previewEmail.mockRejectedValue({ error: { errorMessage: 'Unknown invoice email variable: customer_naem' } });

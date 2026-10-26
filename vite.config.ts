@@ -310,6 +310,10 @@ export default defineConfig(() => {
                                 }
                             },
                             {
+                                name:  'invoice-email-editor',
+                                test: /([\\/]node_modules[\\/](@tiptap|prosemirror-[^\\/]+|orderedmap|rope-sequence|w3c-keyname|linkifyjs)[\\/])|([\\/]src[\\/](components[\\/]common[\\/]InvoiceEmail(Body|Subject)?Editor\.vue|lib[\\/]invoice_email_editor\.ts))/i
+                            },
+                            {
                                 name:  'vendor-common',
                                 test: /[\\/]node_modules[\\/]/i
                             },

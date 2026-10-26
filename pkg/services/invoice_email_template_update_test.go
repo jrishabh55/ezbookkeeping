@@ -119,11 +119,24 @@ func TestBusinessProfileOmittedTemplateRequestDoesNotWriteTemplateColumns(t *tes
 		require.NoError(t, err)
 	})
 	incoming := &models.InvoiceProfile{Uid: uid, NumberPrefix: "NEW", BusinessName: "Updated business"}
-	require.NoError(t, Invoices.SaveProfileWithEmailTemplates(ctx, incoming, nil, nil))
+	require.NoError(t, Invoices.SaveBusinessProfile(ctx, incoming))
 	require.Equal(t, "Keep template", incoming.EmailSubjectTemplate)
 	require.Equal(t, "<p>Keep body</p>", incoming.EmailBodyTemplate)
 	stored, err := Invoices.GetProfile(ctx, uid)
 	require.NoError(t, err)
 	require.Equal(t, "Updated business", stored.BusinessName)
 	require.Equal(t, stored, incoming)
+}
+
+// Writing only the template columns leaves the profile looking unchanged to anything watching updated_unix_time.
+func TestInvoiceEmailTemplateSaveBumpsProfileUpdatedTime(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	require.NoError(t, Invoices.SaveBusinessProfile(ctx, &models.InvoiceProfile{Uid: uid, NumberPrefix: "INV"}))
+	_, err := Invoices.UserDataDB(uid).NewSession(ctx).Exec("UPDATE invoice_profile SET updated_unix_time=1 WHERE uid=?", uid)
+	require.NoError(t, err)
+	_, err = Invoices.SaveInvoiceEmailTemplate(ctx, uid, "Subject", "<p>Body</p>")
+	require.NoError(t, err)
+	saved, err := Invoices.GetProfile(ctx, uid)
+	require.NoError(t, err)
+	require.Greater(t, saved.UpdatedUnixTime, int64(1))
 }

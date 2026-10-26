@@ -4,10 +4,9 @@ import TextAlign from '@tiptap/extension-text-align';
 import Suggestion, { type SuggestionOptions } from '@tiptap/suggestion';
 import { NodeSelection } from '@tiptap/pm/state';
 
-export interface InvoiceEmailEditorVariable {
-    readonly key: string;
-    readonly label: string;
-}
+import { INVOICE_EMAIL_EDITOR_VARIABLES, type InvoiceEmailEditorVariable } from '@/lib/invoiceEmail.ts';
+
+export { INVOICE_EMAIL_EDITOR_VARIABLES, type InvoiceEmailEditorVariable };
 
 export interface InvoiceEmailEditorOptions {
     readonly variables: () => readonly InvoiceEmailEditorVariable[];
@@ -16,23 +15,6 @@ export interface InvoiceEmailEditorOptions {
     readonly translateLabel?: (label: string) => string;
 }
 
-export const INVOICE_EMAIL_EDITOR_VARIABLES: readonly InvoiceEmailEditorVariable[] = [
-    { key: 'customer_name', label: 'Customer Name' },
-    { key: 'contact_name', label: 'Contact Name' },
-    { key: 'customer_email', label: 'Customer Email' },
-    { key: 'invoice_number', label: 'Invoice Number' },
-    { key: 'invoice_date', label: 'Invoice Date' },
-    { key: 'due_date', label: 'Due Date' },
-    { key: 'invoice_total', label: 'Invoice Total' },
-    { key: 'amount_paid', label: 'Amount Paid' },
-    { key: 'amount_due', label: 'Amount Due' },
-    { key: 'currency', label: 'Currency' },
-    { key: 'invoice_url', label: 'Invoice URL' },
-    { key: 'business_name', label: 'Business Name' },
-    { key: 'business_address', label: 'Business Address' },
-    { key: 'business_phone', label: 'Business Phone' },
-    { key: 'business_website', label: 'Business Website' }
-];
 
 export function createInvoiceEmailExtensions(options: InvoiceEmailEditorOptions): Extensions {
     const variable = Node.create({

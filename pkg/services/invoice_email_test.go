@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/mayswind/ezbookkeeping/pkg/errs"
-	"github.com/mayswind/ezbookkeeping/pkg/invoiceemail"
 	"github.com/mayswind/ezbookkeeping/pkg/mail"
 	"strings"
 	"testing"
@@ -58,65 +57,6 @@ func TestInvoiceEmailProfileRejectsInvalidTemplates(t *testing.T) {
 }
 
 func stringPointer(value string) *string { return &value }
-
-// Treating omitted fields as empty or falling back from an intentionally empty body breaks this test.
-func TestInvoiceEmailProfileOldClientUpdatePreservesTemplate(t *testing.T) {
-	ctx, uid := newAlertTestUser(t)
-	profile := &models.InvoiceProfile{Uid: uid, NumberPrefix: "INV", EmailSubjectTemplate: "Saved {{invoice_number}}", EmailBodyTemplate: "<p>Private template</p>"}
-	require.NoError(t, Invoices.SaveProfile(ctx, profile))
-	oldClientProfile := &models.InvoiceProfile{Uid: uid, NumberPrefix: "NEW", BusinessName: "Updated"}
-	require.NoError(t, Invoices.SaveProfileWithEmailTemplates(ctx, oldClientProfile, nil, nil))
-	saved, err := Invoices.GetProfile(ctx, uid)
-	require.NoError(t, err)
-	require.Equal(t, "Saved {{invoice_number}}", saved.EmailSubjectTemplate)
-	require.Equal(t, "<p>Private template</p>", saved.EmailBodyTemplate)
-	require.Equal(t, "Updated", saved.BusinessName)
-	require.NoError(t, Invoices.SaveProfileWithEmailTemplates(ctx, oldClientProfile, nil, stringPointer("")))
-	saved, err = Invoices.GetProfile(ctx, uid)
-	require.NoError(t, err)
-	require.Empty(t, saved.EmailBodyTemplate)
-	require.Equal(t, "Saved {{invoice_number}}", saved.EmailSubjectTemplate)
-	require.Error(t, Invoices.SaveProfileWithEmailTemplates(ctx, oldClientProfile, stringPointer(""), nil))
-	require.NoError(t, Invoices.SaveProfileWithEmailTemplates(ctx, oldClientProfile, stringPointer("Invoice {{invoice_number}} from {{business_name}}"), stringPointer(invoiceemail.DefaultBodyTemplate)))
-	restored, err := Invoices.GetProfile(ctx, uid)
-	require.NoError(t, err)
-	require.Contains(t, restored.EmailBodyTemplate, "data-invoice-button")
-}
-
-// Copying an unset raw body when a subject first configures the template loses the effective default.
-func TestInvoiceEmailProfileFirstSubjectOnlyUpdatePreservesDefaultBody(t *testing.T) {
-	ctx, uid := newAlertTestUser(t)
-	before, err := Invoices.PreviewInvoiceEmail(ctx, uid, 0, nil, nil)
-	require.NoError(t, err)
-	profile := &models.InvoiceProfile{Uid: uid, NumberPrefix: "INV"}
-	require.NoError(t, Invoices.SaveProfileWithEmailTemplates(ctx, profile, stringPointer("Custom subject"), nil))
-	saved, err := Invoices.GetProfile(ctx, uid)
-	require.NoError(t, err)
-	require.Equal(t, "Custom subject", saved.EmailSubjectTemplate)
-	require.Contains(t, saved.EmailBodyTemplate, `data-invoice-button="true"`)
-	require.Equal(t, saved.EmailBodyTemplate, saved.ToInvoiceProfileResponse().EmailBodyTemplate)
-	preview, err := Invoices.PreviewInvoiceEmail(ctx, uid, 0, nil, nil)
-	require.NoError(t, err)
-	require.Equal(t, before.BodyHtml, preview.BodyHtml)
-	require.Contains(t, preview.BodyHtml, "Hello Alex")
-	require.Contains(t, preview.BodyHtml, "View Invoice")
-}
-
-// Defaulting every empty raw body during a subject update would overwrite an intentional empty body.
-func TestInvoiceEmailProfileSubjectOnlyUpdatePreservesConfiguredEmptyBody(t *testing.T) {
-	ctx, uid := newAlertTestUser(t)
-	profile := &models.InvoiceProfile{Uid: uid, NumberPrefix: "INV", EmailSubjectTemplate: "Existing subject"}
-	require.NoError(t, Invoices.SaveProfile(ctx, profile))
-	update := &models.InvoiceProfile{Uid: uid, NumberPrefix: "INV"}
-	require.NoError(t, Invoices.SaveProfileWithEmailTemplates(ctx, update, stringPointer("Custom subject"), nil))
-	saved, err := Invoices.GetProfile(ctx, uid)
-	require.NoError(t, err)
-	require.Equal(t, "Custom subject", saved.EmailSubjectTemplate)
-	require.Empty(t, saved.EmailBodyTemplate)
-	preview, err := Invoices.PreviewInvoiceEmail(ctx, uid, 0, nil, nil)
-	require.NoError(t, err)
-	require.Empty(t, preview.BodyHtml)
-}
 
 func TestInvoiceEmailPreviewSampleIsDeterministicAndUnsavedOverridesAreNotStored(t *testing.T) {
 	ctx, uid := newAlertTestUser(t)

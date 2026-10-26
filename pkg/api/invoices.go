@@ -135,7 +135,7 @@ func (a *InvoicesApi) InvoiceProfileUpdateHandler(c *core.WebContext) (any, *err
 		DefaultCurrency:  defaultCurrency,
 	}
 
-	if err := a.invoices.SaveProfileWithEmailTemplates(c, profile, req.EmailSubjectTemplate, req.EmailBodyTemplate); err != nil {
+	if err := a.invoices.SaveBusinessProfile(c, profile); err != nil {
 		log.Errorf(c, "[invoices.InvoiceProfileUpdateHandler] failed to save invoice profile for user \"uid:%d\", because %s", uid, err.Error())
 		return nil, errs.Or(err, errs.ErrOperationFailed)
 	}
