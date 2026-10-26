@@ -43,6 +43,7 @@ type InvoiceProfile struct {
 	DefaultSac       string `xorm:"VARCHAR(8) NOT NULL DEFAULT ''"`
 	CreatedUnixTime  int64
 	UpdatedUnixTime  int64
+	DefaultCurrency  string `xorm:"VARCHAR(3) NOT NULL DEFAULT ''"` // empty means INVOICE_DEFAULT_CURRENCY
 }
 
 // Customer represents an invoice customer stored in database
@@ -126,6 +127,35 @@ type InvoicePayment struct {
 	Uid            int64 `xorm:"NOT NULL"`
 	TransactionId  int64 `xorm:"UNIQUE(UQE_invoice_payment_transaction_id) NOT NULL"`
 	LinkedUnixTime int64
+	SettledAmount  int64 `xorm:"NOT NULL DEFAULT 0"` // in invoice currency; 0 = same currency, the transaction amount counts
+}
+
+// InvoicePaymentInfo is a linked (or suggested) transaction with the account currency it was received in
+// and, for a payment in another currency, the amount it settled in the invoice currency
+type InvoicePaymentInfo struct {
+	Transaction   *Transaction
+	Currency      string // the account currency
+	SettledAmount int64  // 0 when the account currency is the invoice currency
+}
+
+// ReceivedAmount returns what the payment counts for in the invoice currency
+func (p *InvoicePaymentInfo) ReceivedAmount() int64 {
+	if p.SettledAmount > 0 {
+		return p.SettledAmount
+	}
+
+	return p.Transaction.Amount
+}
+
+// InvoiceReceivedAmount is the single place "received" is summed: the list, detail, public view, PDF and balance due all use it
+func InvoiceReceivedAmount(payments []*InvoicePaymentInfo) int64 {
+	received := int64(0)
+
+	for _, payment := range payments {
+		received += payment.ReceivedAmount()
+	}
+
+	return received
 }
 
 // InvoiceProfileUpdateRequest represents all parameters of invoice profile update request
@@ -140,6 +170,7 @@ type InvoiceProfileUpdateRequest struct {
 	DefaultTermsDays int32  `json:"defaultTermsDays" binding:"min=0,max=365"`
 	Gstin            string `json:"gstin" binding:"max=15"`
 	DefaultSac       string `json:"defaultSac" binding:"max=8"`
+	DefaultCurrency  string `json:"defaultCurrency" binding:"max=3"` // empty means INR; checked against the known currencies by the handler
 }
 
 // InvoiceProfileResponse represents a view-object of invoice profile
@@ -154,6 +185,7 @@ type InvoiceProfileResponse struct {
 	DefaultTermsDays int32  `json:"defaultTermsDays"`
 	Gstin            string `json:"gstin"`
 	DefaultSac       string `json:"defaultSac"`
+	DefaultCurrency  string `json:"defaultCurrency"`
 }
 
 // CustomerCreateRequest represents all parameters of customer creation request
@@ -228,6 +260,7 @@ type InvoiceCreateRequest struct {
 	TaxType     string                `json:"taxType" binding:"max=16"`
 	TaxRate     int32                 `json:"taxRate" binding:"min=0,max=10000"`
 	Lines       []*InvoiceLineRequest `json:"lines" binding:"required,min=1,max=100,dive"`
+	Currency    string                `json:"currency" binding:"max=3"` // empty means the profile's default currency; not editable afterwards
 }
 
 // InvoiceModifyRequest represents all parameters of invoice modification request
@@ -257,6 +290,7 @@ type InvoiceNextNumberRequest struct {
 type InvoicePaymentLinkRequest struct {
 	InvoiceId     int64 `json:"invoiceId,string" binding:"required,min=1"`
 	TransactionId int64 `json:"transactionId,string" binding:"required,min=1"`
+	SettledAmount int64 `json:"settledAmount" binding:"min=0"` // link only: required (> 0) when the account currency differs from the invoice currency
 }
 
 // InvoicePublicLinkUpdateRequest represents all parameters of enabling (a fresh token every time), or disabling, an invoice's public link
@@ -292,6 +326,8 @@ type InvoicePaymentResponse struct {
 	TransactionTime int64  `json:"transactionTime"`
 	AccountId       string `json:"accountId"`
 	Comment         string `json:"comment"`
+	Currency        string `json:"currency"`      // the account currency: amount is realised in it
+	SettledAmount   int64  `json:"settledAmount"` // in invoice currency; 0 when the currencies match
 }
 
 // InvoiceInfoResponse represents a view-object of invoice
@@ -372,6 +408,7 @@ func (p *InvoiceProfile) ToInvoiceProfileResponse() *InvoiceProfileResponse {
 		DefaultTermsDays: p.DefaultTermsDays,
 		Gstin:            p.Gstin,
 		DefaultSac:       p.DefaultSac,
+		DefaultCurrency:  p.DefaultCurrency,
 	}
 }
 
@@ -396,18 +433,22 @@ func (c *Customer) ToCustomerResponse() *CustomerResponse {
 }
 
 // ToInvoicePaymentResponse returns a view-object of a transaction used as an invoice payment
-func ToInvoicePaymentResponse(t *Transaction) *InvoicePaymentResponse {
+func ToInvoicePaymentResponse(p *InvoicePaymentInfo) *InvoicePaymentResponse {
+	t := p.Transaction
+
 	return &InvoicePaymentResponse{
 		TransactionId:   utils.Int64ToString(t.TransactionId),
 		Amount:          t.Amount,
 		TransactionTime: utils.GetUnixTimeFromTransactionTime(t.TransactionTime),
 		AccountId:       utils.Int64ToString(t.AccountId),
 		Comment:         t.Comment,
+		Currency:        p.Currency,
+		SettledAmount:   p.SettledAmount,
 	}
 }
 
 // ToInvoiceInfoResponse returns a view-object according to database model; lines and payments may be nil (list view)
-func (i *Invoice) ToInvoiceInfoResponse(lines []*InvoiceLine, payments []*Transaction) *InvoiceInfoResponse {
+func (i *Invoice) ToInvoiceInfoResponse(lines []*InvoiceLine, payments []*InvoicePaymentInfo) *InvoiceInfoResponse {
 	resp := &InvoiceInfoResponse{
 		Id:                 utils.Int64ToString(i.InvoiceId),
 		Kind:               i.Kind,
@@ -430,10 +471,7 @@ func (i *Invoice) ToInvoiceInfoResponse(lines []*InvoiceLine, payments []*Transa
 		Subtotal:           i.Subtotal,
 		TaxAmount:          i.TaxAmount,
 		ClosedManually:     i.ClosedManually,
-	}
-
-	for _, payment := range payments {
-		resp.Received += payment.Amount
+		Received:           InvoiceReceivedAmount(payments),
 	}
 
 	if lines != nil {

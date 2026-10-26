@@ -17,6 +17,7 @@ import (
 	"github.com/mayswind/ezbookkeeping/pkg/models"
 	"github.com/mayswind/ezbookkeeping/pkg/utils"
 	"github.com/mayswind/ezbookkeeping/pkg/uuid"
+	"github.com/mayswind/ezbookkeeping/pkg/validators"
 )
 
 // InvoiceService represents invoice service
@@ -407,8 +408,25 @@ func (s *InvoiceService) CreateInvoice(c core.Context, invoice *models.Invoice, 
 		return err
 	}
 
+	if invoice.Currency == "" {
+		profile, err := s.GetProfile(c, invoice.Uid)
+
+		if err != nil {
+			return err
+		}
+
+		invoice.Currency = profile.DefaultCurrency
+	}
+
+	if invoice.Currency == "" {
+		invoice.Currency = models.INVOICE_DEFAULT_CURRENCY
+	}
+
+	if _, known := validators.AllCurrencyNames[invoice.Currency]; !known {
+		return errs.ErrInvoiceCurrencyInvalid
+	}
+
 	invoice.Kind = models.INVOICE_KIND_INVOICE
-	invoice.Currency = models.INVOICE_DEFAULT_CURRENCY
 	invoice.Deleted = false
 	invoice.ClosedManually = false
 	invoice.CreatedUnixTime = time.Now().Unix()
@@ -576,8 +594,8 @@ func rankInvoicePaymentSuggestions(transactions []*models.Transaction, balanceDu
 }
 
 // GetInvoicePayments returns the linked, non-deleted transactions of each invoice, oldest first
-func (s *InvoiceService) GetInvoicePayments(c core.Context, uid int64, invoiceIds []int64) (map[int64][]*models.Transaction, error) {
-	result := make(map[int64][]*models.Transaction, len(invoiceIds))
+func (s *InvoiceService) GetInvoicePayments(c core.Context, uid int64, invoiceIds []int64) (map[int64][]*models.InvoicePaymentInfo, error) {
+	result := make(map[int64][]*models.InvoicePaymentInfo, len(invoiceIds))
 
 	if uid <= 0 {
 		return nil, errs.ErrUserIdInvalid
@@ -590,9 +608,27 @@ func (s *InvoiceService) GetInvoicePayments(c core.Context, uid int64, invoiceId
 	return s.getInvoicePayments(s.UserDataDB(uid).NewSession(c), uid, invoiceIds)
 }
 
+// accountCurrencies reads the currency of each account with the given session (same database as the transactions)
+func accountCurrencies(sess *xorm.Session, uid int64, accountIds []int64) (map[int64]string, error) {
+	var accounts []*models.Account
+	err := sess.Where("uid=?", uid).In("account_id", accountIds).Find(&accounts)
+
+	if err != nil {
+		return nil, err
+	}
+
+	currencies := make(map[int64]string, len(accounts))
+
+	for _, account := range accounts {
+		currencies[account.AccountId] = account.Currency
+	}
+
+	return currencies, nil
+}
+
 // getInvoicePayments reads the linked, non-deleted transactions of the invoices with the given session
-func (s *InvoiceService) getInvoicePayments(sess *xorm.Session, uid int64, invoiceIds []int64) (map[int64][]*models.Transaction, error) {
-	result := make(map[int64][]*models.Transaction, len(invoiceIds))
+func (s *InvoiceService) getInvoicePayments(sess *xorm.Session, uid int64, invoiceIds []int64) (map[int64][]*models.InvoicePaymentInfo, error) {
+	result := make(map[int64][]*models.InvoicePaymentInfo, len(invoiceIds))
 
 	var links []*models.InvoicePayment
 	err := sess.Where("uid=?", uid).In("invoice_id", invoiceIds).Find(&links)
@@ -601,11 +637,11 @@ func (s *InvoiceService) getInvoicePayments(sess *xorm.Session, uid int64, invoi
 		return result, err
 	}
 
-	invoiceIdByTransactionId := make(map[int64]int64, len(links))
+	linkByTransactionId := make(map[int64]*models.InvoicePayment, len(links))
 	transactionIds := make([]int64, 0, len(links))
 
 	for _, link := range links {
-		invoiceIdByTransactionId[link.TransactionId] = link.InvoiceId
+		linkByTransactionId[link.TransactionId] = link
 		transactionIds = append(transactionIds, link.TransactionId)
 	}
 
@@ -616,9 +652,25 @@ func (s *InvoiceService) getInvoicePayments(sess *xorm.Session, uid int64, invoi
 		return nil, err
 	}
 
+	accountIds := make([]int64, len(transactions))
+
+	for idx, transaction := range transactions {
+		accountIds[idx] = transaction.AccountId
+	}
+
+	currencies, err := accountCurrencies(sess, uid, accountIds)
+
+	if err != nil {
+		return nil, err
+	}
+
 	for _, transaction := range transactions {
-		invoiceId := invoiceIdByTransactionId[transaction.TransactionId]
-		result[invoiceId] = append(result[invoiceId], transaction)
+		link := linkByTransactionId[transaction.TransactionId]
+		result[link.InvoiceId] = append(result[link.InvoiceId], &models.InvoicePaymentInfo{
+			Transaction:   transaction,
+			Currency:      currencies[transaction.AccountId],
+			SettledAmount: link.SettledAmount,
+		})
 	}
 
 	return result, nil
@@ -662,7 +714,7 @@ func (s *InvoiceService) GetLinkedInvoicesByTransactionIds(c core.Context, uid i
 	return result, nil
 }
 
-// invoiceBalanceDue returns total minus the amounts of the invoice's linked, non-deleted transactions
+// invoiceBalanceDue returns total minus what the invoice's linked, non-deleted transactions settled
 func (s *InvoiceService) invoiceBalanceDue(sess *xorm.Session, uid int64, invoice *models.Invoice) (int64, error) {
 	payments, err := s.getInvoicePayments(sess, uid, []int64{invoice.InvoiceId})
 
@@ -670,17 +722,12 @@ func (s *InvoiceService) invoiceBalanceDue(sess *xorm.Session, uid int64, invoic
 		return 0, err
 	}
 
-	balanceDue := invoice.Total
-
-	for _, payment := range payments[invoice.InvoiceId] {
-		balanceDue -= payment.Amount
-	}
-
-	return balanceDue, nil
+	return invoice.Total - models.InvoiceReceivedAmount(payments[invoice.InvoiceId]), nil
 }
 
-// GetPaymentSuggestions returns unlinked income transactions in the invoice currency that could pay the invoice
-func (s *InvoiceService) GetPaymentSuggestions(c core.Context, uid int64, invoiceId int64) ([]*models.Transaction, error) {
+// GetPaymentSuggestions returns unlinked income transactions that could pay the invoice: those in the invoice
+// currency ranked by amount first, then those in other currencies (any amount) newest first, at most 10 in total
+func (s *InvoiceService) GetPaymentSuggestions(c core.Context, uid int64, invoiceId int64) ([]*models.InvoicePaymentInfo, error) {
 	invoice, _, err := s.GetInvoice(c, uid, invoiceId)
 
 	if err != nil {
@@ -694,7 +741,7 @@ func (s *InvoiceService) GetPaymentSuggestions(c core.Context, uid int64, invoic
 	}
 
 	if balanceDue <= 0 {
-		return []*models.Transaction{}, nil
+		return []*models.InvoicePaymentInfo{}, nil
 	}
 
 	invoiceDate, _ := time.Parse(invoiceDateLayout, invoice.InvoiceDate)
@@ -703,14 +750,15 @@ func (s *InvoiceService) GetPaymentSuggestions(c core.Context, uid int64, invoic
 	minTime := utils.GetMinTransactionTimeFromUnixTime(invoiceDate.Add(-24 * time.Hour).Unix())
 	maxTime := utils.GetMaxTransactionTimeFromUnixTime(dueDate.Add(time.Duration(models.InvoicePaymentSuggestionDaysAfterDue+1) * 24 * time.Hour).Unix())
 
+	// the balance-due cap only applies to the invoice currency, so it is checked below once the account currency is known
 	var candidates []*models.Transaction
 	err = s.UserDataDB(uid).NewSession(c).
-		Where("uid=? AND deleted=? AND type=? AND transaction_time>=? AND transaction_time<=? AND amount>? AND amount<=?",
-			uid, false, models.TRANSACTION_DB_TYPE_INCOME, minTime, maxTime, 0, balanceDue).
+		Where("uid=? AND deleted=? AND type=? AND transaction_time>=? AND transaction_time<=? AND amount>?",
+			uid, false, models.TRANSACTION_DB_TYPE_INCOME, minTime, maxTime, 0).
 		Find(&candidates)
 
 	if err != nil || len(candidates) < 1 {
-		return []*models.Transaction{}, err
+		return []*models.InvoicePaymentInfo{}, err
 	}
 
 	transactionIds := make([]int64, len(candidates))
@@ -738,23 +786,48 @@ func (s *InvoiceService) GetPaymentSuggestions(c core.Context, uid int64, invoic
 		return nil, err
 	}
 
-	suggestions := make([]*models.Transaction, 0, len(candidates))
+	sameCurrency := make([]*models.Transaction, 0, len(candidates))
+	otherCurrency := make([]*models.InvoicePaymentInfo, 0, len(candidates))
 
 	for _, candidate := range candidates {
 		account := accounts[candidate.AccountId]
 
-		if linkedIds[candidate.TransactionId] || account == nil || account.Currency != invoice.Currency {
+		if linkedIds[candidate.TransactionId] || account == nil {
 			continue
 		}
 
-		suggestions = append(suggestions, candidate)
+		if account.Currency == invoice.Currency {
+			if candidate.Amount <= balanceDue {
+				sameCurrency = append(sameCurrency, candidate)
+			}
+		} else {
+			otherCurrency = append(otherCurrency, &models.InvoicePaymentInfo{Transaction: candidate, Currency: account.Currency})
+		}
 	}
 
-	return rankInvoicePaymentSuggestions(suggestions, balanceDue), nil
+	suggestions := make([]*models.InvoicePaymentInfo, 0, models.InvoicePaymentSuggestionMaxCount)
+
+	for _, transaction := range rankInvoicePaymentSuggestions(sameCurrency, balanceDue) {
+		suggestions = append(suggestions, &models.InvoicePaymentInfo{Transaction: transaction, Currency: invoice.Currency})
+	}
+
+	sort.SliceStable(otherCurrency, func(i, j int) bool {
+		return otherCurrency[i].Transaction.TransactionTime > otherCurrency[j].Transaction.TransactionTime
+	})
+
+	suggestions = append(suggestions, otherCurrency...)
+
+	if len(suggestions) > models.InvoicePaymentSuggestionMaxCount {
+		suggestions = suggestions[:models.InvoicePaymentSuggestionMaxCount]
+	}
+
+	return suggestions, nil
 }
 
-// LinkPayment links an existing income transaction of user to an invoice
-func (s *InvoiceService) LinkPayment(c core.Context, uid int64, invoiceId int64, transactionId int64) error {
+// LinkPayment links an existing income transaction of user to an invoice. settledAmount is the amount in the
+// invoice currency that the transaction settled: required when the account currency differs from the invoice
+// currency, and refused (the transaction amount counts as-is) when the currencies match.
+func (s *InvoiceService) LinkPayment(c core.Context, uid int64, invoiceId int64, transactionId int64, settledAmount int64) error {
 	invoice, _, err := s.GetInvoice(c, uid, invoiceId)
 
 	if err != nil {
@@ -784,8 +857,16 @@ func (s *InvoiceService) LinkPayment(c core.Context, uid int64, invoiceId int64,
 
 	account := accounts[transaction.AccountId]
 
-	if transaction.Type != models.TRANSACTION_DB_TYPE_INCOME || account == nil || account.Currency != invoice.Currency {
+	if transaction.Type != models.TRANSACTION_DB_TYPE_INCOME || account == nil {
 		return errs.ErrInvoicePaymentTransactionInvalid
+	}
+
+	if account.Currency == invoice.Currency {
+		if settledAmount != 0 {
+			return errs.ErrInvoicePaymentSettledAmountNotAllowed
+		}
+	} else if settledAmount <= 0 {
+		return errs.ErrInvoicePaymentSettledAmountRequired
 	}
 
 	payment := &models.InvoicePayment{
@@ -794,11 +875,14 @@ func (s *InvoiceService) LinkPayment(c core.Context, uid int64, invoiceId int64,
 		Uid:            uid,
 		TransactionId:  transactionId,
 		LinkedUnixTime: time.Now().Unix(),
+		SettledAmount:  settledAmount,
 	}
 
 	if payment.PaymentId < 1 {
 		return errs.ErrSystemIsBusy
 	}
+
+	received := (&models.InvoicePaymentInfo{Transaction: transaction, SettledAmount: settledAmount}).ReceivedAmount()
 
 	err = s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
 		alreadyLinked, err := sess.Where("transaction_id=?", transactionId).Exist(&models.InvoicePayment{})
@@ -814,7 +898,7 @@ func (s *InvoiceService) LinkPayment(c core.Context, uid int64, invoiceId int64,
 
 		if err != nil {
 			return err
-		} else if transaction.Amount > balanceDue {
+		} else if received > balanceDue {
 			return errs.ErrInvoicePaymentExceedsBalanceDue
 		}
 
@@ -937,17 +1021,11 @@ func (s *InvoiceService) GetInvoiceByPublicToken(c core.Context, token string) (
 		return nil, nil, 0, nil, err
 	}
 
-	received := int64(0)
-
-	for _, payment := range payments[invoice.InvoiceId] {
-		received += payment.Amount
-	}
-
 	profile, err := s.GetProfile(c, invoice.Uid)
 
 	if err != nil {
 		return nil, nil, 0, nil, err
 	}
 
-	return invoice, lines, received, profile, nil
+	return invoice, lines, models.InvoiceReceivedAmount(payments[invoice.InvoiceId]), profile, nil
 }
