@@ -375,3 +375,92 @@ export class Invoice implements InvoiceInfoResponse {
         return { itemName: '', description: '', quantity: 100, rate: 0, amount: 0, sac }; // quantity in hundredths
     }
 }
+
+export interface RecurringInvoiceInfoResponse {
+    readonly id: string;
+    readonly sourceInvoiceId: string;
+    readonly sourceInvoiceNumber: string;
+    readonly customerName: string;
+    readonly dayOfMonth: number;
+    readonly nextDate: TextualYearMonthDay;
+    readonly enabled: boolean;
+    readonly lastInvoiceId: string;
+    readonly lastRunUnixTime: number;
+}
+
+export interface RecurringInvoiceCreateRequest {
+    readonly sourceInvoiceId: string;
+    readonly dayOfMonth: number;
+    readonly nextDate: string;
+}
+
+export interface RecurringInvoiceModifyRequest {
+    readonly id: string;
+    readonly dayOfMonth: number;
+    readonly nextDate: string;
+    readonly enabled: boolean;
+}
+
+export class RecurringInvoice implements RecurringInvoiceInfoResponse {
+    public id: string = '';
+    public sourceInvoiceId: string = '';
+    public sourceInvoiceNumber: string = '';
+    public customerName: string = '';
+    public dayOfMonth: number = 1;
+    public nextDate: TextualYearMonthDay = '0-0-0';
+    public enabled: boolean = true;
+    public lastInvoiceId: string = '';
+    public lastRunUnixTime: number = 0;
+
+    public fillFrom(other: RecurringInvoiceInfoResponse): void {
+        this.id = other.id;
+        this.sourceInvoiceId = other.sourceInvoiceId;
+        this.sourceInvoiceNumber = other.sourceInvoiceNumber;
+        this.customerName = other.customerName;
+        this.dayOfMonth = other.dayOfMonth;
+        this.nextDate = other.nextDate;
+        this.enabled = other.enabled;
+        this.lastInvoiceId = other.lastInvoiceId;
+        this.lastRunUnixTime = other.lastRunUnixTime;
+    }
+
+    public toCreateRequest(): RecurringInvoiceCreateRequest {
+        return {
+            sourceInvoiceId: this.sourceInvoiceId,
+            dayOfMonth: this.dayOfMonth,
+            nextDate: this.nextDate
+        };
+    }
+
+    public toModifyRequest(): RecurringInvoiceModifyRequest {
+        return {
+            id: this.id,
+            dayOfMonth: this.dayOfMonth,
+            nextDate: this.nextDate,
+            enabled: this.enabled
+        };
+    }
+
+    public clone(): RecurringInvoice {
+        return RecurringInvoice.of(this);
+    }
+
+    public static of(response: RecurringInvoiceInfoResponse): RecurringInvoice {
+        const recurring = new RecurringInvoice();
+        recurring.fillFrom(response);
+        return recurring;
+    }
+
+    public static ofMulti(responses: RecurringInvoiceInfoResponse[]): RecurringInvoice[] {
+        return responses.map(response => RecurringInvoice.of(response));
+    }
+
+    // a new unsaved recurring invoice repeating the given invoice
+    public static createNewRecurringInvoice(sourceInvoiceId: string, dayOfMonth: number, nextDate: TextualYearMonthDay): RecurringInvoice {
+        const recurring = new RecurringInvoice();
+        recurring.sourceInvoiceId = sourceInvoiceId;
+        recurring.dayOfMonth = dayOfMonth;
+        recurring.nextDate = nextDate;
+        return recurring;
+    }
+}

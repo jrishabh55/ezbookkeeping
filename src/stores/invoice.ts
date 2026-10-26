@@ -5,7 +5,8 @@ import {
     type InvoicePayment,
     InvoiceProfile,
     Customer,
-    Invoice
+    Invoice,
+    RecurringInvoice
 } from '@/models/invoice.ts';
 
 import { isEquals } from '@/lib/common.ts';
@@ -19,6 +20,7 @@ export const useInvoicesStore = defineStore('invoices', () => {
     const allCustomersMap = ref<Record<string, Customer>>({});
     const customerListStateInvalid = ref<boolean>(true);
     const invoiceProfile = ref<InvoiceProfile | null>(null);
+    const allRecurringInvoices = ref<RecurringInvoice[]>([]);
 
     // unwraps the API envelope and normalises errors exactly like the other stores' inline handlers
     function request<T>(apiRequest: ApiResponsePromise<T>, failedMessage: string): Promise<T> {
@@ -81,6 +83,7 @@ export const useInvoicesStore = defineStore('invoices', () => {
         allCustomersMap.value = {};
         customerListStateInvalid.value = true;
         invoiceProfile.value = null;
+        allRecurringInvoices.value = [];
     }
 
     // ponytail: the invoice list is never served from cache, because "received" depends on transactions edited on other pages
@@ -205,6 +208,52 @@ export const useInvoicesStore = defineStore('invoices', () => {
         });
     }
 
+    // the recurring list is never served from cache: the cron job advances next dates behind the UI's back
+    function loadAllRecurringInvoices({ force }: { force?: boolean }): Promise<RecurringInvoice[]> {
+        return request(services.getAllRecurringInvoices(), 'Unable to retrieve recurring invoice list').then(result => {
+            const recurrings = RecurringInvoice.ofMulti(result);
+
+            if (force && isEquals(allRecurringInvoices.value, recurrings)) {
+                return Promise.reject({ message: 'Recurring invoice list is up to date', isUpToDate: true });
+            }
+
+            allRecurringInvoices.value = recurrings;
+            return recurrings;
+        });
+    }
+
+    function addRecurringInvoice({ recurring }: { recurring: RecurringInvoice }): Promise<RecurringInvoice> {
+        return request(services.addRecurringInvoice(recurring.toCreateRequest()), 'Unable to add recurring invoice').then(result => {
+            const saved = RecurringInvoice.of(result);
+            allRecurringInvoices.value = [...allRecurringInvoices.value, saved].sort((a, b) => a.nextDate.localeCompare(b.nextDate));
+            return saved;
+        });
+    }
+
+    function modifyRecurringInvoice({ recurring }: { recurring: RecurringInvoice }): Promise<RecurringInvoice> {
+        return request(services.modifyRecurringInvoice(recurring.toModifyRequest()), 'Unable to save recurring invoice').then(result => {
+            const saved = RecurringInvoice.of(result);
+            allRecurringInvoices.value = allRecurringInvoices.value.map(item => item.id === saved.id ? saved : item);
+            return saved;
+        });
+    }
+
+    function deleteRecurringInvoice({ recurring, beforeResolve }: { recurring: RecurringInvoice, beforeResolve?: (done: () => void) => void }): Promise<boolean> {
+        return request(services.deleteRecurringInvoice({ id: recurring.id }), 'Unable to delete this recurring invoice').then(result => {
+            const remove = () => {
+                allRecurringInvoices.value = allRecurringInvoices.value.filter(item => item.id !== recurring.id);
+            };
+
+            if (beforeResolve) {
+                beforeResolve(remove);
+            } else {
+                remove();
+            }
+
+            return result;
+        });
+    }
+
     return {
         // states
         allInvoices,
@@ -213,6 +262,7 @@ export const useInvoicesStore = defineStore('invoices', () => {
         allCustomersMap,
         customerListStateInvalid,
         invoiceProfile,
+        allRecurringInvoices,
         // functions
         resetInvoices,
         loadAllInvoices,
@@ -228,6 +278,10 @@ export const useInvoicesStore = defineStore('invoices', () => {
         saveCustomer,
         deleteCustomer,
         loadInvoiceProfile,
-        updateInvoiceProfile
+        updateInvoiceProfile,
+        loadAllRecurringInvoices,
+        addRecurringInvoice,
+        modifyRecurringInvoice,
+        deleteRecurringInvoice
     };
 });

@@ -84,6 +84,11 @@ func (c *CronJobSchedulerContainer) registerAllJobs(ctx core.Context, config *se
 	if config.EnableCreateScheduledTransaction {
 		Container.registerIntervalJob(ctx, CreateScheduledTransactionJob)
 	}
+
+	// ponytail: recurring invoices share the scheduled-transaction switch instead of adding a config option
+	if config.EnableCreateScheduledTransaction {
+		Container.registerIntervalJob(ctx, CreateRecurringInvoicesJob)
+	}
 }
 
 func (c *CronJobSchedulerContainer) registerIntervalJob(ctx core.Context, job *CronJob) {

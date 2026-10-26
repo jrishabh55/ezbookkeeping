@@ -220,7 +220,10 @@ import type {
     InvoiceInfoResponse,
     InvoiceCreateRequest,
     InvoiceModifyRequest,
-    InvoicePayment
+    InvoicePayment,
+    RecurringInvoiceInfoResponse,
+    RecurringInvoiceCreateRequest,
+    RecurringInvoiceModifyRequest
 } from '@/models/invoice.ts';
 
 import {
@@ -1091,6 +1094,18 @@ export default {
     },
     unlinkInvoicePayment: (req: { invoiceId: string, transactionId: string }): ApiResponsePromise<boolean> => {
         return axios.post<ApiResponse<boolean>>('v1/invoices/payment/unlink.json', req);
+    },
+    getAllRecurringInvoices: (): ApiResponsePromise<RecurringInvoiceInfoResponse[]> => {
+        return axios.get<ApiResponse<RecurringInvoiceInfoResponse[]>>('v1/recurring_invoices/list.json');
+    },
+    addRecurringInvoice: (req: RecurringInvoiceCreateRequest): ApiResponsePromise<RecurringInvoiceInfoResponse> => {
+        return axios.post<ApiResponse<RecurringInvoiceInfoResponse>>('v1/recurring_invoices/add.json', req);
+    },
+    modifyRecurringInvoice: (req: RecurringInvoiceModifyRequest): ApiResponsePromise<RecurringInvoiceInfoResponse> => {
+        return axios.post<ApiResponse<RecurringInvoiceInfoResponse>>('v1/recurring_invoices/modify.json', req);
+    },
+    deleteRecurringInvoice: ({ id }: { id: string }): ApiResponsePromise<boolean> => {
+        return axios.post<ApiResponse<boolean>>('v1/recurring_invoices/delete.json', { id });
     },
     getServerVersion: (): ApiResponsePromise<VersionInfo> => {
         return axios.get<ApiResponse<VersionInfo>>('v1/systems/version.json');
