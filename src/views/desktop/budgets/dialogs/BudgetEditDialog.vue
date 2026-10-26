@@ -146,6 +146,7 @@ const {
     inputIsEmpty,
     allPeriodTypes,
     allRolloverTypes,
+    prepareNewBudget,
     setBudget
 } = useBudgetEditPageBase();
 
@@ -184,10 +185,10 @@ function open(options: { id?: string; currentBudget?: Budget }): Promise<BudgetE
     submitting.value = false;
     editBudgetId.value = options.id ?? null;
 
-    initBudget.value = Budget.createNewBudget(userStore.currentUserDefaultCurrency);
-    setBudget(initBudget.value);
-
     if (options.id) {
+        initBudget.value = Budget.createNewBudget(userStore.currentUserDefaultCurrency);
+        setBudget(initBudget.value);
+
         if (options.currentBudget) {
             setBudget(options.currentBudget);
         }
@@ -207,6 +208,9 @@ function open(options: { id?: string; currentBudget?: Budget }): Promise<BudgetE
             }
         });
     } else {
+        // always a fresh budget (startTime = now, endTime = +30 days), never a stale one from a previous open
+        prepareNewBudget(userStore.currentUserDefaultCurrency);
+        initBudget.value = budget.value.clone();
         clientSessionId.value = generateRandomUUID();
         loading.value = false;
     }
