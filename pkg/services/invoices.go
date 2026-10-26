@@ -587,6 +587,44 @@ func (s *InvoiceService) getInvoicePayments(sess *xorm.Session, uid int64, invoi
 	return result, nil
 }
 
+// linkedInvoiceRow is one invoice_payment joined with its invoice
+type linkedInvoiceRow struct {
+	TransactionId int64          `xorm:"transaction_id"`
+	Invoice       models.Invoice `xorm:"extends"`
+}
+
+// GetLinkedInvoicesByTransactionIds returns the non-deleted invoice each of the given transactions is linked to, keyed by transaction id
+func (s *InvoiceService) GetLinkedInvoicesByTransactionIds(c core.Context, uid int64, transactionIds []int64) (map[int64]*models.Invoice, error) {
+	result := make(map[int64]*models.Invoice, len(transactionIds))
+
+	if uid <= 0 {
+		return nil, errs.ErrUserIdInvalid
+	}
+
+	if len(transactionIds) < 1 {
+		return result, nil
+	}
+
+	var rows []*linkedInvoiceRow
+	err := s.UserDataDB(uid).NewSession(c).Table("invoice_payment").
+		Select("invoice_payment.transaction_id, invoice.*").
+		Join("INNER", "invoice", "invoice.invoice_id = invoice_payment.invoice_id").
+		Where("invoice_payment.uid=? AND invoice.uid=? AND invoice.deleted=?", uid, uid, false).
+		In("invoice_payment.transaction_id", transactionIds).
+		Find(&rows)
+
+	if err != nil {
+		return nil, err
+	}
+
+	for _, row := range rows {
+		invoice := row.Invoice
+		result[row.TransactionId] = &invoice
+	}
+
+	return result, nil
+}
+
 // invoiceBalanceDue returns total minus the amounts of the invoice's linked, non-deleted transactions
 func (s *InvoiceService) invoiceBalanceDue(sess *xorm.Session, uid int64, invoice *models.Invoice) (int64, error) {
 	payments, err := s.getInvoicePayments(sess, uid, []int64{invoice.InvoiceId})

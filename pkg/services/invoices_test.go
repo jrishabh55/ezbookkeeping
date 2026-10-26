@@ -392,3 +392,37 @@ func TestPaymentSuggestionsFilterAndRank(t *testing.T) {
 	assert.Equal(t, exact.TransactionId, suggestions[0].TransactionId)
 	assert.Equal(t, short.TransactionId, suggestions[1].TransactionId)
 }
+
+func TestGetLinkedInvoicesByTransactionIds(t *testing.T) {
+	ctx, uid := newAlertTestUser(t, "PNB Savings")
+	accountId := accountIdByName(t, ctx, uid, "PNB Savings")
+	customer := createTestCustomer(t, uid)
+	invoice := createTestInvoice(t, uid, customer.CustomerId, "CA/2026-27/01", 37000000)
+	linked := insertTestTransaction(t, uid, accountId, models.TRANSACTION_DB_TYPE_INCOME, 20000000, "2026-04-28")
+	unlinked := insertTestTransaction(t, uid, accountId, models.TRANSACTION_DB_TYPE_INCOME, 1000, "2026-04-29")
+	assert.Nil(t, Invoices.LinkPayment(ctx, uid, invoice.InvoiceId, linked.TransactionId))
+
+	otherCtx, otherUid := newAlertTestUser(t, "Other Savings")
+	otherAccountId := accountIdByName(t, otherCtx, otherUid, "Other Savings")
+	otherCustomer := createTestCustomer(t, otherUid)
+	otherInvoice := createTestInvoice(t, otherUid, otherCustomer.CustomerId, "CA/2026-27/01", 37000000)
+	othersLinked := insertTestTransaction(t, otherUid, otherAccountId, models.TRANSACTION_DB_TYPE_INCOME, 20000000, "2026-04-28")
+	assert.Nil(t, Invoices.LinkPayment(otherCtx, otherUid, otherInvoice.InvoiceId, othersLinked.TransactionId))
+
+	linkedInvoices, err := Invoices.GetLinkedInvoicesByTransactionIds(ctx, uid, []int64{linked.TransactionId, unlinked.TransactionId, othersLinked.TransactionId})
+	assert.Nil(t, err)
+	assert.Equal(t, 1, len(linkedInvoices))
+	assert.Equal(t, invoice.InvoiceId, linkedInvoices[linked.TransactionId].InvoiceId)
+	assert.Equal(t, "CA/2026-27/01", linkedInvoices[linked.TransactionId].Number)
+	assert.Nil(t, linkedInvoices[unlinked.TransactionId])
+	assert.Nil(t, linkedInvoices[othersLinked.TransactionId])
+
+	assert.Nil(t, Invoices.DeleteInvoice(ctx, uid, invoice.InvoiceId))
+	linkedInvoices, err = Invoices.GetLinkedInvoicesByTransactionIds(ctx, uid, []int64{linked.TransactionId})
+	assert.Nil(t, err)
+	assert.Equal(t, 0, len(linkedInvoices))
+
+	empty, err := Invoices.GetLinkedInvoicesByTransactionIds(ctx, uid, nil)
+	assert.Nil(t, err)
+	assert.Equal(t, 0, len(empty))
+}
