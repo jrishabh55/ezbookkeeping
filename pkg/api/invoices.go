@@ -29,6 +29,28 @@ func isAllowedInvoiceLogo(logoDataUrl string) bool {
 		strings.HasPrefix(logoDataUrl, "data:image/jpeg;base64,")
 }
 
+// validateInvoiceTax checks a tax type / rate pair from a request and returns the normalized type (empty means none)
+func validateInvoiceTax(taxType string, taxRate int32) (string, error) {
+	if taxType == "" {
+		taxType = models.INVOICE_TAX_TYPE_NONE
+	}
+
+	if taxType != models.INVOICE_TAX_TYPE_NONE && taxType != models.INVOICE_TAX_TYPE_IGST && taxType != models.INVOICE_TAX_TYPE_CGST_SGST {
+		return "", errs.ErrInvoiceTaxTypeInvalid
+	}
+
+	if taxRate < 0 || taxRate > models.INVOICE_TAX_RATE_MAX || (taxType != models.INVOICE_TAX_TYPE_NONE && taxRate <= 0) {
+		return "", errs.ErrInvoiceTaxRateInvalid
+	}
+
+	return taxType, nil
+}
+
+// normalizeTaxId upper-cases and trims a GSTIN / SAC as typed
+func normalizeTaxId(id string) string {
+	return strings.ToUpper(strings.TrimSpace(id))
+}
+
 func invoiceLinesFromRequest(lineReqs []*models.InvoiceLineRequest) []*models.InvoiceLine {
 	lines := make([]*models.InvoiceLine, len(lineReqs))
 
@@ -38,6 +60,7 @@ func invoiceLinesFromRequest(lineReqs []*models.InvoiceLineRequest) []*models.In
 			Description: lineReq.Description,
 			Quantity:    lineReq.Quantity,
 			Rate:        lineReq.Rate,
+			Sac:         normalizeTaxId(lineReq.Sac),
 		}
 	}
 
@@ -81,6 +104,8 @@ func (a *InvoicesApi) InvoiceProfileUpdateHandler(c *core.WebContext) (any, *err
 		DefaultNotes:     req.DefaultNotes,
 		NumberPrefix:     strings.TrimSpace(req.NumberPrefix),
 		DefaultTermsDays: req.DefaultTermsDays,
+		Gstin:            normalizeTaxId(req.Gstin),
+		DefaultSac:       normalizeTaxId(req.DefaultSac),
 	}
 
 	if err := a.invoices.SaveProfile(c, profile); err != nil {
@@ -119,9 +144,16 @@ func (a *InvoicesApi) CustomerCreateHandler(c *core.WebContext) (any, *errs.Erro
 		return nil, errs.NewIncompleteOrIncorrectSubmissionError(err)
 	}
 
+	taxType, err := validateInvoiceTax(req.TaxType, req.TaxRate)
+
+	if err != nil {
+		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+
 	uid := c.GetCurrentUid()
 	customer := &models.Customer{Uid: uid, Name: strings.TrimSpace(req.Name), ContactName: req.ContactName, AddressLines: req.AddressLines, Email: req.Email,
-		Phone: req.Phone, Website: req.Website, AccountNumber: req.AccountNumber, Pan: strings.ToUpper(strings.TrimSpace(req.Pan)), TermsDays: req.TermsDays, Notes: req.Notes}
+		Phone: req.Phone, Website: req.Website, AccountNumber: req.AccountNumber, Pan: strings.ToUpper(strings.TrimSpace(req.Pan)), TermsDays: req.TermsDays, Notes: req.Notes,
+		Gstin: normalizeTaxId(req.Gstin), TaxType: taxType, TaxRate: req.TaxRate}
 
 	if err := a.invoices.CreateCustomer(c, customer); err != nil {
 		log.Errorf(c, "[invoices.CustomerCreateHandler] failed to create customer for user \"uid:%d\", because %s", uid, err.Error())
@@ -140,9 +172,16 @@ func (a *InvoicesApi) CustomerModifyHandler(c *core.WebContext) (any, *errs.Erro
 		return nil, errs.NewIncompleteOrIncorrectSubmissionError(err)
 	}
 
+	taxType, err := validateInvoiceTax(req.TaxType, req.TaxRate)
+
+	if err != nil {
+		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+
 	uid := c.GetCurrentUid()
 	customer := &models.Customer{CustomerId: req.Id, Uid: uid, Name: strings.TrimSpace(req.Name), ContactName: req.ContactName, AddressLines: req.AddressLines, Email: req.Email,
-		Phone: req.Phone, Website: req.Website, AccountNumber: req.AccountNumber, Pan: strings.ToUpper(strings.TrimSpace(req.Pan)), TermsDays: req.TermsDays, Notes: req.Notes}
+		Phone: req.Phone, Website: req.Website, AccountNumber: req.AccountNumber, Pan: strings.ToUpper(strings.TrimSpace(req.Pan)), TermsDays: req.TermsDays, Notes: req.Notes,
+		Gstin: normalizeTaxId(req.Gstin), TaxType: taxType, TaxRate: req.TaxRate}
 
 	if err := a.invoices.ModifyCustomer(c, customer); err != nil {
 		log.Errorf(c, "[invoices.CustomerModifyHandler] failed to modify customer \"id:%d\" for user \"uid:%d\", because %s", req.Id, uid, err.Error())
@@ -249,8 +288,15 @@ func (a *InvoicesApi) InvoiceCreateHandler(c *core.WebContext) (any, *errs.Error
 		return nil, errs.NewIncompleteOrIncorrectSubmissionError(err)
 	}
 
+	taxType, err := validateInvoiceTax(req.TaxType, req.TaxRate)
+
+	if err != nil {
+		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+
 	uid := c.GetCurrentUid()
-	invoice := &models.Invoice{Uid: uid, Number: strings.TrimSpace(req.Number), CustomerId: req.CustomerId, InvoiceDate: req.InvoiceDate, DueDate: req.DueDate, Notes: req.Notes}
+	invoice := &models.Invoice{Uid: uid, Number: strings.TrimSpace(req.Number), CustomerId: req.CustomerId, InvoiceDate: req.InvoiceDate, DueDate: req.DueDate, Notes: req.Notes,
+		TaxType: taxType, TaxRate: req.TaxRate}
 
 	if err := a.invoices.CreateInvoice(c, invoice, invoiceLinesFromRequest(req.Lines)); err != nil {
 		log.Errorf(c, "[invoices.InvoiceCreateHandler] failed to create invoice for user \"uid:%d\", because %s", uid, err.Error())
@@ -276,8 +322,15 @@ func (a *InvoicesApi) InvoiceModifyHandler(c *core.WebContext) (any, *errs.Error
 		return nil, errs.NewIncompleteOrIncorrectSubmissionError(err)
 	}
 
+	taxType, err := validateInvoiceTax(req.TaxType, req.TaxRate)
+
+	if err != nil {
+		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+
 	uid := c.GetCurrentUid()
-	invoice := &models.Invoice{InvoiceId: req.Id, Uid: uid, Number: strings.TrimSpace(req.Number), CustomerId: req.CustomerId, InvoiceDate: req.InvoiceDate, DueDate: req.DueDate, Notes: req.Notes}
+	invoice := &models.Invoice{InvoiceId: req.Id, Uid: uid, Number: strings.TrimSpace(req.Number), CustomerId: req.CustomerId, InvoiceDate: req.InvoiceDate, DueDate: req.DueDate, Notes: req.Notes,
+		TaxType: taxType, TaxRate: req.TaxRate}
 
 	if err := a.invoices.ModifyInvoice(c, invoice, invoiceLinesFromRequest(req.Lines)); err != nil {
 		log.Errorf(c, "[invoices.InvoiceModifyHandler] failed to modify invoice \"id:%d\" for user \"uid:%d\", because %s", req.Id, uid, err.Error())

@@ -60,6 +60,14 @@
                                           v-model="newProfile.website" />
                         </div>
                         <div class="setting-item">
+                            <span>{{ tt('GSTIN') }}</span>
+                            <v-spacer/>
+                            <v-text-field class="ms-4" density="compact" type="text" autocomplete="off"
+                                          persistent-placeholder max-width="400px"
+                                          :disabled="loading || saving" :placeholder="tt('GSTIN')"
+                                          v-model="newProfile.gstin" />
+                        </div>
+                        <div class="setting-item">
                             <span>{{ tt('Invoice Number Prefix') }}</span>
                             <v-spacer/>
                             <v-text-field class="ms-4" density="compact" type="text" autocomplete="off"
@@ -74,6 +82,14 @@
                                           :disabled="loading || saving"
                                           :min-value="0" :max-value="365" :max-decimal-count="0"
                                           v-model="newProfile.defaultTermsDays" />
+                        </div>
+                        <div class="setting-item">
+                            <span>{{ tt('Default SAC') }}</span>
+                            <v-spacer/>
+                            <v-text-field class="ms-4" density="compact" type="text" autocomplete="off"
+                                          persistent-placeholder max-width="400px"
+                                          :disabled="loading || saving" :placeholder="tt('Default SAC')"
+                                          v-model="newProfile.defaultSac" />
                         </div>
                         <div class="setting-item">
                             <span>{{ tt('Default Notes / Terms') }}</span>

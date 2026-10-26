@@ -149,7 +149,7 @@ func (s *InvoiceService) ModifyCustomer(c core.Context, customer *models.Custome
 	customer.UpdatedUnixTime = time.Now().Unix()
 
 	return s.UserDataDB(customer.Uid).DoTransaction(c, func(sess *xorm.Session) error {
-		updatedRows, err := sess.Cols("name", "contact_name", "address_lines", "email", "phone", "website", "account_number", "pan", "terms_days", "notes", "updated_unix_time").
+		updatedRows, err := sess.Cols("name", "contact_name", "address_lines", "email", "phone", "website", "account_number", "pan", "terms_days", "notes", "gstin", "tax_type", "tax_rate", "updated_unix_time").
 			Where("uid=? AND deleted=? AND customer_id=?", customer.Uid, false, customer.CustomerId).Update(customer)
 
 		if err != nil {
@@ -198,17 +198,42 @@ func (s *InvoiceService) DeleteCustomer(c core.Context, uid int64, customerId in
 
 const invoiceDateLayout = "2006-01-02"
 
-// computeInvoiceTotal fills each line's amount (quantity × rate, quantity in hundredths, rounded half up to the minor unit)
-// and returns the invoice total. This is the single place totals are computed; GST would add tax lines here.
-func computeInvoiceTotal(lines []*models.InvoiceLine) int64 {
-	total := int64(0)
+// invoiceTotals is the result of computeInvoiceTotals; Cgst / Sgst are only meaningful for the cgst_sgst tax type
+type invoiceTotals struct {
+	Subtotal  int64
+	TaxAmount int64
+	Cgst      int64
+	Sgst      int64
+	Total     int64
+}
+
+// isInvoiceTaxable reports whether a tax type carries GST; empty (rows saved before GST) and none do not
+func isInvoiceTaxable(taxType string) bool {
+	return taxType == models.INVOICE_TAX_TYPE_IGST || taxType == models.INVOICE_TAX_TYPE_CGST_SGST
+}
+
+// computeInvoiceTotals fills each line's amount (quantity × rate, quantity in hundredths, rounded half up to the minor unit)
+// and returns the subtotal, the tax (rate in basis points, rounded once, half up) and the total. This is the single place
+// totals are computed; src/lib/invoice.ts mirrors it for the live preview.
+func computeInvoiceTotals(lines []*models.InvoiceLine, taxType string, taxRate int32) invoiceTotals {
+	totals := invoiceTotals{}
 
 	for _, line := range lines {
 		line.Amount = (line.Quantity*line.Rate + 50) / 100
-		total += line.Amount
+		totals.Subtotal += line.Amount
 	}
 
-	return total
+	if isInvoiceTaxable(taxType) && taxRate > 0 {
+		// split the subtotal so subtotal × rate cannot overflow int64
+		whole, rest := totals.Subtotal/models.INVOICE_TAX_RATE_MAX, totals.Subtotal%models.INVOICE_TAX_RATE_MAX
+		totals.TaxAmount = whole*int64(taxRate) + (rest*int64(taxRate)+models.INVOICE_TAX_RATE_MAX/2)/models.INVOICE_TAX_RATE_MAX
+	}
+
+	totals.Cgst = totals.TaxAmount / 2
+	totals.Sgst = totals.TaxAmount - totals.Cgst
+	totals.Total = totals.Subtotal + totals.TaxAmount
+
+	return totals
 }
 
 // invoiceFinancialYear returns the Indian financial year (April to March) of a YYYY-MM-DD date, e.g. "2026-27"
@@ -323,7 +348,17 @@ func (s *InvoiceService) prepareInvoice(c core.Context, invoice *models.Invoice,
 	invoice.BillToEmail = customer.Email
 	invoice.BillToPhone = customer.Phone
 	invoice.BillToPan = customer.Pan
-	invoice.Total = computeInvoiceTotal(lines)
+	invoice.BillToGstin = customer.Gstin
+
+	if !isInvoiceTaxable(invoice.TaxType) {
+		invoice.TaxType = models.INVOICE_TAX_TYPE_NONE
+		invoice.TaxRate = 0
+	}
+
+	totals := computeInvoiceTotals(lines, invoice.TaxType, invoice.TaxRate)
+	invoice.Subtotal = totals.Subtotal
+	invoice.TaxAmount = totals.TaxAmount
+	invoice.Total = totals.Total
 
 	for idx, line := range lines {
 		line.LineId = s.GenerateUuid(uuid.UUID_TYPE_INVOICE)
@@ -412,8 +447,8 @@ func (s *InvoiceService) ModifyInvoice(c core.Context, invoice *models.Invoice, 
 			return err
 		}
 
-		updatedRows, err := sess.Cols("number", "customer_id", "bill_to_name", "bill_to_contact_name", "bill_to_address_lines", "bill_to_email", "bill_to_phone", "bill_to_pan",
-			"invoice_date", "due_date", "notes", "total", "updated_unix_time").
+		updatedRows, err := sess.Cols("number", "customer_id", "bill_to_name", "bill_to_contact_name", "bill_to_address_lines", "bill_to_email", "bill_to_phone", "bill_to_pan", "bill_to_gstin",
+			"invoice_date", "due_date", "notes", "total", "tax_type", "tax_rate", "subtotal", "tax_amount", "updated_unix_time").
 			Where("uid=? AND deleted=? AND invoice_id=?", invoice.Uid, false, invoice.InvoiceId).Update(invoice)
 
 		if err != nil {

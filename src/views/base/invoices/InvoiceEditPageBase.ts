@@ -5,13 +5,13 @@ import { useI18n } from '@/locales/helpers.ts';
 import { useInvoicesStore } from '@/stores/invoice.ts';
 
 import type { TextualYearMonthDay } from '@/core/datetime.ts';
-import { type Customer, type InvoiceProfile, Invoice, INVOICE_CURRENCY } from '@/models/invoice.ts';
+import { type Customer, type InvoiceProfile, type InvoiceTaxType, Invoice, INVOICE_CURRENCY, INVOICE_TAX_TYPES } from '@/models/invoice.ts';
 
 import { parseBigDecimal } from '@/lib/numeral.ts';
-import { computeInvoiceTotals, addDaysToDate, getDaysBetweenDates, getTodayTextualDate } from '@/lib/invoice.ts';
+import { type InvoiceTotals, computeInvoiceTotals, getInvoiceTaxRows, formatInvoiceTaxRate, addDaysToDate, getDaysBetweenDates, getTodayTextualDate } from '@/lib/invoice.ts';
 
 export function useInvoiceEditPageBase() {
-    const { formatAmountToLocalizedNumeralsWithCurrency, formatGregorianTextualYearMonthDayToLongDate } = useI18n();
+    const { tt, formatAmountToLocalizedNumeralsWithCurrency, formatGregorianTextualYearMonthDayToLongDate } = useI18n();
 
     const invoicesStore = useInvoicesStore();
 
@@ -21,13 +21,27 @@ export function useInvoiceEditPageBase() {
     const invoice = ref<Invoice>(Invoice.createNewInvoice());
     const lastSuggestedNumber = ref<string>('');
     const profileTermsDays = ref<number>(7);
+    const profileDefaultSac = ref<string>('');
 
     const allCustomers = computed<Customer[]>(() => invoicesStore.allCustomers);
 
     const title = computed<string>(() => editInvoiceId.value ? 'Edit Invoice' : 'Add Invoice');
     const saveButtonTitle = computed<string>(() => editInvoiceId.value ? 'Save' : 'Add');
 
-    const totals = computed<{ subtotal: number, total: number }>(() => computeInvoiceTotals(invoice.value.lines));
+    const totals = computed<InvoiceTotals>(() => computeInvoiceTotals(invoice.value.lines, invoice.value.taxType, invoice.value.taxRate));
+
+    // the tax lines shown under the subtotal, e.g. "IGST (18%)" or "CGST (9%)" + "SGST (9%)"
+    const taxRows = computed<{ label: string, amount: number }[]>(() => getInvoiceTaxRows(invoice.value.taxType, invoice.value.taxRate, totals.value.taxAmount)
+        .map(row => ({ label: `${tt(row.name)} (${formatInvoiceTaxRate(row.rate)})`, amount: row.amount })));
+
+    const allTaxTypes = computed<{ type: InvoiceTaxType, displayName: string }[]>(() => INVOICE_TAX_TYPES.map(taxType => ({ type: taxType.type, displayName: tt(taxType.name) })));
+    const selectedTaxTypeName = computed<string>(() => allTaxTypes.value.find(taxType => taxType.type === invoice.value.taxType)?.displayName ?? tt('None'));
+
+    // the rate is edited in percent (two decimals) and stored in basis points
+    const taxRatePercent = computed<number>({
+        get: () => invoice.value.taxRate / 100,
+        set: (percent: number) => invoice.value.taxRate = Math.round(percent * 100)
+    });
 
     const inputEmptyProblemMessage = computed<string | null>(() => {
         if (!invoice.value.customerId) {
@@ -40,6 +54,8 @@ export function useInvoiceEditPageBase() {
             return 'Due date cannot be before the invoice date';
         } else if (invoice.value.lines.length < 1) {
             return 'Invoice must have at least one line';
+        } else if (invoice.value.taxType !== 'none' && invoice.value.taxRate <= 0) {
+            return 'Tax rate must be greater than zero';
         }
 
         for (const line of invoice.value.lines) {
@@ -56,14 +72,30 @@ export function useInvoiceEditPageBase() {
     const inputIsEmpty = computed<boolean>(() => !!inputEmptyProblemMessage.value);
 
     function addLine(): void {
-        invoice.value.lines.push(Invoice.createNewLine());
+        invoice.value.lines.push(Invoice.createNewLine(profileDefaultSac.value));
+    }
+
+    function setProfileDefaults(profile: InvoiceProfile): void {
+        profileTermsDays.value = profile.defaultTermsDays;
+        profileDefaultSac.value = profile.defaultSac;
+    }
+
+    // a new invoice takes its tax type and rate from the customer
+    function applyCustomerTaxDefaults(target: Invoice, customerId: string): void {
+        const customer = invoicesStore.allCustomersMap[customerId];
+        target.taxType = customer?.taxType ?? 'none';
+        target.taxRate = customer?.taxRate ?? 0;
     }
 
     function removeLine(index: number): void {
         invoice.value.lines.splice(index, 1);
     }
 
-    function setInvoice(source: Invoice): void {
+    function setInvoice(source: Invoice, profile?: InvoiceProfile): void {
+        if (profile) {
+            setProfileDefaults(profile);
+        }
+
         invoice.value = source.clone();
         lastSuggestedNumber.value = '';
     }
@@ -73,12 +105,14 @@ export function useInvoiceEditPageBase() {
         const newInvoice = duplicateFrom ? duplicateFrom.duplicate() : Invoice.createNewInvoice();
         const today = getTodayTextualDate();
 
-        profileTermsDays.value = profile.defaultTermsDays;
+        setProfileDefaults(profile);
         newInvoice.invoiceDate = today;
         newInvoice.dueDate = addDaysToDate(today, getTermsDays(newInvoice.customerId, profile.defaultTermsDays));
+        applyCustomerTaxDefaults(newInvoice, newInvoice.customerId);
 
         if (!duplicateFrom) {
             newInvoice.notes = profile.defaultNotes;
+            newInvoice.lines = [Invoice.createNewLine(profile.defaultSac)];
         }
 
         invoice.value = newInvoice;
@@ -100,10 +134,11 @@ export function useInvoiceEditPageBase() {
         invoice.value.dueDate = addDaysToDate(date, Math.max(days, 0));
     }
 
-    // choosing a customer on a new invoice re-applies the due date from its terms; an existing invoice is never changed silently
+    // choosing a customer on a new invoice re-applies the due date from its terms and its tax defaults; an existing invoice is never changed silently
     watch(() => invoice.value.customerId, customerId => {
         if (!editInvoiceId.value && invoice.value.invoiceDate) {
             invoice.value.dueDate = addDaysToDate(invoice.value.invoiceDate, getTermsDays(customerId, profileTermsDays.value));
+            applyCustomerTaxDefaults(invoice.value, customerId);
         }
     });
 
@@ -147,6 +182,10 @@ export function useInvoiceEditPageBase() {
         inputEmptyProblemMessage,
         inputIsEmpty,
         totals,
+        taxRows,
+        allTaxTypes,
+        selectedTaxTypeName,
+        taxRatePercent,
         // functions
         addLine,
         removeLine,

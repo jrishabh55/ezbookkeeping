@@ -112,19 +112,110 @@ func createTestCustomer(t *testing.T, uid int64) *models.Customer {
 
 func TestComputeInvoiceTotalFillsLineAmounts(t *testing.T) {
 	lines := []*models.InvoiceLine{{Quantity: 100, Rate: 37000000}, {Quantity: 300, Rate: 150000}}
-	assert.Equal(t, int64(37450000), computeInvoiceTotal(lines))
+	assert.Equal(t, int64(37450000), computeInvoiceTotals(lines, models.INVOICE_TAX_TYPE_NONE, 0).Total)
 	assert.Equal(t, int64(450000), lines[1].Amount)
 }
 
 func TestComputeInvoiceTotalRoundsFractionalQuantityToPaisa(t *testing.T) {
 	// 7.5 h × ₹333.33 = ₹2,499.975 → ₹2,499.98
 	lines := []*models.InvoiceLine{{Quantity: 750, Rate: 33333}}
-	assert.Equal(t, int64(249998), computeInvoiceTotal(lines))
+	assert.Equal(t, int64(249998), computeInvoiceTotals(lines, models.INVOICE_TAX_TYPE_NONE, 0).Total)
 
 	// 0.01 × ₹0.01 rounds to zero; this is the only way a line amount can be zero
 	lines = []*models.InvoiceLine{{Quantity: 1, Rate: 1}}
-	assert.Equal(t, int64(0), computeInvoiceTotal(lines))
+	assert.Equal(t, int64(0), computeInvoiceTotals(lines, models.INVOICE_TAX_TYPE_NONE, 0).Total)
 	assert.Equal(t, int64(0), lines[0].Amount)
+}
+
+func TestComputeInvoiceTotalsGst(t *testing.T) {
+	// 18% on ₹1,00,000.01 rounds once: tax ₹18,000.00, split evenly
+	lines := []*models.InvoiceLine{{Quantity: 100, Rate: 10000001}}
+	totals := computeInvoiceTotals(lines, models.INVOICE_TAX_TYPE_CGST_SGST, 1800)
+	assert.Equal(t, invoiceTotals{Subtotal: 10000001, TaxAmount: 1800000, Cgst: 900000, Sgst: 900000, Total: 11800001}, totals)
+
+	// IGST uses the same tax amount, no split needed but reported the same way
+	totals = computeInvoiceTotals(lines, models.INVOICE_TAX_TYPE_IGST, 1800)
+	assert.Equal(t, int64(1800000), totals.TaxAmount)
+	assert.Equal(t, int64(11800001), totals.Total)
+
+	// an odd tax paisa goes to SGST: 18% of ₹0.05 = 0.9 paisa → 1 paisa
+	totals = computeInvoiceTotals([]*models.InvoiceLine{{Quantity: 100, Rate: 5}}, models.INVOICE_TAX_TYPE_CGST_SGST, 1800)
+	assert.Equal(t, invoiceTotals{Subtotal: 5, TaxAmount: 1, Cgst: 0, Sgst: 1, Total: 6}, totals)
+
+	// half a paisa rounds up: 18% of ₹0.25 = 4.5 paise → 5
+	totals = computeInvoiceTotals([]*models.InvoiceLine{{Quantity: 100, Rate: 25}}, models.INVOICE_TAX_TYPE_IGST, 1800)
+	assert.Equal(t, int64(5), totals.TaxAmount)
+
+	// none yields zero tax whatever the rate; an empty type (rows saved before GST) is none
+	totals = computeInvoiceTotals(lines, models.INVOICE_TAX_TYPE_NONE, 1800)
+	assert.Equal(t, invoiceTotals{Subtotal: 10000001, TaxAmount: 0, Cgst: 0, Sgst: 0, Total: 10000001}, totals)
+	totals = computeInvoiceTotals(lines, "", 1800)
+	assert.Equal(t, int64(0), totals.TaxAmount)
+	assert.Equal(t, int64(10000001), totals.Total)
+}
+
+func TestCustomerGstFieldsPersistAndInvoiceStoresTax(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	customer := createTestCustomer(t, uid)
+
+	customer.Gstin = "07AAAAA0000A1Z5"
+	customer.TaxType = models.INVOICE_TAX_TYPE_CGST_SGST
+	customer.TaxRate = 1800
+	assert.Nil(t, Invoices.ModifyCustomer(ctx, customer))
+
+	saved, err := Invoices.GetCustomer(ctx, uid, customer.CustomerId)
+	assert.Nil(t, err)
+	assert.Equal(t, "07AAAAA0000A1Z5", saved.Gstin)
+	assert.Equal(t, models.INVOICE_TAX_TYPE_CGST_SGST, saved.TaxType)
+	assert.Equal(t, int32(1800), saved.TaxRate)
+
+	invoice := &models.Invoice{Uid: uid, Number: "CA/2026-27/01", CustomerId: customer.CustomerId, InvoiceDate: "2026-04-23", DueDate: "2026-04-30",
+		TaxType: models.INVOICE_TAX_TYPE_CGST_SGST, TaxRate: 1800}
+	lines := []*models.InvoiceLine{{ItemName: "Consulting", Quantity: 100, Rate: 10000001, Sac: "998314"}}
+	assert.Nil(t, Invoices.CreateInvoice(ctx, invoice, lines))
+
+	reloaded, savedLines, err := Invoices.GetInvoice(ctx, uid, invoice.InvoiceId)
+	assert.Nil(t, err)
+	assert.Equal(t, "07AAAAA0000A1Z5", reloaded.BillToGstin)
+	assert.Equal(t, models.INVOICE_TAX_TYPE_CGST_SGST, reloaded.TaxType)
+	assert.Equal(t, int32(1800), reloaded.TaxRate)
+	assert.Equal(t, int64(10000001), reloaded.Subtotal)
+	assert.Equal(t, int64(1800000), reloaded.TaxAmount)
+	assert.Equal(t, int64(11800001), reloaded.Total)
+	assert.Equal(t, "998314", savedLines[0].Sac)
+
+	// modifying to IGST at 5% recomputes and stores the new tax
+	modified := &models.Invoice{Uid: uid, InvoiceId: invoice.InvoiceId, Number: "CA/2026-27/01", CustomerId: customer.CustomerId, InvoiceDate: "2026-04-23", DueDate: "2026-04-30",
+		TaxType: models.INVOICE_TAX_TYPE_IGST, TaxRate: 500}
+	assert.Nil(t, Invoices.ModifyInvoice(ctx, modified, []*models.InvoiceLine{{ItemName: "Consulting", Quantity: 100, Rate: 10000000}}))
+
+	reloaded, _, err = Invoices.GetInvoice(ctx, uid, invoice.InvoiceId)
+	assert.Nil(t, err)
+	assert.Equal(t, models.INVOICE_TAX_TYPE_IGST, reloaded.TaxType)
+	assert.Equal(t, int32(500), reloaded.TaxRate)
+	assert.Equal(t, int64(10000000), reloaded.Subtotal)
+	assert.Equal(t, int64(500000), reloaded.TaxAmount)
+	assert.Equal(t, int64(10500000), reloaded.Total)
+
+	// back to none clears the tax but keeps the subtotal
+	modified.TaxType, modified.TaxRate = models.INVOICE_TAX_TYPE_NONE, 0
+	assert.Nil(t, Invoices.ModifyInvoice(ctx, modified, []*models.InvoiceLine{{ItemName: "Consulting", Quantity: 100, Rate: 10000000}}))
+	reloaded, _, err = Invoices.GetInvoice(ctx, uid, invoice.InvoiceId)
+	assert.Nil(t, err)
+	assert.Equal(t, int64(0), reloaded.TaxAmount)
+	assert.Equal(t, int64(10000000), reloaded.Subtotal)
+	assert.Equal(t, int64(10000000), reloaded.Total)
+}
+
+func TestInvoiceProfileGstFieldsPersist(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+
+	assert.Nil(t, Invoices.SaveProfile(ctx, &models.InvoiceProfile{Uid: uid, NumberPrefix: "CA", Gstin: "07AAAAA0000A1Z5", DefaultSac: "998314"}))
+
+	profile, err := Invoices.GetProfile(ctx, uid)
+	assert.Nil(t, err)
+	assert.Equal(t, "07AAAAA0000A1Z5", profile.Gstin)
+	assert.Equal(t, "998314", profile.DefaultSac)
 }
 
 func TestInvoiceQuantityIsStoredAsGiven(t *testing.T) {

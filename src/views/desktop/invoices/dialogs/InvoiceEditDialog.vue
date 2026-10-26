@@ -47,11 +47,17 @@
                                           :label="tt('Item')" :placeholder="tt('Item')"
                                           v-model="line.itemName" />
                         </v-col>
-                        <v-col cols="12" md="4">
+                        <v-col cols="12" md="3">
                             <v-textarea type="text" autocomplete="off" persistent-placeholder rows="1" auto-grow
                                         :disabled="loading || submitting"
                                         :label="tt('Description')" :placeholder="tt('Description (optional)')"
                                         v-model="line.description" />
+                        </v-col>
+                        <v-col cols="4" md="1">
+                            <v-text-field type="text" autocomplete="off" persistent-placeholder
+                                          :disabled="loading || submitting"
+                                          :label="tt('SAC')" :placeholder="tt('SAC')"
+                                          v-model="line.sac" />
                         </v-col>
                         <v-col cols="4" md="1">
                             <number-input :disabled="loading || submitting" :persistent-placeholder="true"
@@ -59,7 +65,7 @@
                                           :model-value="line.quantity / INVOICE_QUANTITY_SCALE"
                                           @update:model-value="line.quantity = Math.round($event * INVOICE_QUANTITY_SCALE)" />
                         </v-col>
-                        <v-col cols="6" md="3">
+                        <v-col cols="4" md="3">
                             <amount-input :disabled="loading || submitting" :persistent-placeholder="true"
                                           :currency="invoice.currency" :show-currency="true"
                                           :label="tt('Rate')" :placeholder="tt('Rate')"
@@ -75,10 +81,39 @@
                     <div class="d-flex align-center mt-2">
                         <v-btn color="primary" variant="text" density="comfortable" :prepend-icon="mdiPlus"
                                :disabled="loading || submitting" @click="addLine">{{ tt('Add Line') }}</v-btn>
-                        <v-spacer />
-                        <span class="text-body-large me-4">{{ tt('Total') }}</span>
-                        <span class="text-title-medium">{{ formatAmount(totals.total) }}</span>
                     </div>
+
+                    <v-row class="mt-2">
+                        <v-col cols="6" md="3">
+                            <v-select item-title="displayName" item-value="type" persistent-placeholder
+                                      :disabled="loading || submitting"
+                                      :label="tt('Tax')" :placeholder="tt('Tax')"
+                                      :items="allTaxTypes"
+                                      v-model="invoice.taxType" />
+                        </v-col>
+                        <v-col cols="6" md="3">
+                            <number-input :disabled="loading || submitting || invoice.taxType === 'none'" :persistent-placeholder="true"
+                                          :label="tt('Tax Rate (%)')" :placeholder="tt('Tax Rate (%)')"
+                                          :min-value="0" :max-value="100" :max-decimal-count="2"
+                                          v-model="taxRatePercent" />
+                        </v-col>
+                        <v-col cols="12" md="6" class="d-flex flex-column align-end justify-center">
+                            <template v-if="invoice.taxType !== 'none'">
+                                <div>
+                                    <span class="text-body-large me-4">{{ tt('Subtotal') }}</span>
+                                    <span class="text-body-large">{{ formatAmount(totals.subtotal) }}</span>
+                                </div>
+                                <div :key="row.label" v-for="row in taxRows">
+                                    <span class="text-body-large me-4">{{ row.label }}</span>
+                                    <span class="text-body-large">{{ formatAmount(row.amount) }}</span>
+                                </div>
+                            </template>
+                            <div>
+                                <span class="text-body-large me-4">{{ tt('Total') }}</span>
+                                <span class="text-title-medium">{{ formatAmount(totals.total) }}</span>
+                            </div>
+                        </v-col>
+                    </v-row>
 
                     <v-row class="mt-2">
                         <v-col cols="12" md="12">
@@ -150,6 +185,9 @@ const {
     inputEmptyProblemMessage,
     inputIsEmpty,
     totals,
+    taxRows,
+    allTaxTypes,
+    taxRatePercent,
     addLine,
     removeLine,
     setInvoice,
@@ -203,7 +241,7 @@ function open(options: { id?: string, currentInvoice?: Invoice, duplicateFrom?: 
         profile.value = loadedProfile;
 
         if (loadedInvoice) {
-            setInvoice(loadedInvoice);
+            setInvoice(loadedInvoice, loadedProfile);
         } else {
             prepareNewInvoice(loadedProfile, options.duplicateFrom);
             suggestNumber();

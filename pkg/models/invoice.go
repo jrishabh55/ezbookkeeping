@@ -8,6 +8,16 @@ const INVOICE_KIND_INVOICE = "invoice"
 // INVOICE_DEFAULT_CURRENCY is the only invoice currency for now
 const INVOICE_DEFAULT_CURRENCY = "INR"
 
+// Invoice tax types: no GST, IGST (inter-state) or CGST + SGST (intra-state, the rate split evenly)
+const (
+	INVOICE_TAX_TYPE_NONE      = "none"
+	INVOICE_TAX_TYPE_IGST      = "igst"
+	INVOICE_TAX_TYPE_CGST_SGST = "cgst_sgst"
+)
+
+// INVOICE_TAX_RATE_MAX is the largest tax rate in basis points (100%)
+const INVOICE_TAX_RATE_MAX = 10000
+
 // InvoicePaidTolerance is the share of the total that may be missing (bank / forex charges)
 // while a payment still counts as settling the invoice. The UI mirrors it in src/lib/invoice.ts.
 const InvoicePaidTolerance = 0.03
@@ -29,6 +39,8 @@ type InvoiceProfile struct {
 	DefaultNotes     string `xorm:"VARCHAR(2048) NOT NULL"`
 	NumberPrefix     string `xorm:"VARCHAR(16) NOT NULL"`
 	DefaultTermsDays int32  `xorm:"NOT NULL"`
+	Gstin            string `xorm:"VARCHAR(15) NOT NULL DEFAULT ''"`
+	DefaultSac       string `xorm:"VARCHAR(8) NOT NULL DEFAULT ''"`
 	CreatedUnixTime  int64
 	UpdatedUnixTime  int64
 }
@@ -48,6 +60,9 @@ type Customer struct {
 	Pan             string `xorm:"VARCHAR(10) NOT NULL DEFAULT ''"`
 	TermsDays       int32  `xorm:"NOT NULL DEFAULT 0"`
 	Notes           string `xorm:"VARCHAR(2048) NOT NULL DEFAULT ''"`
+	Gstin           string `xorm:"VARCHAR(15) NOT NULL DEFAULT ''"`
+	TaxType         string `xorm:"VARCHAR(16) NOT NULL DEFAULT ''"` // empty means none
+	TaxRate         int32  `xorm:"NOT NULL DEFAULT 0"`              // basis points
 	CreatedUnixTime int64
 	UpdatedUnixTime int64
 	DeletedUnixTime int64
@@ -67,11 +82,16 @@ type Invoice struct {
 	BillToEmail        string `xorm:"VARCHAR(128) NOT NULL"`
 	BillToPhone        string `xorm:"VARCHAR(32) NOT NULL DEFAULT ''"`
 	BillToPan          string `xorm:"VARCHAR(10) NOT NULL DEFAULT ''"`
+	BillToGstin        string `xorm:"VARCHAR(15) NOT NULL DEFAULT ''"`
 	Currency           string `xorm:"VARCHAR(3) NOT NULL"`
 	InvoiceDate        string `xorm:"VARCHAR(10) NOT NULL"`
 	DueDate            string `xorm:"VARCHAR(10) NOT NULL"`
 	Notes              string `xorm:"VARCHAR(2048) NOT NULL"`
 	Total              int64  `xorm:"NOT NULL"`
+	TaxType            string `xorm:"VARCHAR(16) NOT NULL DEFAULT ''"` // empty means none (rows saved before GST)
+	TaxRate            int32  `xorm:"NOT NULL DEFAULT 0"`              // basis points
+	Subtotal           int64  `xorm:"NOT NULL DEFAULT 0"`              // 0 on rows saved before GST; the document then uses Total
+	TaxAmount          int64  `xorm:"NOT NULL DEFAULT 0"`
 	ClosedManually     bool   `xorm:"NOT NULL"`
 	CreatedUnixTime    int64
 	UpdatedUnixTime    int64
@@ -89,6 +109,7 @@ type InvoiceLine struct {
 	Quantity     int64  `xorm:"NOT NULL"` // hundredths: 100 = 1, 750 = 7.5
 	Rate         int64  `xorm:"NOT NULL"`
 	Amount       int64  `xorm:"NOT NULL"`
+	Sac          string `xorm:"VARCHAR(8) NOT NULL DEFAULT ''"`
 }
 
 // InvoicePayment links an existing income transaction to an invoice.
@@ -111,6 +132,8 @@ type InvoiceProfileUpdateRequest struct {
 	DefaultNotes     string `json:"defaultNotes" binding:"max=2048"`
 	NumberPrefix     string `json:"numberPrefix" binding:"required,notBlank,max=16"`
 	DefaultTermsDays int32  `json:"defaultTermsDays" binding:"min=0,max=365"`
+	Gstin            string `json:"gstin" binding:"max=15"`
+	DefaultSac       string `json:"defaultSac" binding:"max=8"`
 }
 
 // InvoiceProfileResponse represents a view-object of invoice profile
@@ -123,6 +146,8 @@ type InvoiceProfileResponse struct {
 	DefaultNotes     string `json:"defaultNotes"`
 	NumberPrefix     string `json:"numberPrefix"`
 	DefaultTermsDays int32  `json:"defaultTermsDays"`
+	Gstin            string `json:"gstin"`
+	DefaultSac       string `json:"defaultSac"`
 }
 
 // CustomerCreateRequest represents all parameters of customer creation request
@@ -137,6 +162,9 @@ type CustomerCreateRequest struct {
 	Pan           string `json:"pan" binding:"max=10"`
 	TermsDays     int32  `json:"termsDays" binding:"min=0,max=365"`
 	Notes         string `json:"notes" binding:"max=2048"`
+	Gstin         string `json:"gstin" binding:"max=15"`
+	TaxType       string `json:"taxType" binding:"max=16"`
+	TaxRate       int32  `json:"taxRate" binding:"min=0,max=10000"`
 }
 
 // CustomerModifyRequest represents all parameters of customer modification request
@@ -152,6 +180,9 @@ type CustomerModifyRequest struct {
 	Pan           string `json:"pan" binding:"max=10"`
 	TermsDays     int32  `json:"termsDays" binding:"min=0,max=365"`
 	Notes         string `json:"notes" binding:"max=2048"`
+	Gstin         string `json:"gstin" binding:"max=15"`
+	TaxType       string `json:"taxType" binding:"max=16"`
+	TaxRate       int32  `json:"taxRate" binding:"min=0,max=10000"`
 }
 
 // CustomerResponse represents a view-object of customer
@@ -167,6 +198,9 @@ type CustomerResponse struct {
 	Pan           string `json:"pan"`
 	TermsDays     int32  `json:"termsDays"`
 	Notes         string `json:"notes"`
+	Gstin         string `json:"gstin"`
+	TaxType       string `json:"taxType"`
+	TaxRate       int32  `json:"taxRate"`
 }
 
 // InvoiceLineRequest represents one line of invoice creation / modification request
@@ -175,6 +209,7 @@ type InvoiceLineRequest struct {
 	Description string `json:"description" binding:"max=512"`
 	Quantity    int64  `json:"quantity" binding:"required,min=1,max=1000000"` // hundredths: 0.01 to 10,000
 	Rate        int64  `json:"rate" binding:"required,min=1,max=10000000000"`
+	Sac         string `json:"sac" binding:"max=8"`
 }
 
 // InvoiceCreateRequest represents all parameters of invoice creation request
@@ -184,6 +219,8 @@ type InvoiceCreateRequest struct {
 	InvoiceDate string                `json:"invoiceDate" binding:"required,len=10"`
 	DueDate     string                `json:"dueDate" binding:"required,len=10"`
 	Notes       string                `json:"notes" binding:"max=2048"`
+	TaxType     string                `json:"taxType" binding:"max=16"`
+	TaxRate     int32                 `json:"taxRate" binding:"min=0,max=10000"`
 	Lines       []*InvoiceLineRequest `json:"lines" binding:"required,min=1,max=100,dive"`
 }
 
@@ -195,6 +232,8 @@ type InvoiceModifyRequest struct {
 	InvoiceDate string                `json:"invoiceDate" binding:"required,len=10"`
 	DueDate     string                `json:"dueDate" binding:"required,len=10"`
 	Notes       string                `json:"notes" binding:"max=2048"`
+	TaxType     string                `json:"taxType" binding:"max=16"`
+	TaxRate     int32                 `json:"taxRate" binding:"min=0,max=10000"`
 	Lines       []*InvoiceLineRequest `json:"lines" binding:"required,min=1,max=100,dive"`
 }
 
@@ -221,6 +260,7 @@ type InvoiceLineResponse struct {
 	Quantity    int64  `json:"quantity"`
 	Rate        int64  `json:"rate"`
 	Amount      int64  `json:"amount"`
+	Sac         string `json:"sac"`
 }
 
 // InvoicePaymentResponse represents a view-object of a transaction linked (or suggested) as an invoice payment
@@ -244,11 +284,16 @@ type InvoiceInfoResponse struct {
 	BillToEmail        string                    `json:"billToEmail"`
 	BillToPhone        string                    `json:"billToPhone"`
 	BillToPan          string                    `json:"billToPan"`
+	BillToGstin        string                    `json:"billToGstin"`
 	Currency           string                    `json:"currency"`
 	InvoiceDate        string                    `json:"invoiceDate"`
 	DueDate            string                    `json:"dueDate"`
 	Notes              string                    `json:"notes"`
 	Total              int64                     `json:"total"`
+	TaxType            string                    `json:"taxType"`
+	TaxRate            int32                     `json:"taxRate"`
+	Subtotal           int64                     `json:"subtotal"`
+	TaxAmount          int64                     `json:"taxAmount"`
 	Received           int64                     `json:"received"`
 	ClosedManually     bool                      `json:"closedManually"`
 	Lines              []*InvoiceLineResponse    `json:"lines,omitempty"`
@@ -266,6 +311,8 @@ func (p *InvoiceProfile) ToInvoiceProfileResponse() *InvoiceProfileResponse {
 		DefaultNotes:     p.DefaultNotes,
 		NumberPrefix:     p.NumberPrefix,
 		DefaultTermsDays: p.DefaultTermsDays,
+		Gstin:            p.Gstin,
+		DefaultSac:       p.DefaultSac,
 	}
 }
 
@@ -283,6 +330,9 @@ func (c *Customer) ToCustomerResponse() *CustomerResponse {
 		Pan:           c.Pan,
 		TermsDays:     c.TermsDays,
 		Notes:         c.Notes,
+		Gstin:         c.Gstin,
+		TaxType:       c.TaxType,
+		TaxRate:       c.TaxRate,
 	}
 }
 
@@ -310,11 +360,16 @@ func (i *Invoice) ToInvoiceInfoResponse(lines []*InvoiceLine, payments []*Transa
 		BillToEmail:        i.BillToEmail,
 		BillToPhone:        i.BillToPhone,
 		BillToPan:          i.BillToPan,
+		BillToGstin:        i.BillToGstin,
 		Currency:           i.Currency,
 		InvoiceDate:        i.InvoiceDate,
 		DueDate:            i.DueDate,
 		Notes:              i.Notes,
 		Total:              i.Total,
+		TaxType:            i.TaxType,
+		TaxRate:            i.TaxRate,
+		Subtotal:           i.Subtotal,
+		TaxAmount:          i.TaxAmount,
 		ClosedManually:     i.ClosedManually,
 	}
 
@@ -332,6 +387,7 @@ func (i *Invoice) ToInvoiceInfoResponse(lines []*InvoiceLine, payments []*Transa
 				Quantity:    line.Quantity,
 				Rate:        line.Rate,
 				Amount:      line.Amount,
+				Sac:         line.Sac,
 			}
 		}
 

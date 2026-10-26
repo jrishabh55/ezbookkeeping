@@ -35,6 +35,23 @@
                 <f7-list-input type="text" autocomplete="off" clear-button
                                :label="tt('Account Number')" :placeholder="tt('Account Number')"
                                v-model:value="customer.accountNumber"></f7-list-input>
+                <f7-list-input type="text" autocomplete="off" clear-button
+                               :label="tt('GSTIN')" :placeholder="tt('GSTIN')"
+                               v-model:value="customer.gstin"></f7-list-input>
+                <f7-list-item class="list-item-with-header-and-title" link="#" no-chevron
+                              :header="tt('Tax')"
+                              :title="selectedTaxTypeName"
+                              @click="showTaxTypeSheet = true">
+                    <list-item-selection-sheet value-type="item"
+                                               key-field="type" value-field="type" title-field="displayName"
+                                               :items="allTaxTypes"
+                                               v-model:show="showTaxTypeSheet"
+                                               v-model="customer.taxType">
+                    </list-item-selection-sheet>
+                </f7-list-item>
+                <list-number-input :label="tt('Tax Rate (%)')" :placeholder="tt('Tax Rate (%)')"
+                                   :min-value="0" :max-value="100" :max-decimal-count="2"
+                                   v-model="taxRatePercent" v-if="customer.taxType !== 'none'"></list-number-input>
                 <list-number-input :label="tt('Payment Terms (days, 0 = default)')" :placeholder="tt('Payment Terms (days, 0 = default)')"
                                    :min-value="0" :max-value="365" :max-decimal-count="0"
                                    v-model="customer.termsDays"></list-number-input>
@@ -70,12 +87,16 @@ const {
     customer,
     title,
     inputEmptyProblemMessage,
-    inputIsEmpty
+    inputIsEmpty,
+    allTaxTypes,
+    selectedTaxTypeName,
+    taxRatePercent
 } = useCustomerEditPageBase();
 
 const invoicesStore = useInvoicesStore();
 
 const loadingError = ref<unknown | null>(null);
+const showTaxTypeSheet = ref<boolean>(false);
 
 function init(): void {
     const customerId = props.f7route.query['id'];

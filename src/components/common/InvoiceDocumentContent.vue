@@ -6,9 +6,10 @@
             <div class="invoice-business">
                 <div class="invoice-strong">{{ profile.businessName }}</div>
                 <div class="invoice-pre">{{ profile.addressLines }}</div>
-                <div class="invoice-gap" v-if="profile.phone || profile.website"></div>
+                <div class="invoice-gap" v-if="profile.phone || profile.website || profile.gstin"></div>
                 <div v-if="profile.phone">Mobile: {{ profile.phone }}</div>
                 <div v-if="profile.website">{{ profile.website }}</div>
+                <div v-if="profile.gstin">GSTIN: {{ profile.gstin }}</div>
             </div>
         </div>
 
@@ -28,6 +29,7 @@
                 <div v-if="invoice.billToPhone">{{ invoice.billToPhone }}</div>
                 <div v-if="invoice.billToEmail">{{ invoice.billToEmail }}</div>
                 <div v-if="invoice.billToPan">PAN: {{ invoice.billToPan }}</div>
+                <div v-if="invoice.billToGstin">GSTIN: {{ invoice.billToGstin }}</div>
             </div>
             <table class="invoice-meta">
                 <tbody>
@@ -43,6 +45,7 @@
             <thead>
             <tr>
                 <th class="invoice-left">Services</th>
+                <th class="invoice-right" v-if="showSac">SAC</th>
                 <th class="invoice-right" v-if="showQuantity">Quantity</th>
                 <th class="invoice-right">Rate</th>
                 <th class="invoice-right">Amount</th>
@@ -54,6 +57,7 @@
                     <div class="invoice-strong">{{ line.itemName }}</div>
                     <div class="invoice-muted invoice-pre">{{ line.description }}</div>
                 </td>
+                <td class="invoice-right" v-if="showSac">{{ line.sac }}</td>
                 <td class="invoice-right" v-if="showQuantity">{{ formatInvoiceQuantity(line.quantity) }}</td>
                 <td class="invoice-right">{{ formatInvoiceDocumentAmount(line.rate) }}</td>
                 <td class="invoice-right">{{ formatInvoiceDocumentAmount(line.amount) }}</td>
@@ -63,6 +67,10 @@
 
         <table class="invoice-totals">
             <tbody>
+            <template v-if="taxRows.length">
+                <tr><th>Subtotal:</th><td>{{ formatInvoiceDocumentAmount(subtotal) }}</td></tr>
+                <tr :key="row.name" v-for="row in taxRows"><th>{{ row.name }} ({{ formatInvoiceTaxRate(row.rate) }}):</th><td>{{ formatInvoiceDocumentAmount(row.amount) }}</td></tr>
+            </template>
             <tr><th>Total:</th><td>{{ formatInvoiceDocumentAmount(invoice.total) }}</td></tr>
             <tr v-if="invoice.received > 0"><th>Payments received:</th><td>−{{ formatInvoiceDocumentAmount(Math.min(invoice.received, invoice.total)) }}</td></tr>
             <tr class="invoice-totals-due"><th>Amount Due ({{ invoice.currency }}):</th><td>{{ formatInvoiceDocumentAmount(balanceDue) }}</td></tr>
@@ -80,7 +88,7 @@
 import { computed } from 'vue';
 
 import type { Invoice, InvoiceProfile } from '@/models/invoice.ts';
-import { INVOICE_QUANTITY_SCALE, formatInvoiceDocumentAmount, formatInvoiceDocumentDate, formatInvoiceQuantity, getInvoiceDisplayBalanceDue } from '@/lib/invoice.ts';
+import { type InvoiceTaxRow, INVOICE_QUANTITY_SCALE, formatInvoiceDocumentAmount, formatInvoiceDocumentDate, formatInvoiceQuantity, formatInvoiceTaxRate, getInvoiceDisplayBalanceDue, getInvoiceTaxRows } from '@/lib/invoice.ts';
 
 const props = defineProps<{
     invoice: Invoice;
@@ -90,6 +98,10 @@ const props = defineProps<{
 // a paid invoice owes nothing, even when a shortfall was written off
 const balanceDue = computed<number>(() => getInvoiceDisplayBalanceDue(props.invoice));
 const showQuantity = computed<boolean>(() => props.invoice.lines.some(line => line.quantity !== INVOICE_QUANTITY_SCALE));
+const showSac = computed<boolean>(() => props.invoice.lines.some(line => !!line.sac));
+// invoices saved before GST have no subtotal stored; without tax the total is the subtotal
+const subtotal = computed<number>(() => props.invoice.taxType === 'none' ? props.invoice.total : props.invoice.subtotal);
+const taxRows = computed<InvoiceTaxRow[]>(() => getInvoiceTaxRows(props.invoice.taxType, props.invoice.taxRate, props.invoice.taxAmount));
 </script>
 
 <style scoped>
