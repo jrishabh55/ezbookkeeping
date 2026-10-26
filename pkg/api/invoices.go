@@ -544,11 +544,38 @@ func (a *InvoicesApi) InvoicePdfHandler(c *core.WebContext) ([]byte, string, *er
 		received += payment.Amount
 	}
 
-	// TODO: pass the public link built from Invoice.PublicToken as verifyUrl once the public link phase lands
-	pdf, err := invoicepdf.Render(profile, invoice, lines, received, "")
+	// the footer prints the public link when the invoice has one; InvoicePublicUrl returns "" otherwise
+	pdf, err := invoicepdf.Render(profile, invoice, lines, received, a.invoices.InvoicePublicUrl(invoice.PublicToken))
 
 	if err != nil {
 		log.Errorf(c, "[invoices.InvoicePdfHandler] failed to render invoice \"id:%d\" for user \"uid:%d\", because %s", invoiceId, uid, err.Error())
+		return nil, "", errs.ErrOperationFailed
+	}
+
+	return pdf, invoicepdf.FileName(invoice.Number, invoice.DueDate), nil
+}
+
+// InvoicePublicPdfHandler returns the PDF document behind a public link (GET /api/public/invoices/pdf?token=); no login
+func (a *InvoicesApi) InvoicePublicPdfHandler(c *core.WebContext) ([]byte, string, *errs.Error) {
+	var req models.InvoicePublicViewRequest
+
+	if err := c.ShouldBindQuery(&req); err != nil {
+		log.Warnf(c, "[invoices.InvoicePublicPdfHandler] parse request failed, because %s", err.Error())
+		return nil, "", errs.NewIncompleteOrIncorrectSubmissionError(err)
+	}
+
+	invoice, lines, received, profile, err := a.invoices.GetInvoiceByPublicToken(c, req.Token)
+
+	if err != nil {
+		// the token is a secret: never log it
+		log.Warnf(c, "[invoices.InvoicePublicPdfHandler] failed to get invoice by public token, because %s", err.Error())
+		return nil, "", errs.Or(err, errs.ErrOperationFailed)
+	}
+
+	pdf, err := invoicepdf.Render(profile, invoice, lines, received, a.invoices.InvoicePublicUrl(invoice.PublicToken))
+
+	if err != nil {
+		log.Errorf(c, "[invoices.InvoicePublicPdfHandler] failed to render invoice \"id:%d\", because %s", invoice.InvoiceId, err.Error())
 		return nil, "", errs.ErrOperationFailed
 	}
 

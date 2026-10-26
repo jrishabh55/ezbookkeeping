@@ -2,6 +2,7 @@ package services
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/mayswind/ezbookkeeping/pkg/errs"
 	"github.com/mayswind/ezbookkeeping/pkg/invoicepdf"
 	"github.com/mayswind/ezbookkeeping/pkg/models"
+	"github.com/mayswind/ezbookkeeping/pkg/settings"
 	"github.com/mayswind/ezbookkeeping/pkg/utils"
 	"github.com/mayswind/ezbookkeeping/pkg/uuid"
 )
@@ -639,4 +641,22 @@ func TestRenderInvoicePdfFromServiceData(t *testing.T) {
 	assert.Nil(t, err)
 	assert.True(t, bytes.HasPrefix(pdf, []byte("%PDF")))
 	assert.Equal(t, "Invoice_CA_2026-27_01_2026-04-30.pdf", invoicepdf.FileName(loaded.Number, loaded.DueDate))
+}
+
+func TestInvoicePublicUrlUsesConfiguredRootUrl(t *testing.T) {
+	newAlertTestUser(t) // sets the test config
+	config := settings.Container.GetCurrentConfig()
+	originalRootUrl := config.RootUrl
+	defer func() { config.RootUrl = originalRootUrl }()
+
+	config.RootUrl = "https://books.codeation.io/"
+	assert.Equal(t, "https://books.codeation.io/i/abc_DEF-123", Invoices.InvoicePublicUrl("abc_DEF-123"))
+	assert.Equal(t, "", Invoices.InvoicePublicUrl(""))
+}
+
+func TestGetInvoiceByUnknownPublicTokenIsNotFound(t *testing.T) {
+	newAlertTestUser(t)
+
+	_, _, _, _, err := Invoices.GetInvoiceByPublicToken(core.NewNullContext(), strings.Repeat("x", models.InvoicePublicTokenLength))
+	assert.Equal(t, errs.ErrInvoiceNotFound, err)
 }

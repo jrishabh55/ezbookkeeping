@@ -1229,5 +1229,9 @@ export default {
     // the server renders the invoice PDF; like /pictures, the route reads the token from the query string so a plain link works
     getInvoicePdfUrlWithToken(invoiceId: string): string {
         return `${getBasePath()}/invoices/pdf/${invoiceId}?token=${getCurrentToken()}`;
+    },
+    // the same PDF for a recipient of the public link: no login, the public token instead of the bearer token
+    getPublicInvoicePdfUrl(publicToken: string): string {
+        return `${getBasePath()}${BASE_API_URL_PATH}/public/invoices/pdf?token=${encodeURIComponent(publicToken)}`;
     }
 };

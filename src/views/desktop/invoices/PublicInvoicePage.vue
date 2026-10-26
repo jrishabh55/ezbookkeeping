@@ -6,7 +6,7 @@
             </span>
             <v-spacer />
             <v-btn color="primary" variant="tonal" :prepend-icon="mdiPrinterOutline" @click="print">{{ tt('Print') }}</v-btn>
-            <!-- Download PDF button goes here (phase 7) -->
+            <v-btn color="primary" variant="tonal" :prepend-icon="mdiDownloadOutline" :href="pdfUrl" target="_blank">{{ tt('Download PDF') }}</v-btn>
         </div>
 
         <div class="public-invoice-paper" v-if="invoice && profile">
@@ -22,7 +22,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 
-import { mdiPrinterOutline } from '@mdi/js';
+import { mdiPrinterOutline, mdiDownloadOutline } from '@mdi/js';
 
 import InvoiceDocument from '@/components/common/InvoiceDocument.vue';
 
@@ -47,6 +47,8 @@ const profile = ref<InvoiceProfile | null>(null);
 
 const isPaid = computed<boolean>(() => !!invoice.value && getInvoiceDisplayStatus(invoice.value, getTodayTextualDate()) === 'paid');
 const balanceDue = computed<number>(() => invoice.value ? getInvoiceDisplayBalanceDue(invoice.value) : 0);
+// the server-rendered PDF by the same token; the response is an attachment, so the new tab turns into a download
+const pdfUrl = computed<string>(() => services.getPublicInvoicePdfUrl(props.token));
 
 function print(): void {
     if (invoice.value) {

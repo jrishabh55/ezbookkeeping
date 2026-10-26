@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -14,7 +15,9 @@ import (
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/datastore"
 	"github.com/mayswind/ezbookkeeping/pkg/errs"
+	"github.com/mayswind/ezbookkeeping/pkg/mail"
 	"github.com/mayswind/ezbookkeeping/pkg/models"
+	"github.com/mayswind/ezbookkeeping/pkg/settings"
 	"github.com/mayswind/ezbookkeeping/pkg/utils"
 	"github.com/mayswind/ezbookkeeping/pkg/uuid"
 )
@@ -23,6 +26,8 @@ import (
 type InvoiceService struct {
 	ServiceUsingDB
 	ServiceUsingUuid
+	ServiceUsingConfig
+	ServiceUsingMailer
 }
 
 // Initialize an invoice service singleton instance
@@ -34,8 +39,24 @@ var (
 		ServiceUsingUuid: ServiceUsingUuid{
 			container: uuid.Container,
 		},
+		ServiceUsingConfig: ServiceUsingConfig{
+			container: settings.Container,
+		},
+		ServiceUsingMailer: ServiceUsingMailer{
+			container: mail.Container,
+		},
 	}
 )
+
+// InvoicePublicUrl returns the short public link of an invoice (<root url>i/<token>), the URL printed in the PDF
+// footer and sent in the email; empty when the invoice has no public token
+func (s *InvoiceService) InvoicePublicUrl(token string) string {
+	if token == "" {
+		return ""
+	}
+
+	return s.CurrentConfig().RootUrl + "i/" + url.PathEscape(token)
+}
 
 // GetProfile returns the invoice profile of user, or defaults when the user has not saved one yet
 func (s *InvoiceService) GetProfile(c core.Context, uid int64) (*models.InvoiceProfile, error) {

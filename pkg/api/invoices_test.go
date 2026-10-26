@@ -2,13 +2,36 @@ package api
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 
+	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/errs"
 	"github.com/mayswind/ezbookkeeping/pkg/models"
 )
+
+// newTestWebContext wraps a GET request to path (with its query string) in a web context, like bindApi does
+func newTestWebContext(path string) *core.WebContext {
+	ginContext, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ginContext.Request = httptest.NewRequest(http.MethodGet, path, nil)
+
+	return &core.WebContext{Context: ginContext}
+}
+
+func TestInvoicePublicPdfHandlerUnknownTokenIsNotFound(t *testing.T) {
+	// a token of the wrong length never reaches the database, so this needs no store
+	pdf, fileName, err := Invoices.InvoicePublicPdfHandler(newTestWebContext("/api/public/invoices/pdf?token=unknown"))
+	assert.Nil(t, pdf)
+	assert.Equal(t, "", fileName)
+	assert.Equal(t, errs.ErrInvoiceNotFound, err)
+
+	_, _, err = Invoices.InvoicePublicPdfHandler(newTestWebContext("/api/public/invoices/pdf"))
+	assert.Equal(t, errs.ErrInvoiceNotFound, err)
+}
 
 func TestIsAllowedInvoiceLogo(t *testing.T) {
 	assert.True(t, isAllowedInvoiceLogo(""))

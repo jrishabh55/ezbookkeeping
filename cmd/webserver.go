@@ -593,7 +593,7 @@ func startWebServer(c *core.CliContext) error {
 	publicApiRoute.Use(bindMiddleware(middlewares.RequestLog, config))
 	{
 		publicApiRoute.GET("/invoices/view.json", bindApi(api.Invoices.InvoicePublicViewHandler, config))
-		// phase 7 registers publicApiRoute.GET("/invoices/pdf", ...) here
+		publicApiRoute.GET("/invoices/pdf", bindPdf(api.Invoices.InvoicePublicPdfHandler, config))
 	}
 
 	// The short link printed on invoices and emails: /i/<token> opens the desktop document page (it renders on phones too)
