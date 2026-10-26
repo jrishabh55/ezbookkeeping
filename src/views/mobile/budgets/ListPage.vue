@@ -30,7 +30,7 @@
                           :key="budget.id"
                           v-for="budget in displayBudgets">
                 <template #footer>
-                    <div>{{ tt('Spent') }}: {{ formatAmount(getSpentAmount(budget), budget.currency) }} · {{ tt('Remaining') }}: {{ formatAmount(getRemainingAmount(budget), budget.currency) }} · {{ tt(getPeriodDisplayName(budget)) }}</div>
+                    <div>{{ tt('Spent') }}: {{ formatAmount(getSpentAmount(budget), budget.currency) }} · {{ tt('Remaining') }}: {{ formatAmount(getRemainingAmount(budget), budget.currency) }} · {{ tt(getPeriodDisplayName(budget)) }}<span v-if="budget.hidden"> · {{ tt('Hidden') }}</span></div>
                     <f7-progressbar :progress="getProgressPercentage(budget)" :color="getF7ProgressColor(budget)"></f7-progressbar>
                 </template>
                 <f7-swipeout-actions :left="textDirection === TextDirection.RTL"
@@ -90,6 +90,7 @@ const { showAlert, showToast, routeBackOnError } = useI18nUIComponents();
 const {
     loading,
     showHidden,
+    allBudgets,
     displayBudgets,
     noAvailableBudget,
     loadBudgetProgresses,
@@ -115,10 +116,10 @@ function getF7ProgressColor(budget: Budget): string {
     const color: BudgetProgressColor = getProgressColor(budget);
 
     switch (color) {
-        case 'orange':
-            return 'orange';
-        case 'warning':
+        case 'orange': // warning threshold crossed
             return 'yellow';
+        case 'warning': // alert threshold crossed
+            return 'orange';
         case 'error':
             return 'red';
         default:
@@ -135,7 +136,7 @@ function init(): void {
 
     budgetsStore.loadAllBudgets({ force: false }).then(() => {
         loading.value = false;
-        loadBudgetProgresses(displayBudgets.value);
+        loadBudgetProgresses(allBudgets.value);
     }).catch(error => {
         if (error.processed) {
             loading.value = false;
@@ -156,13 +157,13 @@ function reload(done?: () => void): void {
             showToast('Budget list has been updated');
         }
 
-        loadBudgetProgresses(displayBudgets.value);
+        loadBudgetProgresses(allBudgets.value);
     }).catch(error => {
         done?.();
 
         if (error.isUpToDate) {
             showToast('Budget list is up to date');
-            loadBudgetProgresses(displayBudgets.value);
+            loadBudgetProgresses(allBudgets.value);
         } else if (!error.processed) {
             showToast(error.message || error);
         }

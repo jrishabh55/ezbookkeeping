@@ -165,6 +165,7 @@ const { tt } = useI18n();
 const {
     loading,
     showHidden,
+    allBudgets,
     displayBudgets,
     noAvailableBudget,
     loadBudgetProgresses,
@@ -186,7 +187,7 @@ function init(): void {
     budgetsStore.loadAllBudgets({ force: false }).then(() => {
         loading.value = false;
 
-        loadBudgetProgresses(displayBudgets.value);
+        loadBudgetProgresses(allBudgets.value);
     }).catch(error => {
         loading.value = false;
 
@@ -206,12 +207,12 @@ function reload(force: boolean): void {
             snackbar.value?.showMessage('Budget list has been updated');
         }
 
-        loadBudgetProgresses(displayBudgets.value);
+        loadBudgetProgresses(allBudgets.value);
     }).catch(error => {
         loading.value = false;
 
         if (error && error.isUpToDate) {
-            loadBudgetProgresses(displayBudgets.value);
+            loadBudgetProgresses(allBudgets.value);
         }
 
         if (!error.processed) {
@@ -226,7 +227,7 @@ function add(): void {
             snackbar.value?.showMessage(result.message);
         }
 
-        loadBudgetProgresses(displayBudgets.value);
+        loadBudgetProgresses(allBudgets.value);
     }).catch(error => {
         if (error) {
             snackbar.value?.showError(error);
@@ -243,7 +244,7 @@ function edit(budget: Budget): void {
             snackbar.value?.showMessage(result.message);
         }
 
-        loadBudgetProgresses(displayBudgets.value);
+        loadBudgetProgresses(allBudgets.value);
     }).catch(error => {
         if (error) {
             snackbar.value?.showError(error);
