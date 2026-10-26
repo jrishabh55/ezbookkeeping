@@ -1063,7 +1063,15 @@ func (s *InvoiceService) SetInvoicePublicToken(c core.Context, uid int64, invoic
 		token = generated
 	}
 
-	err := s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	if err := s.saveInvoicePublicToken(c, uid, invoiceId, token); err != nil {
+		return "", err
+	}
+
+	return token, nil
+}
+
+func (s *InvoiceService) saveInvoicePublicToken(c core.Context, uid int64, invoiceId int64, token string) error {
+	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
 		updatedRows, err := sess.Cols("public_token", "updated_unix_time").Where("uid=? AND deleted=? AND invoice_id=?", uid, false, invoiceId).
 			Update(&models.Invoice{PublicToken: token, UpdatedUnixTime: time.Now().Unix()})
 
@@ -1075,12 +1083,6 @@ func (s *InvoiceService) SetInvoicePublicToken(c core.Context, uid int64, invoic
 
 		return nil
 	})
-
-	if err != nil {
-		return "", err
-	}
-
-	return token, nil
 }
 
 // GetInvoiceByPublicToken returns the invoice behind a public link with its lines, the amount received and the

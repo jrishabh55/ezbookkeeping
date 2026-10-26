@@ -65,6 +65,9 @@ func invoiceEmailValues(profile *models.InvoiceProfile, invoice *models.Invoice,
 
 func renderInvoiceEmail(profile *models.InvoiceProfile, invoice *models.Invoice, received int64, publicURL string, subject, body *string) (*invoiceemail.Result, error) {
 	subjectTemplate, bodyTemplate := invoiceemail.EffectiveTemplates(profile.EmailSubjectTemplate, profile.EmailBodyTemplate)
+	if profile.EmailSubjectTemplate == "" && profile.BusinessName == "" {
+		subjectTemplate, bodyTemplate = invoiceemail.PresetWithoutBusinessName()
+	}
 	if subject != nil {
 		subjectTemplate = *subject
 	}
@@ -146,8 +149,10 @@ func (s *InvoiceService) SendInvoiceWithContent(c core.Context, uid, invoiceID i
 	if err != nil {
 		return err
 	}
-	if invoice.PublicToken == "" {
-		token, err := s.SetInvoicePublicToken(c, uid, invoiceID, true)
+	// Render with a provisional token first; the link is only persisted once the email is known to render.
+	newToken := invoice.PublicToken == ""
+	if newToken {
+		token, err := generateInvoicePublicToken()
 		if err != nil {
 			return err
 		}
@@ -186,6 +191,11 @@ func (s *InvoiceService) SendInvoiceWithContent(c core.Context, uid, invoiceID i
 	pdf, err := invoicepdf.Render(profile, invoice, lines, received, publicURL)
 	if err != nil {
 		return err
+	}
+	if newToken {
+		if err := s.saveInvoicePublicToken(c, uid, invoiceID, invoice.PublicToken); err != nil {
+			return err
+		}
 	}
 	err = s.SendMail(&mail.MailMessage{To: to, Subject: rendered.Subject, Body: rendered.EmailHTML, Attachments: []mail.MailAttachment{{Name: invoicepdf.FileName(invoice.Number, invoice.DueDate), Content: pdf}}})
 	if err != nil {

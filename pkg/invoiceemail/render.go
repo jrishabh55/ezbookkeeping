@@ -46,6 +46,23 @@ var catalog = []Variable{
 }
 var documentTemplate = htmltemplate.Must(htmltemplate.New("invoice_email").Parse(emailtemplates.InvoiceEmailDocument))
 
+var emptyInline = regexp.MustCompile(`<(strong|b|em|i|u|span)>\s*</(strong|b|em|i|u|span)>`)
+var repeatedBreaks = regexp.MustCompile(`(<br/>\s*){2,}`)
+var edgeBreaks = regexp.MustCompile(`(<p[^>]*>)\s*<br/>|<br/>\s*(</p>)`)
+var emptyParagraph = regexp.MustCompile(`<p[^>]*>\s*</p>`)
+
+// tidyEmptyValues removes the blank lines left by empty variables, e.g. a footer without phone or website.
+// ponytail: also collapses intentional double line breaks; track empty spans in writeNode if that matters.
+func tidyEmptyValues(body string) string {
+	body = emptyInline.ReplaceAllString(body, "")
+	body = repeatedBreaks.ReplaceAllString(body, "<br/>")
+	for previous := ""; previous != body; {
+		previous = body
+		body = edgeBreaks.ReplaceAllString(body, "$1$2")
+	}
+	return emptyParagraph.ReplaceAllString(body, "")
+}
+
 var tokens = regexp.MustCompile(`\{\{\s*([^{}]+?)\s*\}\}`)
 
 func knownKey(key string) bool {
@@ -64,6 +81,12 @@ func EffectiveTemplates(subject, body string) (string, string) {
 		return DefaultSubjectTemplate, DefaultBodyTemplate
 	}
 	return subject, body
+}
+
+// PresetWithoutBusinessName drops the business phrasing from the built-in preset, as the old fixed email did.
+func PresetWithoutBusinessName() (string, string) {
+	return strings.Replace(DefaultSubjectTemplate, " from {{business_name}}", "", 1),
+		strings.Replace(DefaultBodyTemplate, `<span data-invoice-variable="business_name">{{business_name}}</span> sent you an invoice`, "You have received an invoice", 1)
 }
 
 // ValidateSubject checks the template and expanded subject without interpreting inserted values again.
@@ -129,7 +152,7 @@ func Render(subject, body string, values map[string]string) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	return renderEmailDocument(resolvedSubject, resolvedBody, values)
+	return renderEmailDocument(resolvedSubject, tidyEmptyValues(resolvedBody), values)
 }
 
 func renderEmailDocument(subject, body string, values map[string]string) (*Result, error) {
@@ -209,6 +232,9 @@ func plainText(node *xhtml.Node) string {
 	return result.String()
 }
 func escapedText(text string) string {
+	if strings.TrimSpace(text) == "" && strings.Contains(text, "\n") {
+		return " " // source formatting between tags, not a line break
+	}
 	return strings.ReplaceAll(html.EscapeString(strings.ReplaceAll(text, "\r\n", "\n")), "\n", "<br/>")
 }
 func safeURL(value string) bool {
@@ -259,6 +285,9 @@ func writeNode(out *strings.Builder, node *xhtml.Node, values map[string]string)
 		label, err := expand(plainText(node), values)
 		if err != nil {
 			return err
+		}
+		if strings.TrimSpace(label) == "" {
+			return fmt.Errorf("invoice button text must not be empty")
 		}
 		align := alignment(node)
 		if align == "" {

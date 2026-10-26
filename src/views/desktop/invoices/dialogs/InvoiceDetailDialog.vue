@@ -277,7 +277,7 @@ function load(): void {
 
     Promise.all([
         invoicesStore.getInvoice({ invoiceId: invoiceId.value }),
-        invoicesStore.loadInvoiceProfile({ force: false }),
+        invoicesStore.loadInvoiceProfile({ force: true }),
         accountsStore.loadAllAccounts({ force: false })
     ]).then(([loadedInvoice, loadedProfile]) => {
         invoice.value = loadedInvoice;

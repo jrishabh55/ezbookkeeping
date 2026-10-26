@@ -112,3 +112,23 @@ func TestPlainTextLegacyRenderingKeepsTextLiteralAndNonemptyParagraphs(t *testin
 	require.Contains(t, result.BodyHTML, "₹750.00")
 	require.Contains(t, result.EmailHTML, result.BodyHTML)
 }
+
+// Dropping the no-business preset, the empty-value tidy, the formatting-whitespace rule or the empty-button check breaks this test.
+func TestRenderHandlesEmptyValuesFormattingWhitespaceAndEmptyButtons(t *testing.T) {
+	values := testValues()
+	values["business_name"], values["business_address"], values["business_website"] = "", "", ""
+	subject, body := PresetWithoutBusinessName()
+	result, err := Render(subject, body, values)
+	require.NoError(t, err)
+	require.Equal(t, "Invoice INV-42", result.Subject)
+	require.Contains(t, result.BodyHTML, "You have received an invoice")
+	require.NotContains(t, result.BodyHTML, "<br/>")
+	require.NotContains(t, result.BodyHTML, "<strong></strong>")
+
+	sanitized, err := SanitizeTemplate("<ul>\n<li>a</li>\n</ul><p>x</p>\n<p>y<br>z</p>")
+	require.NoError(t, err)
+	require.Equal(t, "<ul> <li>a</li> </ul><p>x</p> <p>y<br/>z</p>", sanitized)
+
+	_, err = SanitizeTemplate(`<div data-invoice-button="true"> </div>`)
+	require.Error(t, err)
+}

@@ -235,6 +235,24 @@ func TestInvoiceEmailLegacySendEscapesTextAndFailedRichSendPreservesTimestamp(t 
 	require.Len(t, fake.messages, 2)
 }
 
+// Creating the public link before the template renders breaks this test.
+func TestInvoiceEmailRejectedTemplateDoesNotPublishInvoice(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	withSmtpEnabled(t)
+	customer := createTestCustomer(t, uid)
+	invoice := createTestInvoice(t, uid, customer.CustomerId, "PRIVATE-1", 100000)
+	service := *Invoices
+	service.ServiceUsingMailer.container = &invoiceEmailCaptureMailer{}
+	require.Error(t, service.SendInvoiceWithContent(ctx, uid, invoice.InvoiceId, "recipient@example.com", "Invoice", nil, stringPointer("<p>{{unknown}}</p>")))
+	reloaded, _, err := Invoices.GetInvoice(ctx, uid, invoice.InvoiceId)
+	require.NoError(t, err)
+	require.Empty(t, reloaded.PublicToken)
+	require.NoError(t, service.SendInvoiceWithContent(ctx, uid, invoice.InvoiceId, "recipient@example.com", "Invoice", nil, stringPointer("<p>ok</p>")))
+	reloaded, _, err = Invoices.GetInvoice(ctx, uid, invoice.InvoiceId)
+	require.NoError(t, err)
+	require.NotEmpty(t, reloaded.PublicToken)
+}
+
 func TestInvoiceEmailValuesUseSettledPaymentCurrencyAndPaidTolerance(t *testing.T) {
 	invoice := &models.Invoice{Currency: "USD", Total: 100000, InvoiceDate: "2026-04-23", DueDate: "2026-04-30", BillToName: "Fallback name"}
 	values := invoiceEmailValues(&models.InvoiceProfile{}, invoice, 25000, "https://example.com/i/real")

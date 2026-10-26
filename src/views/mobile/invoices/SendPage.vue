@@ -67,7 +67,7 @@ const sendRequest = ref<InvoiceSendForm & { bodyHtml: string }>({ id: '', to: ''
 function init(): void {
     Promise.all([
         invoicesStore.getInvoice({ invoiceId: invoiceId.value }),
-        invoicesStore.loadInvoiceProfile({ force: false })
+        invoicesStore.loadInvoiceProfile({ force: true })
     ]).then(([loadedInvoice, loadedProfile]) => {
         invoice.value = loadedInvoice;
         profile.value = loadedProfile;
