@@ -5,6 +5,8 @@ import { useI18n } from '@/locales/helpers.ts';
 import { useAccountsStore } from '@/stores/account.ts';
 import { useInvoicesStore } from '@/stores/invoice.ts';
 
+import services from '@/lib/services.ts';
+
 import type { TextualYearMonthDay } from '@/core/datetime.ts';
 import { type Invoice, type InvoicePayment, type InvoiceProfile, INVOICE_CURRENCY } from '@/models/invoice.ts';
 
@@ -95,6 +97,15 @@ export function useInvoiceDetailPageBase() {
         return navigator.clipboard.writeText(publicLinkUrl.value).then(() => true).catch(() => false);
     }
 
+    // the server-rendered PDF; the response is an attachment, so the new tab turns into a download
+    function downloadInvoicePdf(): void {
+        if (!invoice.value) {
+            return;
+        }
+
+        window.open(services.getInvoicePdfUrlWithToken(invoice.value.id), '_blank');
+    }
+
     return {
         // states
         loading,
@@ -116,5 +127,7 @@ export function useInvoiceDetailPageBase() {
         printInvoice,
         setPublicLink,
         copyPublicLink
+,
+        downloadInvoicePdf
     };
 }

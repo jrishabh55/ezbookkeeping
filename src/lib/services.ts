@@ -1225,5 +1225,9 @@ export default {
         } else {
             return pictureUrl + '?' + params.join('&');
         }
+    },
+    // the server renders the invoice PDF; like /pictures, the route reads the token from the query string so a plain link works
+    getInvoicePdfUrlWithToken(invoiceId: string): string {
+        return `${getBasePath()}/invoices/pdf/${invoiceId}?token=${getCurrentToken()}`;
     }
 };

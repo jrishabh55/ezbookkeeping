@@ -45,6 +45,11 @@
                     <v-icon :icon="mdiShareVariantOutline" />
                     <v-tooltip activator="parent">{{ tt('Share Link') }}</v-tooltip>
                 </v-btn>
+                <v-btn density="comfortable" color="default" variant="text" class="ms-1" :icon="true"
+                       :aria-label="tt('Download PDF')" :disabled="!invoice || loading" @click="downloadInvoicePdf">
+                    <v-icon :icon="mdiDownloadOutline" />
+                    <v-tooltip activator="parent">{{ tt('Download PDF') }}</v-tooltip>
+                </v-btn>
             </template>
 
             <template #content>
@@ -139,6 +144,7 @@ import {
     mdiLockOpenVariantOutline,
     mdiDeleteOutline,
     mdiPrinterOutline,
+    mdiDownloadOutline,
     mdiLinkOff,
     mdiRepeat,
     mdiShareVariantOutline
@@ -187,6 +193,8 @@ const {
     printInvoice,
     setPublicLink,
     copyPublicLink
+,
+    downloadInvoicePdf
 } = useInvoiceDetailPageBase();
 
 const invoicesStore = useInvoicesStore();

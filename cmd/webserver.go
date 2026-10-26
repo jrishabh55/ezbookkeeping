@@ -211,6 +211,13 @@ func startWebServer(c *core.CliContext) error {
 		}
 	}
 
+	// /api/v1 only reads the JWT from the header, so the PDF download link carries the token in the query string like /pictures
+	invoicePdfRoute := router.Group("/invoices/pdf")
+	invoicePdfRoute.Use(bindMiddleware(middlewares.JWTAuthorizationByQueryString(config), config))
+	{
+		invoicePdfRoute.GET("/:id", bindPdf(api.Invoices.InvoicePdfHandler, config))
+	}
+
 	router.GET("/healthz.json", bindApi(api.Healths.HealthStatusHandler, config))
 
 	proxyRoute := router.Group("/proxy")
@@ -770,6 +777,21 @@ func bindImage(fn core.ImageHandlerFunc, config *settings.Config) gin.HandlerFun
 			utils.PrintDataErrorResult(c, "text/text", err)
 		} else {
 			utils.PrintDataSuccessResult(c, contentType, "", result)
+		}
+	}
+}
+
+// bindPdf serves a handler's bytes as a PDF download named by the handler
+func bindPdf(fn core.DataHandlerFunc, config *settings.Config) gin.HandlerFunc {
+	return func(ginCtx *gin.Context) {
+		c := core.WrapWebContext(ginCtx, config.TrustedProxyIPs)
+		result, fileName, err := fn(c)
+
+		if err != nil {
+			utils.PrintDataErrorResult(c, "text/text", err)
+		} else {
+			c.Header("Content-Disposition", "attachment; filename=\""+fileName+"\"")
+			utils.PrintDataSuccessResult(c, "application/pdf", "", result)
 		}
 	}
 }

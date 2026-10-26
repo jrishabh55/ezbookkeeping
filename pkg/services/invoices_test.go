@@ -1,6 +1,7 @@
 package services
 
 import (
+	"bytes"
 	"testing"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/datastore"
 	"github.com/mayswind/ezbookkeeping/pkg/errs"
+	"github.com/mayswind/ezbookkeeping/pkg/invoicepdf"
 	"github.com/mayswind/ezbookkeeping/pkg/models"
 	"github.com/mayswind/ezbookkeeping/pkg/utils"
 	"github.com/mayswind/ezbookkeeping/pkg/uuid"
@@ -606,4 +608,35 @@ func TestInvoicePublicTokenCrossUserUpdateIsRefused(t *testing.T) {
 	viewed, _, _, _, err := Invoices.GetInvoiceByPublicToken(ctx, token)
 	assert.Nil(t, err)
 	assert.Equal(t, invoice.InvoiceId, viewed.InvoiceId)
+}
+
+// the PDF endpoint loads through GetInvoice / GetInvoicePayments / GetProfile, so a foreign id must stop there
+func TestGetInvoiceRejectsOtherUser(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	_, otherUid := newAlertTestUser(t)
+	customer := createTestCustomer(t, uid)
+	invoice := createTestInvoice(t, uid, customer.CustomerId, "CA/2026-27/01", 37000000)
+
+	_, _, err := Invoices.GetInvoice(ctx, otherUid, invoice.InvoiceId)
+	assert.Equal(t, errs.ErrInvoiceNotFound, err)
+
+	_, _, err = Invoices.GetInvoice(ctx, uid, invoice.InvoiceId)
+	assert.Nil(t, err)
+}
+
+func TestRenderInvoicePdfFromServiceData(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	customer := createTestCustomer(t, uid)
+	invoice := createTestInvoice(t, uid, customer.CustomerId, "CA/2026-27/01", 37000000)
+
+	profile, err := Invoices.GetProfile(ctx, uid)
+	assert.Nil(t, err)
+	loaded, lines, err := Invoices.GetInvoice(ctx, uid, invoice.InvoiceId)
+	assert.Nil(t, err)
+	assert.Equal(t, int64(37000000), loaded.Total)
+
+	pdf, err := invoicepdf.Render(profile, loaded, lines, 0, "")
+	assert.Nil(t, err)
+	assert.True(t, bytes.HasPrefix(pdf, []byte("%PDF")))
+	assert.Equal(t, "Invoice_CA_2026-27_01_2026-04-30.pdf", invoicepdf.FileName(loaded.Number, loaded.DueDate))
 }

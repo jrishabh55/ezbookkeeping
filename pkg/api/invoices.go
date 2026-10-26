@@ -5,9 +5,11 @@ import (
 
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/errs"
+	"github.com/mayswind/ezbookkeeping/pkg/invoicepdf"
 	"github.com/mayswind/ezbookkeeping/pkg/log"
 	"github.com/mayswind/ezbookkeeping/pkg/models"
 	"github.com/mayswind/ezbookkeeping/pkg/services"
+	"github.com/mayswind/ezbookkeeping/pkg/utils"
 )
 
 // InvoicesApi represents invoice api
@@ -504,4 +506,51 @@ func (a *InvoicesApi) InvoicePublicViewHandler(c *core.WebContext) (any, *errs.E
 	}
 
 	return invoice.ToPublicInvoiceResponse(lines, received, profile), nil
+}
+
+// InvoicePdfHandler returns the PDF document of one invoice of current user (GET /invoices/pdf/:id, token in query string)
+func (a *InvoicesApi) InvoicePdfHandler(c *core.WebContext) ([]byte, string, *errs.Error) {
+	invoiceId, err := utils.StringToInt64(c.Param("id"))
+
+	if err != nil || invoiceId <= 0 {
+		return nil, "", errs.ErrInvoiceIdInvalid
+	}
+
+	uid := c.GetCurrentUid()
+	invoice, lines, err := a.invoices.GetInvoice(c, uid, invoiceId)
+
+	if err != nil {
+		log.Errorf(c, "[invoices.InvoicePdfHandler] failed to get invoice \"id:%d\" for user \"uid:%d\", because %s", invoiceId, uid, err.Error())
+		return nil, "", errs.Or(err, errs.ErrOperationFailed)
+	}
+
+	payments, err := a.invoices.GetInvoicePayments(c, uid, []int64{invoiceId})
+
+	if err != nil {
+		log.Errorf(c, "[invoices.InvoicePdfHandler] failed to get payments of invoice \"id:%d\" for user \"uid:%d\", because %s", invoiceId, uid, err.Error())
+		return nil, "", errs.Or(err, errs.ErrOperationFailed)
+	}
+
+	profile, err := a.invoices.GetProfile(c, uid)
+
+	if err != nil {
+		log.Errorf(c, "[invoices.InvoicePdfHandler] failed to get invoice profile for user \"uid:%d\", because %s", uid, err.Error())
+		return nil, "", errs.Or(err, errs.ErrOperationFailed)
+	}
+
+	received := int64(0)
+
+	for _, payment := range payments[invoiceId] {
+		received += payment.Amount
+	}
+
+	// TODO: pass the public link built from Invoice.PublicToken as verifyUrl once the public link phase lands
+	pdf, err := invoicepdf.Render(profile, invoice, lines, received, "")
+
+	if err != nil {
+		log.Errorf(c, "[invoices.InvoicePdfHandler] failed to render invoice \"id:%d\" for user \"uid:%d\", because %s", invoiceId, uid, err.Error())
+		return nil, "", errs.ErrOperationFailed
+	}
+
+	return pdf, invoicepdf.FileName(invoice.Number, invoice.DueDate), nil
 }

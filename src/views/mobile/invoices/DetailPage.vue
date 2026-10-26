@@ -70,6 +70,7 @@
                 <f7-actions-button @click="printInvoice">{{ tt('Print / Save PDF') }}</f7-actions-button>
                 <f7-actions-button @click="showRepeatMonthlyPopup = true">{{ tt('Repeat Monthly') }}</f7-actions-button>
                 <f7-actions-button @click="share">{{ tt('Share Link') }}</f7-actions-button>
+                <f7-actions-button @click="downloadInvoicePdf">{{ tt('Download PDF') }}</f7-actions-button>
             </f7-actions-group>
             <f7-actions-group>
                 <f7-actions-button color="red" @click="showDeleteActionSheet = true">{{ tt('Delete') }}</f7-actions-button>
@@ -147,6 +148,8 @@ const {
     printInvoice,
     setPublicLink,
     copyPublicLink
+,
+    downloadInvoicePdf
 } = useInvoiceDetailPageBase();
 
 const invoicesStore = useInvoicesStore();
