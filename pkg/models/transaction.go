@@ -456,6 +456,8 @@ type TransactionInfoResponse struct {
 	Comment              string                                   `json:"comment"`
 	GeoLocation          *TransactionGeoLocationResponse          `json:"geoLocation,omitempty"`
 	Editable             bool                                     `json:"editable"`
+	InvoiceId            string                                   `json:"invoiceId,omitempty"`
+	InvoiceNumber        string                                   `json:"invoiceNumber,omitempty"`
 }
 
 // TransactionCountResponse represents transaction count response

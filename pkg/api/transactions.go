@@ -40,6 +40,7 @@ type TransactionsApi struct {
 	accounts              *services.AccountService
 	users                 *services.UserService
 	alerts                *services.AlertService
+	invoices              *services.InvoiceService
 }
 
 // Initialize a transaction api singleton instance
@@ -61,6 +62,7 @@ var (
 		accounts:              services.Accounts,
 		users:                 services.Users,
 		alerts:                services.Alerts,
+		invoices:              services.Invoices,
 	}
 )
 
@@ -212,6 +214,13 @@ func (a *TransactionsApi) TransactionListHandler(c *core.WebContext) (any, *errs
 		return nil, errs.Or(err, errs.ErrOperationFailed)
 	}
 
+	err = a.fillLinkedInvoices(c, uid, transactionResult)
+
+	if err != nil {
+		log.Errorf(c, "[transactions.TransactionListHandler] failed to get linked invoices for user \"uid:%d\", because %s", uid, err.Error())
+		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+
 	transactionResps := &models.TransactionInfoPageWrapperResponse{
 		Items: transactionResult,
 	}
@@ -300,6 +309,13 @@ func (a *TransactionsApi) TransactionMonthListHandler(c *core.WebContext) (any, 
 
 	if err != nil {
 		log.Errorf(c, "[transactions.TransactionMonthListHandler] failed to assemble transaction result for user \"uid:%d\", because %s", uid, err.Error())
+		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+
+	err = a.fillLinkedInvoices(c, uid, transactionResult)
+
+	if err != nil {
+		log.Errorf(c, "[transactions.TransactionMonthListHandler] failed to get linked invoices for user \"uid:%d\", because %s", uid, err.Error())
 		return nil, errs.Or(err, errs.ErrOperationFailed)
 	}
 
@@ -1239,6 +1255,13 @@ func (a *TransactionsApi) TransactionGetHandler(c *core.WebContext) (any, *errs.
 
 	if transactionGetReq.WithPictures && a.CurrentConfig().EnableTransactionPictures {
 		transactionResp.Pictures = a.GetTransactionPictureInfoResponseList(pictureInfos)
+	}
+
+	err = a.fillLinkedInvoices(c, uid, models.TransactionInfoResponseSlice{transactionResp})
+
+	if err != nil {
+		log.Errorf(c, "[transactions.TransactionGetHandler] failed to get linked invoice for user \"uid:%d\", because %s", uid, err.Error())
+		return nil, errs.Or(err, errs.ErrOperationFailed)
 	}
 
 	return transactionResp, nil
@@ -3328,6 +3351,34 @@ func (a *TransactionsApi) getTransactionResponseListResult(c *core.WebContext, u
 	sort.Sort(result)
 
 	return result, nil
+}
+
+// fillLinkedInvoices sets the invoice id and number on the transactions that are linked to an invoice, with one query for the whole slice
+func (a *TransactionsApi) fillLinkedInvoices(c *core.WebContext, uid int64, transactionResps models.TransactionInfoResponseSlice) error {
+	if len(transactionResps) < 1 {
+		return nil
+	}
+
+	transactionIds := make([]int64, len(transactionResps))
+
+	for i := 0; i < len(transactionResps); i++ {
+		transactionIds[i] = transactionResps[i].Id
+	}
+
+	linkedInvoices, err := a.invoices.GetLinkedInvoicesByTransactionIds(c, uid, transactionIds)
+
+	if err != nil {
+		return err
+	}
+
+	for i := 0; i < len(transactionResps); i++ {
+		if invoice := linkedInvoices[transactionResps[i].Id]; invoice != nil {
+			transactionResps[i].InvoiceId = utils.Int64ToString(invoice.InvoiceId)
+			transactionResps[i].InvoiceNumber = invoice.Number
+		}
+	}
+
+	return nil
 }
 
 func (a *TransactionsApi) getTransactionImportResponse(result *models.TransactionImportResponse) (any, *errs.Error) {
