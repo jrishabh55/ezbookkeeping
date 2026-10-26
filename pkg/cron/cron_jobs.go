@@ -30,3 +30,16 @@ var CreateScheduledTransactionJob = &CronJob{
 		return services.Transactions.CreateScheduledTransactions(c, time.Now().Unix(), c.GetInterval())
 	},
 }
+
+// CreateRecurringInvoicesJob represents the cron job which creates the invoices of recurring invoices that are due
+var CreateRecurringInvoicesJob = &CronJob{
+	Name:        "CreateRecurringInvoices",
+	Description: "Periodically create invoices from recurring invoices whose next date has been reached.",
+	Period: CronJobFixedHourPeriod{
+		Hour: 1,
+	},
+	Run: func(c *core.CronContext) error {
+		// the server's local date, so a user's invoice dated the 15th is created in the early hours of the 15th
+		return services.Invoices.CreateRecurringInvoices(c, time.Now().Format("2006-01-02"))
+	},
+}
