@@ -223,8 +223,7 @@ import type {
     InvoicePayment,
     RecurringInvoiceInfoResponse,
     RecurringInvoiceCreateRequest,
-    RecurringInvoiceModifyRequest
-,
+    RecurringInvoiceModifyRequest,
     InvoicePublicLinkResponse,
     PublicInvoiceResponse,
     InvoiceSendRequest

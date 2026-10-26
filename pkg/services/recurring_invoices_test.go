@@ -2,6 +2,7 @@ package services
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 
@@ -88,6 +89,11 @@ func TestCreateRecurringInvoicesCopiesSourceWithNextNumberAndFreshCustomer(t *te
 	customer.TermsDays = 10
 	assert.Nil(t, Invoices.ModifyCustomer(ctx, customer))
 
+	_, err := Invoices.SetInvoicePublicToken(ctx, uid, source.InvoiceId, true)
+	assert.Nil(t, err)
+	_, err = Invoices.UserDataDB(uid).NewSession(ctx).Cols("sent_unix_time").Where("invoice_id=?", source.InvoiceId).Update(&models.Invoice{SentUnixTime: 1700000000})
+	assert.Nil(t, err)
+
 	recurring := createTestRecurringInvoice(t, uid, source.InvoiceId, 15, "2026-12-15")
 
 	// not due yet: nothing happens
@@ -115,6 +121,8 @@ func TestCreateRecurringInvoicesCopiesSourceWithNextNumberAndFreshCustomer(t *te
 	assert.Equal(t, "Pay by RTGS", generated.Notes)
 	assert.Equal(t, source.Currency, generated.Currency)
 	assert.Equal(t, source.Total, generated.Total)
+	assert.Equal(t, "", generated.PublicToken) // the source's public link and sent time are never inherited
+	assert.Equal(t, int64(0), generated.SentUnixTime)
 	assert.False(t, generated.ClosedManually)
 	assert.Equal(t, 2, len(lines))
 	assert.Equal(t, "Consulting", lines[0].ItemName)
@@ -175,4 +183,29 @@ func TestCreateRecurringInvoicesSkipsDeletedSourceWithoutError(t *testing.T) {
 	all, err := Invoices.GetAllInvoices(ctx, uid)
 	assert.Nil(t, err)
 	assert.Equal(t, 0, len(all))
+}
+
+func TestCatchUpRecurringDate(t *testing.T) {
+	// a stale next date moves to the next occurrence of the day of month on or after today
+	assert.Equal(t, "2026-10-15", catchUpRecurringDate("2026-07-15", 15, "2026-10-01"))
+	assert.Equal(t, "2026-10-15", catchUpRecurringDate("2026-07-15", 15, "2026-10-15"))
+	assert.Equal(t, "2026-11-15", catchUpRecurringDate("2026-07-15", 15, "2026-10-16"))
+	assert.Equal(t, "2027-01-05", catchUpRecurringDate("2026-07-05", 5, "2026-12-31"))
+	// a future next date is left alone
+	assert.Equal(t, "2026-12-15", catchUpRecurringDate("2026-12-15", 15, "2026-10-01"))
+}
+
+func TestModifyRecurringInvoiceEnablingCatchesUpAStaleNextDate(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	customer := createTestCustomer(t, uid)
+	source := createTestInvoice(t, uid, customer.CustomerId, "INV/2026-27/01", 100)
+	recurring := createTestRecurringInvoice(t, uid, source.InvoiceId, 15, "2020-07-15")
+
+	recurring.Enabled = true
+	assert.Nil(t, Invoices.ModifyRecurringInvoice(ctx, recurring))
+
+	reloaded, err := Invoices.GetRecurringInvoice(ctx, uid, recurring.RecurringId)
+	assert.Nil(t, err)
+	assert.True(t, reloaded.NextDate >= time.Now().Format(invoiceDateLayout), reloaded.NextDate)
+	assert.Equal(t, "15", reloaded.NextDate[8:])
 }

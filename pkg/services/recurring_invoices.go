@@ -23,6 +23,28 @@ func nextRecurringDate(date string, dayOfMonth int32) (string, error) {
 	return time.Date(t.Year(), t.Month()+1, int(dayOfMonth), 0, 0, 0, 0, time.UTC).Format(invoiceDateLayout), nil
 }
 
+// catchUpRecurringDate moves a next date that is already in the past to the next occurrence of the day of month
+// on or after today, so re-enabling a paused row does not back-fill one invoice per missed month
+func catchUpRecurringDate(nextDate string, dayOfMonth int32, today string) string {
+	if nextDate >= today {
+		return nextDate
+	}
+
+	t, err := time.Parse(invoiceDateLayout, today)
+
+	if err != nil {
+		return nextDate
+	}
+
+	candidate := time.Date(t.Year(), t.Month(), int(dayOfMonth), 0, 0, 0, 0, time.UTC)
+
+	if candidate.Before(t) {
+		candidate = time.Date(t.Year(), t.Month()+1, int(dayOfMonth), 0, 0, 0, 0, time.UTC)
+	}
+
+	return candidate.Format(invoiceDateLayout)
+}
+
 // validateRecurringInvoice checks the day of month and the next date
 func validateRecurringInvoice(recurring *models.RecurringInvoice) error {
 	if recurring.DayOfMonth < 1 || recurring.DayOfMonth > models.RecurringInvoiceMaxDayOfMonth {
@@ -114,6 +136,10 @@ func (s *InvoiceService) ModifyRecurringInvoice(c core.Context, recurring *model
 
 	if err := validateRecurringInvoice(recurring); err != nil {
 		return err
+	}
+
+	if recurring.Enabled {
+		recurring.NextDate = catchUpRecurringDate(recurring.NextDate, recurring.DayOfMonth, time.Now().Format(invoiceDateLayout))
 	}
 
 	recurring.UpdatedUnixTime = time.Now().Unix()
@@ -239,13 +265,13 @@ func (s *InvoiceService) createRecurringInvoice(c core.Context, recurring *model
 		lines[idx] = &line
 	}
 
-	if err := s.CreateInvoice(c, &invoice, lines); err != nil {
-		return err
-	}
-
 	nextDate, err := nextRecurringDate(recurring.NextDate, recurring.DayOfMonth)
 
 	if err != nil {
+		return err
+	}
+
+	if err := s.prepareNewInvoice(c, &invoice, lines); err != nil {
 		return err
 	}
 
@@ -254,7 +280,12 @@ func (s *InvoiceService) createRecurringInvoice(c core.Context, recurring *model
 	recurring.NextDate = nextDate
 	recurring.UpdatedUnixTime = recurring.LastRunUnixTime
 
+	// the invoice and the row advance commit together, so a crash in between cannot create the same period twice
 	err = s.UserDataDB(recurring.Uid).DoTransaction(c, func(sess *xorm.Session) error {
+		if err := insertInvoice(sess, &invoice, lines); err != nil {
+			return err
+		}
+
 		_, err := sess.Cols("last_invoice_id", "last_run_unix_time", "next_date", "updated_unix_time").
 			Where("uid=? AND recurring_id=?", recurring.Uid, recurring.RecurringId).Update(recurring)
 		return err

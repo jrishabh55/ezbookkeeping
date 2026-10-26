@@ -196,8 +196,7 @@ export function useInvoiceDetailPageBase() {
         formatPaymentDescription,
         printInvoice,
         setPublicLink,
-        copyPublicLink
-,
+        copyPublicLink,
         downloadInvoicePdf,
         buildSendRequest,
         prepareSendRequest,

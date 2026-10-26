@@ -163,8 +163,7 @@ const {
     formatPaymentDescription,
     printInvoice,
     setPublicLink,
-    copyPublicLink
-,
+    copyPublicLink,
     downloadInvoicePdf
 } = useInvoiceDetailPageBase();
 

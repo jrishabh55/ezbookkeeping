@@ -235,8 +235,7 @@ const {
     formatPaymentDescription,
     printInvoice,
     setPublicLink,
-    copyPublicLink
-,
+    copyPublicLink,
     downloadInvoicePdf,
     prepareSendRequest,
     sendInvoice

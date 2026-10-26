@@ -551,6 +551,18 @@ func checkInvoiceNumberUnique(sess *xorm.Session, invoice *models.Invoice) error
 // CreateInvoice saves a new invoice and its lines. Every invoice is created through this method
 // (API today, recurring invoices later).
 func (s *InvoiceService) CreateInvoice(c core.Context, invoice *models.Invoice, lines []*models.InvoiceLine) error {
+	if err := s.prepareNewInvoice(c, invoice, lines); err != nil {
+		return err
+	}
+
+	return s.UserDataDB(invoice.Uid).DoTransaction(c, func(sess *xorm.Session) error {
+		return insertInvoice(sess, invoice, lines)
+	})
+}
+
+// prepareNewInvoice validates, snapshots and resets everything an invoice carries before it is inserted;
+// identity, status, link and sent state never come from a copied source
+func (s *InvoiceService) prepareNewInvoice(c core.Context, invoice *models.Invoice, lines []*models.InvoiceLine) error {
 	if invoice.Uid <= 0 {
 		return errs.ErrUserIdInvalid
 	}
@@ -586,21 +598,27 @@ func (s *InvoiceService) CreateInvoice(c core.Context, invoice *models.Invoice, 
 	invoice.Kind = models.INVOICE_KIND_INVOICE
 	invoice.Deleted = false
 	invoice.ClosedManually = false
+	invoice.PublicToken = ""
+	invoice.SentUnixTime = 0
 	invoice.CreatedUnixTime = time.Now().Unix()
 	invoice.UpdatedUnixTime = invoice.CreatedUnixTime
+	invoice.DeletedUnixTime = 0
 
-	return s.UserDataDB(invoice.Uid).DoTransaction(c, func(sess *xorm.Session) error {
-		if err := checkInvoiceNumberUnique(sess, invoice); err != nil {
-			return err
-		}
+	return nil
+}
 
-		if _, err := sess.Insert(invoice); err != nil {
-			return err
-		}
-
-		_, err := sess.Insert(lines)
+// insertInvoice writes a prepared invoice and its lines inside the caller's transaction
+func insertInvoice(sess *xorm.Session, invoice *models.Invoice, lines []*models.InvoiceLine) error {
+	if err := checkInvoiceNumberUnique(sess, invoice); err != nil {
 		return err
-	})
+	}
+
+	if _, err := sess.Insert(invoice); err != nil {
+		return err
+	}
+
+	_, err := sess.Insert(lines)
+	return err
 }
 
 // ModifyInvoice saves an existing invoice and replaces all of its lines
