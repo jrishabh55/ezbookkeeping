@@ -99,6 +99,8 @@ type Invoice struct {
 	// ponytail: a plain (non-unique) index: empty means "no public link" and would collide under UNIQUE on every
 	// database, while two equal 256-bit random tokens will not happen; works unchanged on SQLite, MySQL and Postgres
 	PublicToken string `xorm:"VARCHAR(43) INDEX(IDX_invoice_public_token) NOT NULL DEFAULT ''"`
+	// when the invoice was last emailed from the app; 0 = never sent
+	SentUnixTime int64 `xorm:"NOT NULL DEFAULT 0"`
 }
 
 // InvoicePublicTokenLength is the length of a public invoice token (32 random bytes, base64url without padding)
@@ -275,6 +277,14 @@ type InvoicePublicViewRequest struct {
 	Token string `form:"token" binding:"max=64"`
 }
 
+// InvoiceSendRequest represents all parameters of emailing an invoice; a blank subject gets the default "Invoice <number> from <business name>"
+type InvoiceSendRequest struct {
+	Id      int64  `json:"id,string" binding:"required,min=1"`
+	To      string `json:"to" binding:"required,notBlank,max=128,validEmail"`
+	Subject string `json:"subject" binding:"max=256"`
+	Message string `json:"message" binding:"max=2048"`
+}
+
 // InvoiceLineResponse represents a view-object of invoice line
 type InvoiceLineResponse struct {
 	ItemName    string `json:"itemName"`
@@ -321,6 +331,7 @@ type InvoiceInfoResponse struct {
 	Lines              []*InvoiceLineResponse    `json:"lines,omitempty"`
 	Payments           []*InvoicePaymentResponse `json:"payments,omitempty"`
 	PublicToken        string                    `json:"publicToken,omitempty"`
+	SentUnixTime       int64                     `json:"sentUnixTime,omitempty"`
 }
 
 // PublicInvoiceProfileResponse is the part of the invoice profile a recipient of a public link may see
@@ -430,6 +441,7 @@ func (i *Invoice) ToInvoiceInfoResponse(lines []*InvoiceLine, payments []*Transa
 		Subtotal:           i.Subtotal,
 		TaxAmount:          i.TaxAmount,
 		ClosedManually:     i.ClosedManually,
+		SentUnixTime:       i.SentUnixTime,
 	}
 
 	for _, payment := range payments {

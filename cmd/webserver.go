@@ -580,6 +580,7 @@ func startWebServer(c *core.CliContext) error {
 			apiV1Route.POST("/recurring_invoices/modify.json", bindApi(api.Invoices.RecurringInvoiceModifyHandler, config))
 			apiV1Route.POST("/recurring_invoices/delete.json", bindApi(api.Invoices.RecurringInvoiceDeleteHandler, config))
 			apiV1Route.POST("/invoices/public_link/update.json", bindApi(api.Invoices.InvoicePublicLinkUpdateHandler, config))
+			apiV1Route.POST("/invoices/send.json", bindApi(api.Invoices.InvoiceSendHandler, config))
 
 			// System
 			apiV1Route.GET("/systems/version.json", bindApi(api.Systems.VersionHandler, config))

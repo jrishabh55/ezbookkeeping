@@ -1,6 +1,7 @@
 package services
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
@@ -15,9 +16,11 @@ import (
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/datastore"
 	"github.com/mayswind/ezbookkeeping/pkg/errs"
+	"github.com/mayswind/ezbookkeeping/pkg/invoicepdf"
 	"github.com/mayswind/ezbookkeeping/pkg/mail"
 	"github.com/mayswind/ezbookkeeping/pkg/models"
 	"github.com/mayswind/ezbookkeeping/pkg/settings"
+	"github.com/mayswind/ezbookkeeping/pkg/templates"
 	"github.com/mayswind/ezbookkeeping/pkg/utils"
 	"github.com/mayswind/ezbookkeeping/pkg/uuid"
 )
@@ -56,6 +59,143 @@ func (s *InvoiceService) InvoicePublicUrl(token string) string {
 	}
 
 	return s.CurrentConfig().RootUrl + "i/" + url.PathEscape(token)
+}
+
+// invoiceEmailSubject is the default subject of an invoice email: "Invoice <number> from <business name>"
+// (just "Invoice <number>" when the profile has no business name); the UI prefills the same text
+func invoiceEmailSubject(number string, businessName string) string {
+	if businessName == "" {
+		return "Invoice " + number
+	}
+
+	return "Invoice " + number + " from " + businessName
+}
+
+// invoiceEmailParagraphs splits the plain-text message into non-empty lines; the template escapes each one
+func invoiceEmailParagraphs(message string) []string {
+	var paragraphs []string
+
+	for _, line := range strings.Split(message, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			paragraphs = append(paragraphs, line)
+		}
+	}
+
+	return paragraphs
+}
+
+// buildInvoiceEmailBody renders templates/email/invoice.tmpl: the message as paragraphs, the "View invoice" button
+// and a one-line summary. ponytail: the fixed strings are English; the recipient's locale is unknown.
+func buildInvoiceEmailBody(subject string, message string, publicUrl string, invoice *models.Invoice, received int64) (string, error) {
+	tmpl, err := templates.GetTemplate(templates.TEMPLATE_INVOICE_EMAIL)
+
+	if err != nil {
+		return "", err
+	}
+
+	var body bytes.Buffer
+	err = tmpl.Execute(&body, map[string]any{
+		"Subject":    subject,
+		"Paragraphs": invoiceEmailParagraphs(message),
+		"ViewUrl":    publicUrl,
+		"Number":     invoice.Number,
+		"AmountDue":  invoicepdf.FormatAmount(invoicepdf.BalanceDue(invoice, received), invoice.Currency),
+		"DueDate":    invoicepdf.FormatDate(invoice.DueDate),
+	})
+
+	if err != nil {
+		return "", err
+	}
+
+	return body.String(), nil
+}
+
+// SendInvoice emails an invoice to one recipient: the message, a "View invoice" button to the public link (created
+// when the invoice has none yet) and the PDF attached. It is refused when SMTP is not enabled, a cross-user id is
+// not found, and a failed send leaves SentUnixTime untouched.
+func (s *InvoiceService) SendInvoice(c core.Context, uid int64, invoiceId int64, to string, subject string, message string) error {
+	if !s.CurrentConfig().EnableSMTP {
+		return errs.ErrSMTPServerNotEnabled
+	}
+
+	if uid <= 0 {
+		return errs.ErrUserIdInvalid
+	}
+
+	if invoiceId <= 0 {
+		return errs.ErrInvoiceIdInvalid
+	}
+
+	invoice, lines, err := s.GetInvoice(c, uid, invoiceId)
+
+	if err != nil {
+		return err
+	}
+
+	if invoice.PublicToken == "" {
+		token, err := s.SetInvoicePublicToken(c, uid, invoiceId, true)
+
+		if err != nil {
+			return err
+		}
+
+		invoice.PublicToken = token
+	}
+
+	payments, err := s.GetInvoicePayments(c, uid, []int64{invoiceId})
+
+	if err != nil {
+		return err
+	}
+
+	received := int64(0)
+
+	for _, payment := range payments[invoiceId] {
+		received += payment.Amount
+	}
+
+	profile, err := s.GetProfile(c, uid)
+
+	if err != nil {
+		return err
+	}
+
+	if strings.TrimSpace(subject) == "" {
+		subject = invoiceEmailSubject(invoice.Number, profile.BusinessName)
+	}
+
+	publicUrl := s.InvoicePublicUrl(invoice.PublicToken)
+	pdf, err := invoicepdf.Render(profile, invoice, lines, received, publicUrl)
+
+	if err != nil {
+		return err
+	}
+
+	body, err := buildInvoiceEmailBody(subject, message, publicUrl, invoice, received)
+
+	if err != nil {
+		return err
+	}
+
+	err = s.SendMail(&mail.MailMessage{
+		To:          to,
+		Subject:     subject,
+		Body:        body,
+		Attachments: []mail.MailAttachment{{Name: invoicepdf.FileName(invoice.Number, invoice.DueDate), Content: pdf}},
+	})
+
+	if err != nil {
+		return err
+	}
+
+	now := time.Now().Unix()
+
+	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+		_, err := sess.Cols("sent_unix_time", "updated_unix_time").Where("uid=? AND deleted=? AND invoice_id=?", uid, false, invoiceId).
+			Update(&models.Invoice{SentUnixTime: now, UpdatedUnixTime: now})
+
+		return err
+	})
 }
 
 // GetProfile returns the invoice profile of user, or defaults when the user has not saved one yet

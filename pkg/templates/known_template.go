@@ -6,6 +6,7 @@ type KnownTemplate string
 const (
 	TEMPLATE_VERIFY_EMAIL                            KnownTemplate = "email/verify_email"
 	TEMPLATE_PASSWORD_RESET                          KnownTemplate = "email/password_reset"
+	TEMPLATE_INVOICE_EMAIL                           KnownTemplate = "email/invoice"
 	SYSTEM_PROMPT_TRANSACTION_TEXT_RECOGNITION       KnownTemplate = "prompt/transaction_text_recognition"
 	SYSTEM_PROMPT_RECEIPT_IMAGE_RECOGNITION          KnownTemplate = "prompt/receipt_image_recognition"
 	SYSTEM_PROMPT_BATCH_TRANSACTION_TEXT_RECOGNITION KnownTemplate = "prompt/batch_transaction_text_recognition"

@@ -555,6 +555,34 @@ func (a *InvoicesApi) InvoicePdfHandler(c *core.WebContext) ([]byte, string, *er
 	return pdf, invoicepdf.FileName(invoice.Number, invoice.DueDate), nil
 }
 
+// InvoiceSendHandler emails an invoice of current user (public link in the body, PDF attached) and returns the invoice with its sent time
+func (a *InvoicesApi) InvoiceSendHandler(c *core.WebContext) (any, *errs.Error) {
+	var req models.InvoiceSendRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Warnf(c, "[invoices.InvoiceSendHandler] parse request failed, because %s", err.Error())
+		return nil, errs.NewIncompleteOrIncorrectSubmissionError(err)
+	}
+
+	uid := c.GetCurrentUid()
+
+	if err := a.invoices.SendInvoice(c, uid, req.Id, req.To, req.Subject, req.Message); err != nil {
+		log.Errorf(c, "[invoices.InvoiceSendHandler] failed to send invoice \"id:%d\" for user \"uid:%d\", because %s", req.Id, uid, err.Error())
+		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+
+	resp, err := a.getInvoiceResponse(c, uid, req.Id)
+
+	if err != nil {
+		log.Errorf(c, "[invoices.InvoiceSendHandler] failed to get invoice \"id:%d\" for user \"uid:%d\" after sending, because %s", req.Id, uid, err.Error())
+		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+
+	log.Infof(c, "[invoices.InvoiceSendHandler] user \"uid:%d\" has sent invoice \"id:%d\"", uid, req.Id)
+
+	return resp, nil
+}
+
 // InvoicePublicPdfHandler returns the PDF document behind a public link (GET /api/public/invoices/pdf?token=); no login
 func (a *InvoicesApi) InvoicePublicPdfHandler(c *core.WebContext) ([]byte, string, *errs.Error) {
 	var req models.InvoicePublicViewRequest

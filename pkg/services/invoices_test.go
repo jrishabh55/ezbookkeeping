@@ -654,6 +654,63 @@ func TestInvoicePublicUrlUsesConfiguredRootUrl(t *testing.T) {
 	assert.Equal(t, "", Invoices.InvoicePublicUrl(""))
 }
 
+// withSmtpEnabled flips the test config's EnableSMTP flag for one test; the mailer container stays empty,
+// so an actual send fails with ErrSMTPServerNotEnabled after everything before it ran
+func withSmtpEnabled(t *testing.T) {
+	t.Helper()
+	config := settings.Container.GetCurrentConfig()
+	original := config.EnableSMTP
+	config.EnableSMTP = true
+	t.Cleanup(func() { config.EnableSMTP = original })
+}
+
+func TestSendInvoiceWithSmtpDisabledReturnsSmtpErrorBeforeTouchingTheInvoice(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	customer := createTestCustomer(t, uid)
+	invoice := createTestInvoice(t, uid, customer.CustomerId, "CA/2026-27/01", 100000)
+
+	err := Invoices.SendInvoice(ctx, uid, invoice.InvoiceId, "accounts@qubertech.com", "", "Please find the invoice attached.")
+	assert.Equal(t, errs.ErrSMTPServerNotEnabled, err)
+
+	reloaded, _, err := Invoices.GetInvoice(ctx, uid, invoice.InvoiceId)
+	assert.Nil(t, err)
+	assert.Equal(t, "", reloaded.PublicToken)
+	assert.Equal(t, int64(0), reloaded.SentUnixTime)
+}
+
+func TestSendInvoiceCrossUserIsRefused(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	_, otherUid := newAlertTestUser(t)
+	customer := createTestCustomer(t, uid)
+	invoice := createTestInvoice(t, uid, customer.CustomerId, "CA/2026-27/01", 100000)
+	withSmtpEnabled(t)
+
+	err := Invoices.SendInvoice(ctx, otherUid, invoice.InvoiceId, "accounts@qubertech.com", "", "")
+	assert.Equal(t, errs.ErrInvoiceNotFound, err)
+
+	reloaded, _, err := Invoices.GetInvoice(ctx, uid, invoice.InvoiceId)
+	assert.Nil(t, err)
+	assert.Equal(t, "", reloaded.PublicToken)
+	assert.Equal(t, int64(0), reloaded.SentUnixTime)
+}
+
+func TestSendInvoiceFailedSendLeavesSentUnixTimeUntouched(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	customer := createTestCustomer(t, uid)
+	invoice := createTestInvoice(t, uid, customer.CustomerId, "CA/2026-27/01", 100000)
+	withSmtpEnabled(t)
+	t.Chdir("../..") // the email template is read relative to the repository root
+
+	// no mailer is configured in tests, so the send itself fails after the token, PDF and body were built
+	err := Invoices.SendInvoice(ctx, uid, invoice.InvoiceId, "accounts@qubertech.com", "", "Line one\nLine two")
+	assert.Equal(t, errs.ErrSMTPServerNotEnabled, err)
+
+	reloaded, _, err := Invoices.GetInvoice(ctx, uid, invoice.InvoiceId)
+	assert.Nil(t, err)
+	assert.Equal(t, models.InvoicePublicTokenLength, len(reloaded.PublicToken)) // "Send" creates the public link
+	assert.Equal(t, int64(0), reloaded.SentUnixTime)
+}
+
 func TestGetInvoiceByUnknownPublicTokenIsNotFound(t *testing.T) {
 	newAlertTestUser(t)
 

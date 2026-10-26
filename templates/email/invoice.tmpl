@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Type" content="text/html;charset=utf-8"/>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui, viewport-fit=cover">
+    <title>{{.Subject}}</title>
+</head>
+<body style="margin: 0; padding: 0 10px 0 10px">
+    <table width="480px" border="0" cellspacing="0" cellpadding="0" style="width: 480px; border: 0; border-collapse: collapse; margin: 10px auto 5px auto; font-family: Arial, Helvetica, sans-serif; font-size: 14px; line-height: 1.5; color: #111827">
+        <tr>
+            <td style="padding: 10px 0 10px 0">
+                {{range .Paragraphs}}<p style="margin: 0 0 12px 0">{{.}}</p>
+                {{end}}
+            </td>
+        </tr>
+        <tr>
+            <td height="50" style="line-height: 50px; text-align: center">
+                <a href="{{.ViewUrl}}" style="width: 100%; color: #fff; background-color: #3d86f5; display: block; text-decoration: none; border-radius: 4px">
+                    <strong>View invoice</strong>
+                </a>
+            </td>
+        </tr>
+        <tr>
+            <td style="padding: 16px 0 10px 0; border-top: solid 1px #e5e7eb; color: #6b7280; font-size: 13px">
+                Invoice {{.Number}} &middot; Amount due {{.AmountDue}} &middot; Due {{.DueDate}}
+            </td>
+        </tr>
+        <tr>
+            <td style="padding-bottom: 20px">
+                <small style="color: #888; word-break: break-all">{{.ViewUrl}}</small>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
