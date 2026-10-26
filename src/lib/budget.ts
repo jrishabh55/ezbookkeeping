@@ -1,6 +1,7 @@
 import type { BudgetProgressResponse } from '@/models/budget.ts';
 
-export type BudgetProgressColor = 'success' | 'warning' | 'error';
+// matches the 4 states the pre-refactor desktop budget list page distinguished
+export type BudgetProgressColor = 'primary' | 'orange' | 'warning' | 'error';
 
 // the server can return a percentage outside 0-100 (e.g. once a budget is overspent), clamp it for display
 export function clampBudgetProgressPercentage(percentage: number): number {
@@ -11,21 +12,25 @@ export function clampBudgetProgressPercentage(percentage: number): number {
     return Math.min(100, Math.max(0, percentage));
 }
 
-// overspent takes priority over alert, which takes priority over warning
+// overspent takes priority over alert, which takes priority over warning, which takes priority over no threshold crossed
 export function getBudgetProgressColor(progress: Pick<BudgetProgressResponse, 'isOverspent' | 'isAlert' | 'isWarning'> | undefined): BudgetProgressColor {
     if (!progress) {
-        return 'success';
+        return 'primary';
     }
 
     if (progress.isOverspent) {
         return 'error';
     }
 
-    if (progress.isAlert || progress.isWarning) {
+    if (progress.isAlert) {
         return 'warning';
     }
 
-    return 'success';
+    if (progress.isWarning) {
+        return 'orange';
+    }
+
+    return 'primary';
 }
 
 export function isValidBudgetThreshold(threshold: number): boolean {

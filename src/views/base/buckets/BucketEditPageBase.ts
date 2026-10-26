@@ -2,9 +2,21 @@ import { ref, computed } from 'vue';
 
 import { useUserStore } from '@/stores/user.ts';
 
+import type { ColorValue } from '@/core/color.ts';
 import { Bucket, BucketStatus } from '@/models/bucket.ts';
 
 import { isValidBucketColor } from '@/lib/bucket.ts';
+
+// matches the color the current (pre-refactor) bucket dialogs default a new bucket to;
+// intentionally not the model's own createNewBucket() default ('000000' / DEFAULT_ICON_COLOR),
+// which other code may still rely on
+const DEFAULT_NEW_BUCKET_COLOR: ColorValue = '4CAF50';
+
+function createNewBucket(currency: string): Bucket {
+    const newBucket = Bucket.createNewBucket(currency);
+    newBucket.color = DEFAULT_NEW_BUCKET_COLOR;
+    return newBucket;
+}
 
 export function useBucketEditPageBase() {
     const userStore = useUserStore();
@@ -13,7 +25,7 @@ export function useBucketEditPageBase() {
     const clientSessionId = ref<string>('');
     const loading = ref<boolean>(false);
     const submitting = ref<boolean>(false);
-    const bucket = ref<Bucket>(Bucket.createNewBucket(userStore.currentUserDefaultCurrency));
+    const bucket = ref<Bucket>(createNewBucket(userStore.currentUserDefaultCurrency));
 
     const title = computed<string>(() => editBucketId.value ? 'Edit Bucket' : 'Add Bucket');
     const saveButtonTitle = computed<string>(() => editBucketId.value ? 'Save' : 'Add');

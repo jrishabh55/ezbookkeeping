@@ -24,24 +24,26 @@ describe('clampBudgetProgressPercentage', () => {
 });
 
 describe('getBudgetProgressColor', () => {
-    test('returns success when no progress is available yet', () => {
-        expect(getBudgetProgressColor(undefined)).toBe('success');
+    test('returns primary when no progress is available yet', () => {
+        expect(getBudgetProgressColor(undefined)).toBe('primary');
     });
 
-    test('returns success when under every threshold', () => {
-        expect(getBudgetProgressColor({ isOverspent: false, isAlert: false, isWarning: false })).toBe('success');
+    test('returns primary when under every threshold', () => {
+        expect(getBudgetProgressColor({ isOverspent: false, isAlert: false, isWarning: false })).toBe('primary');
     });
 
-    test('returns warning once the warning threshold is crossed', () => {
-        expect(getBudgetProgressColor({ isOverspent: false, isAlert: false, isWarning: true })).toBe('warning');
+    test('returns orange once the warning threshold is crossed', () => {
+        expect(getBudgetProgressColor({ isOverspent: false, isAlert: false, isWarning: true })).toBe('orange');
     });
 
-    test('returns warning once the alert threshold is crossed', () => {
+    test('returns warning once the alert threshold is crossed, even if warning is also set', () => {
+        expect(getBudgetProgressColor({ isOverspent: false, isAlert: true, isWarning: false })).toBe('warning');
         expect(getBudgetProgressColor({ isOverspent: false, isAlert: true, isWarning: true })).toBe('warning');
     });
 
     test('overspent takes priority over alert and warning', () => {
         expect(getBudgetProgressColor({ isOverspent: true, isAlert: true, isWarning: true })).toBe('error');
+        expect(getBudgetProgressColor({ isOverspent: true, isAlert: false, isWarning: false })).toBe('error');
     });
 });
 
