@@ -41,6 +41,15 @@ func TestIsAllowedInvoiceLogo(t *testing.T) {
 	assert.False(t, isAllowedInvoiceLogo("https://example.com/logo.png"))
 }
 
+func TestPublicInvoiceResponseOmitsHiddenLogoWithoutRemovingUpload(t *testing.T) {
+	profile := &models.InvoiceProfile{LogoDataUrl: "data:image/png;base64,stored-upload"}
+	invoice := &models.Invoice{}
+	assert.Equal(t, profile.LogoDataUrl, invoice.ToPublicInvoiceResponse(nil, 0, profile).Profile.LogoDataUrl)
+	assert.NoError(t, json.Unmarshal([]byte(`{"HideLogo":true}`), profile))
+	assert.Empty(t, invoice.ToPublicInvoiceResponse(nil, 0, profile).Profile.LogoDataUrl)
+	assert.Equal(t, "data:image/png;base64,stored-upload", profile.ToInvoiceProfileResponse().LogoDataUrl)
+}
+
 func TestValidateInvoiceTax(t *testing.T) {
 	taxType, err := validateInvoiceTax("", 0)
 	assert.Nil(t, err)

@@ -6,9 +6,10 @@
             </span>
             <v-spacer />
             <v-btn color="primary" variant="tonal" :prepend-icon="mdiPrinterOutline" @click="print">{{ tt('Print') }}</v-btn>
-            <v-btn color="primary" variant="tonal" :prepend-icon="mdiDownloadOutline" :href="pdfUrl" target="_blank">{{ tt('Download PDF') }}</v-btn>
+            <v-btn color="primary" variant="tonal" :prepend-icon="mdiDownloadOutline" :loading="downloadingPdf" @click="downloadPdf">{{ tt('Download PDF') }}</v-btn>
         </div>
 
+        <div class="public-invoice-message" role="alert" v-if="downloadError">{{ tt('Unable to download invoice PDF') }}</div>
         <div class="public-invoice-paper" v-if="invoice && profile">
             <invoice-document :invoice="invoice" :profile="profile" />
         </div>
@@ -31,7 +32,9 @@ import { useI18n } from '@/locales/helpers.ts';
 import { Invoice, InvoiceProfile } from '@/models/invoice.ts';
 
 import services from '@/lib/services.ts';
-import { formatInvoiceDocumentAmount, getInvoiceDisplayBalanceDue, getInvoiceDisplayStatus, getTodayTextualDate, printInvoiceDocument } from '@/lib/invoice.ts';
+import { readInvoicePdf } from '@/lib/invoicePdf.ts';
+import { startDownloadFile } from '@/lib/ui/common.ts';
+import { formatInvoiceDocumentAmount, getInvoicePdfFileName, getInvoiceDisplayBalanceDue, getInvoiceDisplayStatus, getTodayTextualDate, printInvoiceDocument } from '@/lib/invoice.ts';
 
 // A recipient's view of one invoice: no app chrome, no stores, no login. The data comes from the
 // unauthenticated public endpoint, which returns the document fields only (no ids, payments or token).
@@ -42,13 +45,31 @@ const props = defineProps<{
 const { tt } = useI18n();
 
 const loading = ref<boolean>(true);
+const downloadingPdf = ref<boolean>(false);
+const downloadError = ref<boolean>(false);
 const invoice = ref<Invoice | null>(null);
 const profile = ref<InvoiceProfile | null>(null);
 
 const isPaid = computed<boolean>(() => !!invoice.value && getInvoiceDisplayStatus(invoice.value, getTodayTextualDate()) === 'paid');
 const balanceDue = computed<number>(() => invoice.value ? getInvoiceDisplayBalanceDue(invoice.value) : 0);
-// the server-rendered PDF by the same token; the response is an attachment, so the new tab turns into a download
-const pdfUrl = computed<string>(() => services.getPublicInvoicePdfUrl(props.token));
+async function downloadPdf(): Promise<void> {
+    const current = invoice.value;
+    if (!current || downloadingPdf.value) {
+        return;
+    }
+
+    downloadingPdf.value = true;
+    downloadError.value = false;
+    try {
+        const response = await services.getPublicInvoicePdf(props.token);
+        const pdf = await readInvoicePdf(response.data);
+        startDownloadFile(`${getInvoicePdfFileName(current.number, current.dueDate)}.pdf`, pdf);
+    } catch {
+        downloadError.value = true;
+    } finally {
+        downloadingPdf.value = false;
+    }
+}
 
 function print(): void {
     if (invoice.value) {

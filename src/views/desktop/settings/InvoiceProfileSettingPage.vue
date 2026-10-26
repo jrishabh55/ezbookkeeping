@@ -11,15 +11,16 @@
                     <v-avatar rounded="lg" variant="tonal" size="100" class="me-4 cursor-pointer">
                         <v-img :src="newProfile.logoDataUrl" v-if="newProfile.logoDataUrl"></v-img>
                         <v-icon size="48" :icon="mdiImageOutline" v-else />
-                        <v-menu activator="parent" width="200" location="bottom" offset="14px">
-                            <v-list>
-                                <v-list-item :disabled="saving" :title="tt('Update Logo')" @click="logoInput?.click()"></v-list-item>
-                                <v-list-item :disabled="!newProfile.logoDataUrl || saving" :title="tt('Remove Logo')" @click="newProfile.logoDataUrl = ''"></v-list-item>
-                            </v-list>
-                        </v-menu>
+
                     </v-avatar>
                     <div class="d-flex flex-column justify-center">
                         <span class="text-body-large">{{ tt('These details are printed on every invoice.') }}</span>
+                        <div class="d-flex ga-2 mt-2">
+                            <v-btn size="small" variant="tonal" :disabled="saving" @click="logoInput?.click()">{{ tt(newProfile.logoDataUrl ? 'Update Logo' : 'Upload Logo') }}</v-btn>
+                            <v-btn size="small" variant="text" :disabled="saving" v-if="newProfile.logoDataUrl" @click="newProfile.logoDataUrl = ''">{{ tt('Remove Logo') }}</v-btn>
+                        </div>
+                        <v-switch :label="tt('Show logo on invoices')" :disabled="saving || !newProfile.logoDataUrl"
+                                  :model-value="!newProfile.hideLogo" @update:model-value="newProfile.hideLogo = !$event" />
                     </div>
                 </v-card-text>
 

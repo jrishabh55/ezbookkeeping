@@ -36,6 +36,7 @@ type InvoiceProfile struct {
 	Phone            string `xorm:"VARCHAR(32) NOT NULL"`
 	Website          string `xorm:"VARCHAR(128) NOT NULL"`
 	LogoDataUrl      string `xorm:"MEDIUMTEXT"`
+	HideLogo         bool   `xorm:"NOT NULL DEFAULT false"`
 	DefaultNotes     string `xorm:"VARCHAR(2048) NOT NULL"`
 	NumberPrefix     string `xorm:"VARCHAR(16) NOT NULL"`
 	DefaultTermsDays int32  `xorm:"NOT NULL"`
@@ -167,6 +168,7 @@ type InvoiceProfileUpdateRequest struct {
 	Phone            string `json:"phone" binding:"max=32"`
 	Website          string `json:"website" binding:"max=128"`
 	LogoDataUrl      string `json:"logoDataUrl" binding:"max=350000"`
+	HideLogo         bool   `json:"hideLogo"`
 	DefaultNotes     string `json:"defaultNotes" binding:"max=2048"`
 	NumberPrefix     string `json:"numberPrefix" binding:"required,notBlank,max=16"`
 	DefaultTermsDays int32  `json:"defaultTermsDays" binding:"min=0,max=365"`
@@ -182,6 +184,7 @@ type InvoiceProfileResponse struct {
 	Phone            string `json:"phone"`
 	Website          string `json:"website"`
 	LogoDataUrl      string `json:"logoDataUrl"`
+	HideLogo         bool   `json:"hideLogo"`
 	DefaultNotes     string `json:"defaultNotes"`
 	NumberPrefix     string `json:"numberPrefix"`
 	DefaultTermsDays int32  `json:"defaultTermsDays"`
@@ -414,6 +417,7 @@ func (p *InvoiceProfile) ToInvoiceProfileResponse() *InvoiceProfileResponse {
 		Phone:            p.Phone,
 		Website:          p.Website,
 		LogoDataUrl:      p.LogoDataUrl,
+		HideLogo:         p.HideLogo,
 		DefaultNotes:     p.DefaultNotes,
 		NumberPrefix:     p.NumberPrefix,
 		DefaultTermsDays: p.DefaultTermsDays,
@@ -514,6 +518,10 @@ func (i *Invoice) ToInvoiceInfoResponse(lines []*InvoiceLine, payments []*Invoic
 
 // ToPublicInvoiceResponse returns the view-object served to a recipient of the public link
 func (i *Invoice) ToPublicInvoiceResponse(lines []*InvoiceLine, received int64, profile *InvoiceProfile) *PublicInvoiceResponse {
+	logoDataUrl := profile.LogoDataUrl
+	if profile.HideLogo {
+		logoDataUrl = ""
+	}
 	resp := &PublicInvoiceResponse{
 		Number:             i.Number,
 		BillToName:         i.BillToName,
@@ -540,7 +548,7 @@ func (i *Invoice) ToPublicInvoiceResponse(lines []*InvoiceLine, received int64, 
 			AddressLines: profile.AddressLines,
 			Phone:        profile.Phone,
 			Website:      profile.Website,
-			LogoDataUrl:  profile.LogoDataUrl,
+			LogoDataUrl:  logoDataUrl,
 			Gstin:        profile.Gstin,
 		},
 	}

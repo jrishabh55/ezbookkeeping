@@ -21,9 +21,15 @@
                     <template #footer>
                         <div class="display-flex align-items-center padding-top-half">
                             <image-box style="height: 48px; width: auto" alt="logo" :src="newProfile.logoDataUrl" v-if="newProfile.logoDataUrl"></image-box>
-                            <f7-button class="margin-left-half" :text="tt('Update Logo')" @click="logoInput?.click()"></f7-button>
+                            <f7-button class="margin-left-half" :text="tt(newProfile.logoDataUrl ? 'Update Logo' : 'Upload Logo')" @click="logoInput?.click()"></f7-button>
                             <f7-button class="margin-left-half" color="red" :text="tt('Remove Logo')" @click="newProfile.logoDataUrl = ''" v-if="newProfile.logoDataUrl"></f7-button>
                         </div>
+                    </template>
+                </f7-list-item>
+                <f7-list-item :title="tt('Show logo on invoices')">
+                    <template #after>
+                        <f7-toggle :checked="!newProfile.hideLogo" :disabled="saving || !newProfile.logoDataUrl"
+                                   @toggle:change="newProfile.hideLogo = !$event"></f7-toggle>
                     </template>
                 </f7-list-item>
                 <f7-list-input type="text" autocomplete="off" clear-button

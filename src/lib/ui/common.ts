@@ -188,6 +188,8 @@ export function startDownloadFile(fileName: string, fileData: Blob): void {
     document.body.appendChild(dataLink);
 
     dataLink.click();
+    dataLink.remove();
+    setTimeout(() => URL.revokeObjectURL(dataObjectUrl), 60_000);
 }
 
 export function compressJpgImageByQuality(blob: Blob, qualityType: ImageUploadQualityType): Promise<Blob> {

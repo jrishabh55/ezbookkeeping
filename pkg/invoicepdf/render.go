@@ -16,18 +16,18 @@ import (
 	"github.com/mayswind/ezbookkeeping/pkg/models"
 )
 
-// DejaVu Sans 2.37 (fonts/LICENSE); the core PDF fonts are WinAnsi only and cannot print ₹
+// DejaVu Serif 2.37 (fonts/LICENSE); the core PDF fonts are WinAnsi only and cannot print ₹
 //
-//go:embed fonts/DejaVuSans.ttf
+//go:embed fonts/DejaVuSerif.ttf
 var fontRegular []byte
 
-//go:embed fonts/DejaVuSans-Bold.ttf
+//go:embed fonts/DejaVuSerif-Bold.ttf
 var fontBold []byte
 
 const (
-	pageMargin   = 18.0 // mm, A4
+	pageMargin   = 8.0 // mm, A4
 	bottomMargin = 20.0
-	lineHeight   = 4.8 // mm at 10pt, like the document's 13px / 1.35
+	lineHeight   = 4.0 // mm at 10pt, like the document's 13px / 1.35
 	baseFontSize = 10.0
 	blockGap     = 3.0 // the document's 12px spacer between address and contact lines
 	pxToMm       = 0.2646
@@ -64,6 +64,12 @@ func Render(profile *models.InvoiceProfile, invoice *models.Invoice, lines []*mo
 
 	pageWidth, pageHeight := pdf.GetPageSize()
 	r := &renderer{pdf: pdf, left: pageMargin, right: pageWidth - pageMargin, width: pageWidth - 2*pageMargin, breakY: pageHeight - bottomMargin}
+
+	pdf.SetHeaderFunc(func() {
+		pdf.SetDrawColor(colorAccent.r, colorAccent.g, colorAccent.b)
+		pdf.SetLineWidth(1.6)
+		pdf.Rect(0.8, 0.8, pageWidth-1.6, pageHeight-1.6, "D")
+	})
 
 	if verifyUrl != "" {
 		pdf.SetFooterFunc(func() {
@@ -187,7 +193,7 @@ func (r *renderer) logo(dataUrl string) (width float64, height float64, ok bool)
 		return 0, 0, false
 	}
 
-	// the document shows the logo at its natural size, capped at 48px high and 320px wide
+	// the document shows the logo at its natural size, capped at 48px high and 260px wide
 	width, height = float64(config.Width)*pxToMm, float64(config.Height)*pxToMm
 	scale := 1.0
 
@@ -195,7 +201,7 @@ func (r *renderer) logo(dataUrl string) (width float64, height float64, ok bool)
 		scale = maxHeight / height
 	}
 
-	if maxWidth := 320 * pxToMm; width*scale > maxWidth {
+	if maxWidth := 260 * pxToMm; width*scale > maxWidth {
 		scale = maxWidth / width
 	}
 
@@ -207,7 +213,11 @@ func (r *renderer) drawHeader(profile *models.InvoiceProfile) float64 {
 	top := pageMargin
 	bottom := top
 
-	if width, height, ok := r.logo(profile.LogoDataUrl); ok {
+	logo := profile.LogoDataUrl
+	if profile.HideLogo {
+		logo = ""
+	}
+	if width, height, ok := r.logo(logo); ok {
 		r.pdf.ImageOptions("logo", r.left, top, width, height, false, fpdf.ImageOptions{}, 0, "")
 		bottom = top + height
 	}
@@ -242,6 +252,23 @@ func (r *renderer) drawHeader(profile *models.InvoiceProfile) float64 {
 	return max(bottom, y)
 }
 
+// titleFrame draws the reference invoice's inset, curved corners.
+func (r *renderer) titleFrame(x, y, width, height, radius float64) {
+	p := r.pdf
+	k := radius * 0.5522847498
+	p.MoveTo(x+radius, y)
+	p.LineTo(x+width-radius, y)
+	p.CurveBezierCubicTo(x+width-radius, y+k, x+width-k, y+radius, x+width, y+radius)
+	p.LineTo(x+width, y+height-radius)
+	p.CurveBezierCubicTo(x+width-k, y+height-radius, x+width-radius, y+height-k, x+width-radius, y+height)
+	p.LineTo(x+radius, y+height)
+	p.CurveBezierCubicTo(x+radius, y+height-k, x+k, y+height-radius, x, y+height-radius)
+	p.LineTo(x, y+radius)
+	p.CurveBezierCubicTo(x+k, y+radius, x+radius, y+k, x+radius, y)
+	p.ClosePath()
+	p.DrawPath("D")
+}
+
 // drawBanner prints "Invoice" in a double-bordered box between two double rules; it returns the y below it
 func (r *renderer) drawBanner(y float64) float64 {
 	const (
@@ -261,8 +288,8 @@ func (r *renderer) drawBanner(y float64) float64 {
 
 	r.pdf.SetDrawColor(colorAccent.r, colorAccent.g, colorAccent.b)
 	r.pdf.SetLineWidth(0.5)
-	r.pdf.RoundedRect(boxX, y, boxWidth, boxHeight, 1.5, "1234", "D")
-	r.pdf.RoundedRect(boxX-outlineGap, y-outlineGap, boxWidth+2*outlineGap, boxHeight+2*outlineGap, 2.5, "1234", "D")
+	r.titleFrame(boxX, y, boxWidth, boxHeight, 2.5)
+	r.titleFrame(boxX-outlineGap, y-outlineGap, boxWidth+2*outlineGap, boxHeight+2*outlineGap, 3.5)
 
 	r.pdf.SetXY(boxX, y)
 	r.pdf.CellFormat(boxWidth, boxHeight, "Invoice", "", 0, "C", false, 0, "")
@@ -375,8 +402,10 @@ func (r *renderer) drawLinesHeader(columns lineColumns, y float64) float64 {
 		x += columns.quantity
 	}
 
-	r.cell(x, y+padding, columns.rate, "Rate", "R")
-	x += columns.rate
+	if columns.rate > 0 {
+		r.cell(x, y+padding, columns.rate, "Rate", "R")
+		x += columns.rate
+	}
 	r.cell(x, y+padding, columns.amount, "Amount", "R")
 
 	y += lineHeight + 2*padding
@@ -389,11 +418,12 @@ func (r *renderer) drawLinesHeader(columns lineColumns, y float64) float64 {
 func (r *renderer) drawLines(invoice *models.Invoice, lines []*models.InvoiceLine, y float64) float64 {
 	const padding = 3.0 // 12px
 
-	columns := lineColumns{rate: 34, amount: 34}
+	columns := lineColumns{amount: 34}
 
 	for _, line := range lines {
 		if line.Quantity != quantityScale {
-			columns.quantity = 24
+			columns.quantity = 30
+			columns.rate = 30
 		}
 
 		if line.Sac != "" {
@@ -410,53 +440,60 @@ func (r *renderer) drawLines(invoice *models.Invoice, lines []*models.InvoiceLin
 		r.font(true, baseFontSize, colorBlack)
 		nameLines := r.wrap(line.ItemName, columns.services-3)
 		r.font(false, baseFontSize, colorMuted)
-		descriptionLines := []string{}
-
+		textLines := append([]string{}, nameLines...)
 		if line.Description != "" {
-			descriptionLines = r.wrap(line.Description, columns.services-3)
+			textLines = append(textLines, r.wrap(line.Description, columns.services-3)...)
 		}
 
-		height := float64(len(nameLines)+len(descriptionLines))*lineHeight + 2*padding
-
-		if y+height > r.breakY {
-			y = r.ensureSpace(y, height)
-			y = r.drawLinesHeader(columns, y)
+		height := float64(len(textLines))*lineHeight + 2*padding
+		freshPageSpace := r.breakY - pageMargin - lineHeight - 4
+		// Keep an ordinary row together; a row taller than a page must be split.
+		if height <= freshPageSpace && y+height > r.breakY {
+			r.pdf.AddPage()
+			y = r.drawLinesHeader(columns, pageMargin)
 		}
 
-		textY := y + padding
-		r.font(true, baseFontSize, colorBlack)
+		for start := 0; start < len(textLines); {
+			capacity := int((r.breakY - y - 2*padding) / lineHeight)
+			if capacity < 1 {
+				r.pdf.AddPage()
+				y = r.drawLinesHeader(columns, pageMargin)
+				capacity = int((r.breakY - y - 2*padding) / lineHeight)
+			}
+			end := min(start+capacity, len(textLines))
+			textY := y + padding
+			for i := start; i < end; i++ {
+				if i < len(nameLines) {
+					r.font(true, baseFontSize, colorBlack)
+				} else {
+					r.font(false, baseFontSize, colorMuted)
+				}
+				r.cell(r.left, textY, columns.services-3, textLines[i], "L")
+				textY += lineHeight
+			}
 
-		for _, text := range nameLines {
-			r.cell(r.left, textY, columns.services-3, text, "L")
-			textY += lineHeight
+			// A continued description does not repeat the line's charge.
+			if start == 0 {
+				r.font(false, baseFontSize, colorBlack)
+				x := r.left + columns.services
+				if columns.sac > 0 {
+					r.cell(x, y+padding, columns.sac, line.Sac, "R")
+					x += columns.sac
+				}
+				if columns.quantity > 0 {
+					r.cell(x, y+padding, columns.quantity, formatQuantity(line.Quantity), "R")
+					x += columns.quantity
+				}
+				if columns.rate > 0 {
+					r.cell(x, y+padding, columns.rate, formatAmount(line.Rate, invoice.Currency), "R")
+					x += columns.rate
+				}
+				r.cell(x, y+padding, columns.amount, formatAmount(line.Amount, invoice.Currency), "R")
+			}
+			y += float64(end-start)*lineHeight + 2*padding
+			r.dottedLine(y)
+			start = end
 		}
-
-		r.font(false, baseFontSize, colorMuted)
-
-		for _, text := range descriptionLines {
-			r.cell(r.left, textY, columns.services-3, text, "L")
-			textY += lineHeight
-		}
-
-		r.font(false, baseFontSize, colorBlack)
-		x := r.left + columns.services
-
-		if columns.sac > 0 {
-			r.cell(x, y+padding, columns.sac, line.Sac, "R")
-			x += columns.sac
-		}
-
-		if columns.quantity > 0 {
-			r.cell(x, y+padding, columns.quantity, formatQuantity(line.Quantity), "R")
-			x += columns.quantity
-		}
-
-		r.cell(x, y+padding, columns.rate, formatAmount(line.Rate, invoice.Currency), "R")
-		x += columns.rate
-		r.cell(x, y+padding, columns.amount, formatAmount(line.Amount, invoice.Currency), "R")
-
-		y += height
-		r.dottedLine(y)
 	}
 
 	return y

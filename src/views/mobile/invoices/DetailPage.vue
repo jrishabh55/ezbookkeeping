@@ -15,6 +15,9 @@
         </f7-list>
 
         <template v-if="!loading && invoice && profile">
+            <f7-block>
+                <f7-button fill :disabled="downloadingPdf" @click="downloadPdf">{{ tt('Download PDF') }}</f7-button>
+            </f7-block>
             <f7-list strong inset dividers class="margin-vertical">
                 <f7-list-item :title="tt('Status')" :after="tt(displayStatusName)"></f7-list-item>
                 <f7-list-item :title="tt('Sent on')" :after="sentOnText" v-if="sentOnText"></f7-list-item>
@@ -78,10 +81,10 @@
                 <f7-actions-button @click="f7router.navigate(`/invoice/edit?id=${invoiceId}`)">{{ tt('Edit') }}</f7-actions-button>
                 <f7-actions-button @click="f7router.navigate(`/invoice/add?duplicateFrom=${invoiceId}`)">{{ tt('Duplicate') }}</f7-actions-button>
                 <f7-actions-button @click="toggleClosed">{{ invoice?.closedManually ? tt('Reopen') : tt('Mark as Paid') }}</f7-actions-button>
-                <f7-actions-button @click="printInvoice">{{ tt('Print / Save PDF') }}</f7-actions-button>
+                <f7-actions-button @click="printInvoice">{{ tt('Print') }}</f7-actions-button>
                 <f7-actions-button @click="showRepeatMonthlyPopup = true">{{ tt('Repeat Monthly') }}</f7-actions-button>
                 <f7-actions-button @click="share">{{ tt('Share Link') }}</f7-actions-button>
-                <f7-actions-button @click="downloadInvoicePdf">{{ tt('Download PDF') }}</f7-actions-button>
+                <f7-actions-button @click="downloadPdf" :disabled="downloadingPdf">{{ tt('Download PDF') }}</f7-actions-button>
                 <f7-actions-button @click="f7router.navigate(`/invoice/send?id=${invoiceId}`)">{{ tt('Send') }}</f7-actions-button>
             </f7-actions-group>
             <f7-actions-group>
@@ -146,6 +149,7 @@ const { showToast, showPrompt, routeBackOnError } = useI18nUIComponents();
 const {
     loading,
     updating,
+    downloadingPdf,
     invoice,
     profile,
     suggestions,
@@ -166,6 +170,10 @@ const {
     copyPublicLink,
     downloadInvoicePdf
 } = useInvoiceDetailPageBase();
+
+function downloadPdf(): void {
+    downloadInvoicePdf().catch(error => showToast(error.message || error));
+}
 
 const invoicesStore = useInvoicesStore();
 const accountsStore = useAccountsStore();

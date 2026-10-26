@@ -3,6 +3,7 @@ package invoicepdf
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/json"
 	"image"
 	"image/color"
 	"image/png"
@@ -133,6 +134,20 @@ func TestRenderWithoutLogoOrFooter(t *testing.T) {
 	assert.True(t, bytes.HasPrefix(pdf, []byte("%PDF")))
 }
 
+func TestRenderHidesLogoWithoutRemovingUpload(t *testing.T) {
+	profile := sampleProfile()
+	profile.LogoDataUrl = testLogoDataUrl(t)
+	invoice, lines := sampleInvoice()
+	visible, err := Render(profile, invoice, lines, 0, "")
+	assert.NoError(t, err)
+	assert.True(t, bytes.Contains(visible, []byte("/Subtype /Image")))
+	assert.NoError(t, json.Unmarshal([]byte(`{"HideLogo":true}`), profile))
+	hidden, err := Render(profile, invoice, lines, 0, "")
+	assert.NoError(t, err)
+	assert.False(t, bytes.Contains(hidden, []byte("/Subtype /Image")))
+	assert.NotEmpty(t, profile.LogoDataUrl)
+}
+
 func TestRenderIgnoresBadLogo(t *testing.T) {
 	invoice, lines := sampleInvoice()
 
@@ -157,6 +172,31 @@ func TestRenderManyLinesSpansPages(t *testing.T) {
 	assert.Nil(t, err)
 	// more than one page object
 	assert.True(t, bytes.Count(pdf, []byte("/Type /Page\n")) >= 2 || bytes.Count(pdf, []byte("/Type /Page/")) >= 2 || bytes.Count(pdf, []byte("/Type /Page ")) >= 2)
+}
+
+func TestRenderOneDescriptionWithManyLineBreaksFlowsAcrossPages(t *testing.T) {
+	invoice, lines := sampleInvoice()
+	lines = lines[:1]
+	// 400 characters is within the API's 512-character description limit.
+	lines[0].Description = strings.Repeat("x\n", 200)
+	pdf, err := Render(sampleProfile(), invoice, lines, 0, "")
+	assert.NoError(t, err)
+	pages := bytes.Count(pdf, []byte("/Type /Page\n")) + bytes.Count(pdf, []byte("/Type /Page/")) + bytes.Count(pdf, []byte("/Type /Page "))
+	assert.GreaterOrEqual(t, pages, 4, "a tall row must continue on additional pages rather than extending below the page")
+	if _, err := exec.LookPath("pdftotext"); err != nil {
+		return
+	}
+	file := filepath.Join(t.TempDir(), "multiline.pdf")
+	assert.NoError(t, os.WriteFile(file, pdf, 0644))
+	out, err := exec.Command("pdftotext", file, "-").Output()
+	assert.NoError(t, err)
+	count := 0
+	for _, word := range strings.Fields(string(out)) {
+		if word == "x" {
+			count++
+		}
+	}
+	assert.Equal(t, 200, count, "all description lines must remain readable in the PDF")
 }
 
 func TestFormatTaxRate(t *testing.T) {

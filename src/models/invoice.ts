@@ -18,6 +18,7 @@ export interface InvoiceProfileInfoResponse {
     readonly phone: string;
     readonly website: string;
     readonly logoDataUrl: string;
+    readonly hideLogo: boolean;
     readonly defaultNotes: string;
     readonly numberPrefix: string;
     readonly defaultTermsDays: number;
@@ -192,6 +193,7 @@ export class InvoiceProfile implements InvoiceProfileInfoResponse {
     public phone: string = '';
     public website: string = '';
     public logoDataUrl: string = '';
+    public hideLogo: boolean = false;
     public defaultNotes: string = '';
     public numberPrefix: string = 'INV';
     public defaultTermsDays: number = 7;
@@ -205,6 +207,7 @@ export class InvoiceProfile implements InvoiceProfileInfoResponse {
         this.phone = other.phone;
         this.website = other.website;
         this.logoDataUrl = other.logoDataUrl;
+        this.hideLogo = other.hideLogo ?? false;
         this.defaultNotes = other.defaultNotes;
         this.numberPrefix = other.numberPrefix;
         this.defaultTermsDays = other.defaultTermsDays;
@@ -220,6 +223,7 @@ export class InvoiceProfile implements InvoiceProfileInfoResponse {
             phone: this.phone,
             website: this.website,
             logoDataUrl: this.logoDataUrl,
+            hideLogo: this.hideLogo,
             defaultNotes: this.defaultNotes,
             numberPrefix: this.numberPrefix.trim(),
             defaultTermsDays: this.defaultTermsDays,

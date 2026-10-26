@@ -13,6 +13,7 @@ import {
 import { isEquals } from '@/lib/common.ts';
 import services, { type ApiResponsePromise } from '@/lib/services.ts';
 import logger from '@/lib/logger.ts';
+import { readInvoicePdf } from '@/lib/invoicePdf.ts';
 
 export const useInvoicesStore = defineStore('invoices', () => {
     const allInvoices = ref<Invoice[]>([]);
@@ -266,6 +267,16 @@ export const useInvoicesStore = defineStore('invoices', () => {
         });
     }
 
+    async function getInvoicePdf(invoiceId: string): Promise<Blob> {
+        try {
+            const response = await services.getInvoicePdf(invoiceId);
+            return await readInvoicePdf(response.data);
+        } catch (error) {
+            logger.error('Unable to download invoice PDF', error);
+            throw { message: 'Unable to download invoice PDF' };
+        }
+    }
+
     return {
         // states
         allInvoices,
@@ -291,6 +302,7 @@ export const useInvoicesStore = defineStore('invoices', () => {
         loadAllCustomers,
         saveCustomer,
         deleteCustomer,
+        getInvoicePdf,
         loadInvoiceProfile,
         updateInvoiceProfile,
         loadAllRecurringInvoices,

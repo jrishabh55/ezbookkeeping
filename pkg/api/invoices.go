@@ -126,6 +126,7 @@ func (a *InvoicesApi) InvoiceProfileUpdateHandler(c *core.WebContext) (any, *err
 		Phone:            req.Phone,
 		Website:          req.Website,
 		LogoDataUrl:      req.LogoDataUrl,
+		HideLogo:         req.HideLogo,
 		DefaultNotes:     req.DefaultNotes,
 		NumberPrefix:     strings.TrimSpace(req.NumberPrefix),
 		DefaultTermsDays: req.DefaultTermsDays,
@@ -538,7 +539,7 @@ func (a *InvoicesApi) InvoicePublicViewHandler(c *core.WebContext) (any, *errs.E
 	return invoice.ToPublicInvoiceResponse(lines, received, profile), nil
 }
 
-// InvoicePdfHandler returns the PDF document of one invoice of current user (GET /invoices/pdf/:id, token in query string)
+// InvoicePdfHandler returns the PDF document of one invoice of current user (GET /api/v1/invoices/pdf/:id).
 func (a *InvoicesApi) InvoicePdfHandler(c *core.WebContext) ([]byte, string, *errs.Error) {
 	invoiceId, err := utils.StringToInt64(c.Param("id"))
 

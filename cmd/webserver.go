@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"mime"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -211,7 +212,7 @@ func startWebServer(c *core.CliContext) error {
 		}
 	}
 
-	// /api/v1 only reads the JWT from the header, so the PDF download link carries the token in the query string like /pictures
+	// Keep legacy query-token PDF links working; the UI downloads through the authenticated /api/v1 route.
 	invoicePdfRoute := router.Group("/invoices/pdf")
 	invoicePdfRoute.Use(bindMiddleware(middlewares.JWTAuthorizationByQueryString(config), config))
 	{
@@ -566,6 +567,7 @@ func startWebServer(c *core.CliContext) error {
 			apiV1Route.POST("/customers/delete.json", bindApi(api.Invoices.CustomerDeleteHandler, config))
 			apiV1Route.GET("/invoices/list.json", bindApi(api.Invoices.InvoiceListHandler, config))
 			apiV1Route.GET("/invoices/get.json", bindApi(api.Invoices.InvoiceGetHandler, config))
+			apiV1Route.GET("/invoices/pdf/:id", bindPdf(api.Invoices.InvoicePdfHandler, config))
 			apiV1Route.POST("/invoices/add.json", bindApi(api.Invoices.InvoiceCreateHandler, config))
 			apiV1Route.POST("/invoices/modify.json", bindApi(api.Invoices.InvoiceModifyHandler, config))
 			apiV1Route.POST("/invoices/delete.json", bindApi(api.Invoices.InvoiceDeleteHandler, config))
@@ -791,7 +793,7 @@ func bindPdf(fn core.DataHandlerFunc, config *settings.Config) gin.HandlerFunc {
 		if err != nil {
 			utils.PrintDataErrorResult(c, "text/text", err)
 		} else {
-			c.Header("Content-Disposition", "attachment; filename=\""+fileName+"\"")
+			c.Header("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": fileName}))
 			utils.PrintDataSuccessResult(c, "application/pdf", "", result)
 		}
 	}

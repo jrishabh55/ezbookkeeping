@@ -1,7 +1,7 @@
 <template>
     <div class="invoice-document">
         <div class="invoice-header">
-            <img class="invoice-logo" :src="profile.logoDataUrl" alt="" v-if="profile.logoDataUrl" />
+            <img class="invoice-logo" :src="profile.logoDataUrl" alt="" v-if="profile.logoDataUrl && !profile.hideLogo" />
             <div v-else></div>
             <div class="invoice-business">
                 <div class="invoice-strong">{{ profile.businessName }}</div>
@@ -15,7 +15,13 @@
 
         <div class="invoice-banner">
             <div class="invoice-rule"></div>
-            <div class="invoice-title">Invoice</div>
+            <div class="invoice-title">
+                <svg class="invoice-title-frame" viewBox="0 0 200 80" preserveAspectRatio="none" aria-hidden="true">
+                    <path d="M20 2H180C180 12 190 22 198 22V58C188 58 180 68 180 78H20C20 68 10 58 2 58V22C12 22 20 12 20 2Z" />
+                    <path d="M27 8H173C173 20 180 28 192 28V52C180 52 173 60 173 72H27C27 60 20 52 8 52V28C20 28 27 20 27 8Z" />
+                </svg>
+                Invoice
+            </div>
             <div class="invoice-rule"></div>
         </div>
 
@@ -47,7 +53,7 @@
                 <th class="invoice-left">Services</th>
                 <th class="invoice-right" v-if="showSac">SAC</th>
                 <th class="invoice-right" v-if="showQuantity">Quantity</th>
-                <th class="invoice-right">Rate</th>
+                <th class="invoice-right" v-if="showQuantity">Rate</th>
                 <th class="invoice-right">Amount</th>
             </tr>
             </thead>
@@ -59,7 +65,7 @@
                 </td>
                 <td class="invoice-right" v-if="showSac">{{ line.sac }}</td>
                 <td class="invoice-right" v-if="showQuantity">{{ formatInvoiceQuantity(line.quantity) }}</td>
-                <td class="invoice-right">{{ formatInvoiceDocumentAmount(line.rate, invoice.currency) }}</td>
+                <td class="invoice-right" v-if="showQuantity">{{ formatInvoiceDocumentAmount(line.rate, invoice.currency) }}</td>
                 <td class="invoice-right">{{ formatInvoiceDocumentAmount(line.amount, invoice.currency) }}</td>
             </tr>
             </tbody>
@@ -108,7 +114,10 @@ const taxRows = computed<InvoiceTaxRow[]>(() => getInvoiceTaxRows(props.invoice.
 /* A document for the customer: always white paper and black text, whatever the app theme or language. */
 .invoice-document {
     --invoice-accent: #3d86f5;
+    box-sizing: border-box;
     background: #fff;
+    border: 6px solid var(--invoice-accent);
+    min-height: 1120px;
     color: #000;
     font-family: Georgia, 'Noto Serif', 'Times New Roman', serif; /* these fonts carry the ₹ glyph */
     font-size: 13px;
@@ -116,7 +125,7 @@ const taxRows = computed<InvoiceTaxRow[]>(() => getInvoiceTaxRows(props.invoice.
     max-width: 800px;
     min-width: 640px;
     margin: 0 auto;
-    padding: 32px;
+    padding: 24px;
 }
 
 .invoice-header, .invoice-parties {
@@ -127,7 +136,7 @@ const taxRows = computed<InvoiceTaxRow[]>(() => getInvoiceTaxRows(props.invoice.
 
 .invoice-logo {
     max-height: 48px;
-    max-width: 320px;
+    max-width: 260px;
 }
 
 .invoice-business {
@@ -175,11 +184,18 @@ const taxRows = computed<InvoiceTaxRow[]>(() => getInvoiceTaxRows(props.invoice.
 .invoice-title {
     color: var(--invoice-accent);
     font-size: 30px;
-    border: 2px solid var(--invoice-accent);
-    border-radius: 6px;
-    outline: 2px solid var(--invoice-accent);
-    outline-offset: 3px;
-    padding: 6px 34px;
+    position: relative;
+    padding: 12px 36px;
+}
+
+.invoice-title-frame {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    fill: none;
+    stroke: var(--invoice-accent);
+    stroke-width: 2;
 }
 
 .invoice-meta th {

@@ -2,6 +2,7 @@ package services
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -17,6 +18,28 @@ import (
 	"github.com/mayswind/ezbookkeeping/pkg/utils"
 	"github.com/mayswind/ezbookkeeping/pkg/uuid"
 )
+
+func TestInvoiceProfileLogoVisibilityPersistsWithoutRemovingUpload(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	profile, err := Invoices.GetProfile(ctx, uid)
+	assert.NoError(t, err)
+	profile.LogoDataUrl = "data:image/png;base64,stored-upload"
+
+	for _, hidden := range []bool{true, false} {
+		data, err := json.Marshal(map[string]bool{"HideLogo": hidden})
+		assert.NoError(t, err)
+		assert.NoError(t, json.Unmarshal(data, profile))
+		assert.NoError(t, Invoices.SaveProfile(ctx, profile))
+		loaded, err := Invoices.GetProfile(ctx, uid)
+		assert.NoError(t, err)
+		assert.Equal(t, profile.LogoDataUrl, loaded.LogoDataUrl)
+		response, err := json.Marshal(loaded.ToInvoiceProfileResponse())
+		assert.NoError(t, err)
+		var fields map[string]any
+		assert.NoError(t, json.Unmarshal(response, &fields))
+		assert.Equal(t, hidden, fields["hideLogo"])
+	}
+}
 
 func TestInvoiceProfileDefaultsThenSave(t *testing.T) {
 	ctx, uid := newAlertTestUser(t)

@@ -5,7 +5,7 @@ import { useI18n } from '@/locales/helpers.ts';
 import { useAccountsStore } from '@/stores/account.ts';
 import { useInvoicesStore } from '@/stores/invoice.ts';
 
-import services from '@/lib/services.ts';
+import { startDownloadFile } from '@/lib/ui/common.ts';
 
 import type { TextualYearMonthDay } from '@/core/datetime.ts';
 import type { Invoice, InvoicePayment, InvoiceProfile, InvoiceSendRequest } from '@/models/invoice.ts';
@@ -19,6 +19,7 @@ import {
     getInvoiceShortfall,
     getInvoiceDisplayStatus,
     getInvoicePublicLinkUrl,
+    getInvoicePdfFileName,
     getTodayTextualDate,
     printInvoiceDocument
 } from '@/lib/invoice.ts';
@@ -33,6 +34,7 @@ export function useInvoiceDetailPageBase() {
 
     const loading = ref<boolean>(true);
     const updating = ref<boolean>(false);
+    const downloadingPdf = ref<boolean>(false);
     const invoice = ref<Invoice | null>(null);
     const profile = ref<InvoiceProfile | null>(null);
     const suggestions = ref<InvoicePayment[]>([]);
@@ -164,19 +166,26 @@ export function useInvoiceDetailPageBase() {
         return navigator.clipboard.writeText(publicLinkUrl.value).then(() => true).catch(() => false);
     }
 
-    // the server-rendered PDF; the response is an attachment, so the new tab turns into a download
-    function downloadInvoicePdf(): void {
-        if (!invoice.value) {
+    async function downloadInvoicePdf(): Promise<void> {
+        const current = invoice.value;
+        if (!current || downloadingPdf.value) {
             return;
         }
 
-        window.open(services.getInvoicePdfUrlWithToken(invoice.value.id), '_blank');
+        downloadingPdf.value = true;
+        try {
+            const pdf = await invoicesStore.getInvoicePdf(current.id);
+            startDownloadFile(`${getInvoicePdfFileName(current.number, current.dueDate)}.pdf`, pdf);
+        } finally {
+            downloadingPdf.value = false;
+        }
     }
 
     return {
         // states
         loading,
         updating,
+        downloadingPdf,
         invoice,
         profile,
         suggestions,

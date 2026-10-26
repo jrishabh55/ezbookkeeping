@@ -32,9 +32,9 @@
                     <v-tooltip activator="parent">{{ tt('Delete') }}</v-tooltip>
                 </v-btn>
                 <v-btn density="comfortable" color="default" variant="text" class="ms-1" :icon="true"
-                       :aria-label="tt('Print / Save PDF')" :disabled="!invoice || !profile || loading" @click="printInvoice">
+                       :aria-label="tt('Print')" :disabled="!invoice || !profile || loading" @click="printInvoice">
                     <v-icon :icon="mdiPrinterOutline" />
-                    <v-tooltip activator="parent">{{ tt('Print / Save PDF') }}</v-tooltip>
+                    <v-tooltip activator="parent">{{ tt('Print') }}</v-tooltip>
                 </v-btn>
                 <v-btn density="comfortable" color="default" variant="text" class="ms-1" :icon="true"
                        :aria-label="tt('Repeat Monthly')" :disabled="!invoice || loading || updating" @click="repeatMonthly">
@@ -46,11 +46,9 @@
                     <v-icon :icon="mdiShareVariantOutline" />
                     <v-tooltip activator="parent">{{ tt('Share Link') }}</v-tooltip>
                 </v-btn>
-                <v-btn density="comfortable" color="default" variant="text" class="ms-1" :icon="true"
-                       :aria-label="tt('Download PDF')" :disabled="!invoice || loading" @click="downloadInvoicePdf">
-                    <v-icon :icon="mdiDownloadOutline" />
-                    <v-tooltip activator="parent">{{ tt('Download PDF') }}</v-tooltip>
-                </v-btn>
+                <v-btn density="comfortable" color="primary" variant="tonal" class="ms-2"
+                       :prepend-icon="mdiDownloadOutline" :loading="downloadingPdf" :disabled="!invoice || loading"
+                       @click="downloadPdf">{{ tt('Download PDF') }}</v-btn>
                 <v-btn density="comfortable" color="default" variant="text" class="ms-1" :icon="true"
                        :aria-label="tt('Send')" :disabled="!invoice || !profile || loading || updating" @click="openSend">
                     <v-icon :icon="mdiEmailOutline" />
@@ -219,6 +217,7 @@ const { tt } = useI18n();
 const {
     loading,
     updating,
+    downloadingPdf,
     invoice,
     profile,
     suggestions,
@@ -240,6 +239,10 @@ const {
     prepareSendRequest,
     sendInvoice
 } = useInvoiceDetailPageBase();
+
+function downloadPdf(): void {
+    downloadInvoicePdf().catch(error => snackbar.value?.showError(error));
+}
 
 const invoicesStore = useInvoicesStore();
 const accountsStore = useAccountsStore();
