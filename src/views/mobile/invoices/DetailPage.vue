@@ -94,6 +94,7 @@
             <f7-actions-group>
                 <f7-actions-button @click="f7router.navigate(`/invoice/edit?id=${invoiceId}`)">{{ tt('Edit') }}</f7-actions-button>
                 <f7-actions-button @click="f7router.navigate(`/invoice/add?duplicateFrom=${invoiceId}`)">{{ tt('Duplicate') }}</f7-actions-button>
+                <f7-actions-button @click="regenerate">{{ tt('Regenerate with Current Customer Details') }}</f7-actions-button>
                 <f7-actions-button @click="toggleClosed">{{ invoice?.closedManually ? tt('Reopen') : tt('Mark as Paid') }}</f7-actions-button>
                 <f7-actions-button @click="printInvoice">{{ tt('Print') }}</f7-actions-button>
                 <f7-actions-button @click="showRepeatMonthlyPopup = true">{{ tt('Repeat Monthly') }}</f7-actions-button>
@@ -176,7 +177,7 @@ const props = defineProps<{
 }>();
 
 const { tt, getCurrentLanguageTextDirection } = useI18n();
-const { showToast, showPrompt, routeBackOnError } = useI18nUIComponents();
+const { showToast, showPrompt, showConfirm, routeBackOnError } = useI18nUIComponents();
 const {
     loading,
     updating,
@@ -309,6 +310,19 @@ function onSettledAmountEntered(amount: number): void {
 
 function unlink(payment: InvoicePayment): void {
     runAndReload(() => invoicesStore.unlinkInvoicePayment({ invoiceId: invoiceId.value, transactionId: payment.transactionId }));
+}
+
+// saving the invoice unchanged makes the server copy the customer's current details again and recompute the totals
+function regenerate(): void {
+    const current = invoice.value;
+
+    if (!current) {
+        return;
+    }
+
+    showConfirm("Regenerate this invoice with the customer's current details? The PDF and public link will show them too.", () => {
+        runAndReload(() => invoicesStore.saveInvoice({ invoice: current, isEdit: true }));
+    });
 }
 
 function toggleClosed(): void {

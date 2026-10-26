@@ -16,6 +16,11 @@
                     <v-tooltip activator="parent">{{ tt('Edit') }}</v-tooltip>
                 </v-btn>
                 <v-btn density="comfortable" color="default" variant="text" class="ms-1" :icon="true"
+                       :aria-label="tt('Regenerate with Current Customer Details')" :disabled="!invoice || loading || updating" @click="regenerate">
+                    <v-icon :icon="mdiRefresh" />
+                    <v-tooltip activator="parent">{{ tt('Regenerate with Current Customer Details') }}</v-tooltip>
+                </v-btn>
+                <v-btn density="comfortable" color="default" variant="text" class="ms-1" :icon="true"
                        :aria-label="tt('Duplicate')" :disabled="!invoice || loading || updating" @click="duplicate">
                     <v-icon :icon="mdiContentCopy" />
                     <v-tooltip activator="parent">{{ tt('Duplicate') }}</v-tooltip>
@@ -199,6 +204,7 @@ import { ref, watch, useTemplateRef } from 'vue';
 
 import {
     mdiPencilOutline,
+    mdiRefresh,
     mdiContentCopy,
     mdiCheckDecagramOutline,
     mdiLockOpenVariantOutline,
@@ -405,6 +411,19 @@ function link(suggestion: InvoicePayment): void {
 
 function unlink(payment: InvoicePayment): void {
     runAndReload(() => invoicesStore.unlinkInvoicePayment({ invoiceId: invoiceId.value, transactionId: payment.transactionId }));
+}
+
+// saving the invoice unchanged makes the server copy the customer's current details again and recompute the totals
+function regenerate(): void {
+    const current = invoice.value;
+
+    if (!current) {
+        return;
+    }
+
+    confirmDialog.value?.open("Regenerate this invoice with the customer's current details? The PDF and public link will show them too.").then(() => {
+        runAndReload(() => invoicesStore.saveInvoice({ invoice: current, isEdit: true }));
+    });
 }
 
 function toggleClosed(): void {

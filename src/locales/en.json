@@ -3073,6 +3073,8 @@
     "Message": "Message",
     "Sent on": "Sent on",
     "Emails": "Emails",
+    "Regenerate with Current Customer Details": "Regenerate with Current Customer Details",
+    "Regenerate this invoice with the customer's current details? The PDF and public link will show them too.": "Regenerate this invoice with the customer's current details? The PDF and public link will show them too.",
     "No emails sent yet.": "No emails sent yet.",
     "Unable to retrieve invoice email": "Unable to retrieve invoice email",
     "from": "from",

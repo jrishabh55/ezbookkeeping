@@ -856,3 +856,24 @@ func TestGetInvoiceByUnknownPublicTokenIsNotFound(t *testing.T) {
 	_, _, _, _, err := Invoices.GetInvoiceByPublicToken(core.NewNullContext(), strings.Repeat("x", models.InvoicePublicTokenLength))
 	assert.Equal(t, errs.ErrInvoiceNotFound, err)
 }
+
+// The "Regenerate with Current Customer Details" action re-saves an unchanged invoice; a modify that kept the old
+// bill-to copy, or a customer edit that rewrote invoices by itself, breaks this test.
+func TestResavingInvoiceRefreshesBillToFromEditedCustomer(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	customer := createTestCustomer(t, uid)
+	invoice := createTestInvoice(t, uid, customer.CustomerId, "REGEN-1", 100000)
+	customer.Name, customer.Email, customer.Gstin = "Quber Tech Ltd", "billing@quber.example", "07AAAAA0000A1Z5"
+	assert.Nil(t, Invoices.ModifyCustomer(ctx, customer))
+	untouched, lines, err := Invoices.GetInvoice(ctx, uid, invoice.InvoiceId)
+	assert.Nil(t, err)
+	assert.Equal(t, "Quber Tech", untouched.BillToName, "editing a customer alone keeps the invoice's copy")
+	assert.Nil(t, Invoices.ModifyInvoice(ctx, untouched, lines))
+	regenerated, regeneratedLines, err := Invoices.GetInvoice(ctx, uid, invoice.InvoiceId)
+	assert.Nil(t, err)
+	assert.Equal(t, "Quber Tech Ltd", regenerated.BillToName)
+	assert.Equal(t, "billing@quber.example", regenerated.BillToEmail)
+	assert.Equal(t, "07AAAAA0000A1Z5", regenerated.BillToGstin)
+	assert.Equal(t, untouched.Total, regenerated.Total)
+	assert.Len(t, regeneratedLines, len(lines))
+}
