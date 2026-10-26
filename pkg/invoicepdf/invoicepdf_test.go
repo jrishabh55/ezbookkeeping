@@ -134,6 +134,18 @@ func TestRenderWithoutLogoOrFooter(t *testing.T) {
 	assert.True(t, bytes.HasPrefix(pdf, []byte("%PDF")))
 }
 
+func TestRenderPreservesUnicodeGlyphsWithFallbackFont(t *testing.T) {
+	for _, text := range []string{"Completed ✓", "שלום", "مرحبا"} {
+		profile := sampleProfile()
+		invoice, lines := sampleInvoice()
+		invoice.Notes = text
+		assert.True(t, invoiceNeedsFallbackFont(profile, invoice, lines, ""), "fallback selection for %s", text)
+		pdf, err := Render(profile, invoice, lines, 0, "")
+		assert.NoError(t, err)
+		assert.True(t, bytes.Contains(pdf, []byte("/BaseFont /utf8dejavusans")), "missing Unicode fallback for %s", text)
+	}
+}
+
 func TestRenderHidesLogoWithoutRemovingUpload(t *testing.T) {
 	profile := sampleProfile()
 	profile.LogoDataUrl = testLogoDataUrl(t)

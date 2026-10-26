@@ -50,6 +50,7 @@ defineProps<{
 
     body > .invoice-print-root .invoice-document {
         min-width: 0;
+        min-height: 0;
         max-width: none;
         padding: 0;
     }

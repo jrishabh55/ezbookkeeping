@@ -10,11 +10,14 @@ import (
 	_ "image/jpeg" // logo decoding
 	_ "image/png"  // logo decoding
 	"strings"
+	"unicode"
 
 	"github.com/go-pdf/fpdf"
 
 	"github.com/mayswind/ezbookkeeping/pkg/models"
 )
+
+//go:generate go run fonts/generate_coverage.go
 
 // DejaVu Serif 2.37 (fonts/LICENSE); the core PDF fonts are WinAnsi only and cannot print ₹
 //
@@ -23,6 +26,12 @@ var fontRegular []byte
 
 //go:embed fonts/DejaVuSerif-Bold.ttf
 var fontBold []byte
+
+//go:embed fonts/DejaVuSans.ttf
+var fallbackRegular []byte
+
+//go:embed fonts/DejaVuSans-Bold.ttf
+var fallbackBold []byte
 
 const (
 	pageMargin   = 8.0 // mm, A4
@@ -44,11 +53,12 @@ var (
 )
 
 type renderer struct {
-	pdf    *fpdf.Fpdf
-	left   float64
-	right  float64
-	width  float64
-	breakY float64 // y beyond which content must go to a new page
+	fontFamily string
+	pdf        *fpdf.Fpdf
+	left       float64
+	right      float64
+	width      float64
+	breakY     float64 // y beyond which content must go to a new page
 }
 
 // Render draws the invoice on A4 pages and returns the PDF bytes.
@@ -57,13 +67,17 @@ func Render(profile *models.InvoiceProfile, invoice *models.Invoice, lines []*mo
 	pdf := fpdf.New("P", "mm", "A4", "")
 	pdf.SetMargins(pageMargin, pageMargin, pageMargin)
 	pdf.SetAutoPageBreak(false, bottomMargin)
-	pdf.AddUTF8FontFromBytes("DejaVu", "", fontRegular)
-	pdf.AddUTF8FontFromBytes("DejaVu", "B", fontBold)
+	regular, bold, fontFamily := fontRegular, fontBold, "DejaVuSerif"
+	if invoiceNeedsFallbackFont(profile, invoice, lines, verifyUrl) {
+		regular, bold, fontFamily = fallbackRegular, fallbackBold, "DejaVuSans"
+	}
+	pdf.AddUTF8FontFromBytes(fontFamily, "", regular)
+	pdf.AddUTF8FontFromBytes(fontFamily, "B", bold)
 	pdf.SetTitle(invoice.Number, true)
 	pdf.SetAuthor(profile.BusinessName, true)
 
 	pageWidth, pageHeight := pdf.GetPageSize()
-	r := &renderer{pdf: pdf, left: pageMargin, right: pageWidth - pageMargin, width: pageWidth - 2*pageMargin, breakY: pageHeight - bottomMargin}
+	r := &renderer{pdf: pdf, fontFamily: fontFamily, left: pageMargin, right: pageWidth - pageMargin, width: pageWidth - 2*pageMargin, breakY: pageHeight - bottomMargin}
 
 	pdf.SetHeaderFunc(func() {
 		pdf.SetDrawColor(colorAccent.r, colorAccent.g, colorAccent.b)
@@ -97,6 +111,26 @@ func Render(profile *models.InvoiceProfile, invoice *models.Invoice, lines []*mo
 	return buf.Bytes(), nil
 }
 
+// Select one font family for the whole document so wrapping uses the same metrics
+// as drawing. Sans preserves the previous renderer's coverage for scripts/symbols
+// missing from Serif; ordinary invoices keep the reference's serif typography.
+func invoiceNeedsFallbackFont(profile *models.InvoiceProfile, invoice *models.Invoice, lines []*models.InvoiceLine, verifyUrl string) bool {
+	texts := []string{profile.BusinessName, profile.AddressLines, profile.Phone, profile.Website, profile.Gstin,
+		invoice.Number, invoice.BillToName, invoice.BillToContactName, invoice.BillToAddressLines,
+		invoice.BillToEmail, invoice.BillToPhone, invoice.BillToPan, invoice.BillToGstin, invoice.Notes, verifyUrl}
+	for _, line := range lines {
+		texts = append(texts, line.ItemName, line.Description, line.Sac)
+	}
+	for _, text := range texts {
+		for _, char := range text {
+			if unicode.Is(serifFallbackCharacters, char) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (r *renderer) font(bold bool, size float64, color rgb) {
 	style := ""
 
@@ -104,7 +138,7 @@ func (r *renderer) font(bold bool, size float64, color rgb) {
 		style = "B"
 	}
 
-	r.pdf.SetFont("DejaVu", style, size)
+	r.pdf.SetFont(r.fontFamily, style, size)
 	r.pdf.SetTextColor(color.r, color.g, color.b)
 }
 
