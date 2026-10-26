@@ -52,7 +52,7 @@ defineProps<{
         min-width: 0;
         min-height: 0;
         max-width: none;
-        padding: 0;
+        padding: 6mm;
     }
 
     @page {

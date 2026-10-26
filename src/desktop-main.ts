@@ -250,7 +250,11 @@ const vuetify = createVuetify({
         },
         VBtn: {
             variant: 'flat',
-            color: 'primary'
+            color: 'primary',
+            VProgressCircular: {
+                // Let the button's loader CSS size the spinner instead of the global 40px default.
+                size: 'default'
+            }
         },
         VCheckbox: {
             color: 'primary',
