@@ -54,7 +54,7 @@
                     <div class="invoice-strong">{{ line.itemName }}</div>
                     <div class="invoice-muted invoice-pre">{{ line.description }}</div>
                 </td>
-                <td class="invoice-right" v-if="showQuantity">{{ line.quantity }}</td>
+                <td class="invoice-right" v-if="showQuantity">{{ formatInvoiceQuantity(line.quantity) }}</td>
                 <td class="invoice-right">{{ formatInvoiceDocumentAmount(line.rate) }}</td>
                 <td class="invoice-right">{{ formatInvoiceDocumentAmount(line.amount) }}</td>
             </tr>
@@ -80,7 +80,7 @@
 import { computed } from 'vue';
 
 import type { Invoice, InvoiceProfile } from '@/models/invoice.ts';
-import { formatInvoiceDocumentAmount, formatInvoiceDocumentDate, getInvoiceDisplayBalanceDue } from '@/lib/invoice.ts';
+import { INVOICE_QUANTITY_SCALE, formatInvoiceDocumentAmount, formatInvoiceDocumentDate, formatInvoiceQuantity, getInvoiceDisplayBalanceDue } from '@/lib/invoice.ts';
 
 const props = defineProps<{
     invoice: Invoice;
@@ -89,7 +89,7 @@ const props = defineProps<{
 
 // a paid invoice owes nothing, even when a shortfall was written off
 const balanceDue = computed<number>(() => getInvoiceDisplayBalanceDue(props.invoice));
-const showQuantity = computed<boolean>(() => props.invoice.lines.some(line => line.quantity !== 1));
+const showQuantity = computed<boolean>(() => props.invoice.lines.some(line => line.quantity !== INVOICE_QUANTITY_SCALE));
 </script>
 
 <style scoped>

@@ -317,6 +317,6 @@ export class Invoice implements InvoiceInfoResponse {
     }
 
     public static createNewLine(): InvoiceLine {
-        return { itemName: '', description: '', quantity: 1, rate: 0, amount: 0 };
+        return { itemName: '', description: '', quantity: 100, rate: 0, amount: 0 }; // quantity in hundredths
     }
 }

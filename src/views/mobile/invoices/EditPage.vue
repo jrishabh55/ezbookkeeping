@@ -74,8 +74,9 @@
                                        :label="tt('Description')" :placeholder="tt('Description (optional)')"
                                        v-textarea-auto-size v-model:value="line.description"></f7-list-input>
                         <list-number-input :label="tt('Qty')" :placeholder="tt('Qty')"
-                                           :min-value="1" :max-value="10000" :max-decimal-count="0"
-                                           v-model="line.quantity"></list-number-input>
+                                           :min-value="0.01" :max-value="10000" :max-decimal-count="2"
+                                           :model-value="line.quantity / INVOICE_QUANTITY_SCALE"
+                                           @update:model-value="line.quantity = Math.round($event * INVOICE_QUANTITY_SCALE)"></list-number-input>
                         <f7-list-item link="#" no-chevron class="list-item-with-header-and-title"
                                       :header="tt('Rate')"
                                       :title="formatAmount(line.rate)"
@@ -124,6 +125,7 @@ import { useInvoicesStore } from '@/stores/invoice.ts';
 import type { TextualYearMonthDay } from '@/core/datetime.ts';
 import { TRANSACTION_MAX_AMOUNT } from '@/consts/transaction.ts';
 import type { InvoiceProfile } from '@/models/invoice.ts';
+import { INVOICE_QUANTITY_SCALE } from '@/lib/invoice.ts';
 
 const props = defineProps<{
     f7route: Router.Route;

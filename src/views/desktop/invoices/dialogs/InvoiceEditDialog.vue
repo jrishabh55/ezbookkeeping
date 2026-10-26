@@ -55,8 +55,9 @@
                         </v-col>
                         <v-col cols="4" md="1">
                             <number-input :disabled="loading || submitting" :persistent-placeholder="true"
-                                          :label="tt('Qty')" :min-value="1" :max-value="10000" :max-decimal-count="0"
-                                          v-model="line.quantity" />
+                                          :label="tt('Qty')" :min-value="0.01" :max-value="10000" :max-decimal-count="2"
+                                          :model-value="line.quantity / INVOICE_QUANTITY_SCALE"
+                                          @update:model-value="line.quantity = Math.round($event * INVOICE_QUANTITY_SCALE)" />
                         </v-col>
                         <v-col cols="6" md="3">
                             <amount-input :disabled="loading || submitting" :persistent-placeholder="true"
@@ -127,6 +128,7 @@ import type { TextualYearMonthDay } from '@/core/datetime.ts';
 import { type InvoiceProfile, Invoice } from '@/models/invoice.ts';
 
 import { isEquals } from '@/lib/common.ts';
+import { INVOICE_QUANTITY_SCALE } from '@/lib/invoice.ts';
 
 type SnackBarType = InstanceType<typeof SnackBar>;
 type CustomerEditDialogType = InstanceType<typeof CustomerEditDialog>;
