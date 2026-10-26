@@ -603,6 +603,11 @@
                                                 v-if="!transaction.tagIds || !transaction.tagIds.length"/>
                                     </td>
                                     <td class="transaction-table-column-description text-truncate">
+                                        <v-chip class="me-1" color="primary" size="x-small" variant="tonal"
+                                                v-if="transaction.invoiceId"
+                                                @click.stop="showInvoice(transaction)">
+                                            {{ transaction.invoiceNumber }}
+                                        </v-chip>
                                         {{ transaction.comment }}
                                     </td>
                                 </tr>
@@ -1726,6 +1731,14 @@ function exportTransactions(fileExtension: string): void {
             snackbar.value?.showError(error);
         }
     });
+}
+
+function showInvoice(transaction: Transaction): void {
+    if (!transaction.invoiceId) {
+        return;
+    }
+
+    router.push(`/invoice/list?invoiceId=${transaction.invoiceId}`);
 }
 
 function show(transaction: Transaction): void {

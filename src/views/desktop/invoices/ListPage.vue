@@ -160,7 +160,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, useTemplateRef } from 'vue';
+import { ref, computed, useTemplateRef, onMounted } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 
 import {
     mdiRefresh,
@@ -211,6 +212,8 @@ const {
 } = useInvoiceListPageBase();
 
 const invoicesStore = useInvoicesStore();
+const route = useRoute();
+const router = useRouter();
 
 const confirmDialog = useTemplateRef<ConfirmDialogType>('confirmDialog');
 const snackbar = useTemplateRef<SnackBarType>('snackbar');
@@ -273,7 +276,11 @@ function add(): void {
 }
 
 function view(invoice: Invoice): void {
-    invoiceDetailDialog.value?.open({ id: invoice.id }).then(result => {
+    viewById(invoice.id);
+}
+
+function viewById(invoiceId: string): void {
+    invoiceDetailDialog.value?.open({ id: invoiceId }).then(result => {
         if (result.changed) {
             reload(false);
         }
@@ -311,4 +318,14 @@ function removeCustomer(customer: Customer): void {
 }
 
 reload(false);
+
+onMounted(() => {
+    // opened from the invoice chip on a transaction: show that invoice, then drop the query so a refresh does not reopen it
+    const requestedInvoiceId = route.query['invoiceId'];
+
+    if (typeof requestedInvoiceId === 'string' && requestedInvoiceId) {
+        router.replace('/invoice/list');
+        viewById(requestedInvoiceId);
+    }
+});
 </script>

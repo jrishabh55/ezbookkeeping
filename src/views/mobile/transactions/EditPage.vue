@@ -360,6 +360,14 @@
             </f7-list-item>
 
             <f7-list-item
+                class="list-item-with-header-and-title list-item-title-hide-overflow"
+                :header="tt('Invoice')"
+                :title="transaction.invoiceNumber"
+                :link="'/invoice/detail?id=' + transaction.invoiceId"
+                v-if="mode === TransactionEditPageMode.View && transaction instanceof Transaction && transaction.invoiceId"
+            ></f7-list-item>
+
+            <f7-list-item
                 link="#" no-chevron
                 :class="{ 'readonly': mode === TransactionEditPageMode.View }"
                 :header="tt('Tags')"

@@ -11,6 +11,12 @@
                     <v-icon :icon="mdiPencilOutline" size="22"/>
                     <v-tooltip activator="parent">{{ tt('Edit') }}</v-tooltip>
                 </v-btn>
+                <v-chip class="ms-2" color="primary" size="small" variant="tonal"
+                        v-if="mode === TransactionEditPageMode.View && transaction instanceof Transaction && transaction.invoiceId"
+                        @click="showInvoice">
+                    {{ transaction.invoiceNumber }}
+                    <v-tooltip activator="parent">{{ tt('Invoice') }}</v-tooltip>
+                </v-chip>
                 <v-btn density="compact" color="default" variant="text" class="ms-2" :icon="true"
                        :aria-label="tt('AI Clipboard Text Recognition')" :disabled="loading || submitting || recognizing"
                        v-if="mode !== TransactionEditPageMode.View && type === TransactionEditPageType.Transaction && activeTab === 'basicInfo' && isTransactionFromAITextRecognitionEnabled()"
@@ -510,6 +516,7 @@ import ConfirmDialog from '@/components/desktop/ConfirmDialog.vue';
 import SnackBar from '@/components/desktop/SnackBar.vue';
 
 import { ref, computed, useTemplateRef, watch, nextTick } from 'vue';
+import { useRouter } from 'vue-router';
 
 import { useI18n } from '@/locales/helpers.ts';
 import {
@@ -604,6 +611,7 @@ const props = defineProps<{
 }>();
 
 const { tt, formatCoordinate } = useI18n();
+const router = useRouter();
 
 const {
     mode,
@@ -1105,6 +1113,21 @@ function remove(): void {
             }
         });
     });
+}
+
+function showInvoice(): void {
+    if (!(transaction.value instanceof Transaction) || !transaction.value.invoiceId) {
+        return;
+    }
+
+    const invoiceId = transaction.value.invoiceId;
+
+    if (rejectFunc) {
+        rejectFunc();
+    }
+
+    showState.value = false;
+    router.push(`/invoice/list?invoiceId=${invoiceId}`);
 }
 
 function cancel(): void {

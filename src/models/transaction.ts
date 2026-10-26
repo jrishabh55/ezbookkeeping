@@ -30,6 +30,8 @@ export class Transaction implements TransactionInfoResponse {
     public tagIds: string[];
     public comment: string;
     public editable: boolean;
+    public invoiceId?: string; // only for displaying transaction
+    public invoiceNumber?: string; // only for displaying transaction
 
     private _pictures?: TransactionPicture[];
     private _geoLocation?: TransactionGeoLocation;
@@ -333,6 +335,9 @@ export class Transaction implements TransactionInfoResponse {
             transactionResponse.comment,
             transactionResponse.editable
         );
+
+        transaction.invoiceId = transactionResponse.invoiceId;
+        transaction.invoiceNumber = transactionResponse.invoiceNumber;
 
         if (transactionResponse.category) {
             transaction.setCategory(TransactionCategory.of(transactionResponse.category));
@@ -693,6 +698,8 @@ export interface TransactionInfoResponse {
     readonly comment: string;
     readonly geoLocation?: TransactionGeoLocationResponse;
     readonly editable: boolean;
+    readonly invoiceId?: string;
+    readonly invoiceNumber?: string;
 }
 
 export interface TransactionStatisticRequest {
