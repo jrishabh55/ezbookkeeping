@@ -14,8 +14,8 @@
         <f7-list strong inset dividers>
             <f7-list-item :title="tt('Version')" :after="clientVersion" @click="showVersion"></f7-list-item>
             <f7-list-item :title="tt('Build Time')" :after="clientBuildTime" v-if="clientBuildTime"></f7-list-item>
-            <f7-list-item :title="tt('Official Website')" link="#" @click="openExternalUrl('https://github.com/mayswind/ezbookkeeping')"></f7-list-item>
-            <f7-list-item :title="tt('Report Issue')" link="#" @click="openExternalUrl('https://github.com/mayswind/ezbookkeeping/issues')"></f7-list-item>
+            <!-- CodeBooks is a fork; the MIT license requires keeping this attribution -->
+            <f7-list-item :title="tt('Based on')" after="ezBookkeeping" link="#" @click="openExternalUrl('https://github.com/mayswind/ezbookkeeping')"></f7-list-item>
             <f7-list-item :title="tt('Getting help')" link="#" popup-open=".document-popup"></f7-list-item>
             <f7-list-item :title="tt('License')" link="#" popup-open=".license-popup"></f7-list-item>
         </f7-list>
@@ -206,8 +206,8 @@ const documentUrl = computed<string>(() => {
 
 function updateDiagnosisInformation(supportsWebAuthn: boolean, hasClipboardPermission: boolean, hasGeolocationPermission: boolean): void {
     diagnosisInformation.value =
-        `ezBookkeeping Frontend Version: ${clientVersion}\n` +
-        `ezBookkeeping Backend Version: ${serverDisplayVersion.value}\n` +
+        `CodeBooks Frontend Version: ${clientVersion}\n` +
+        `CodeBooks Backend Version: ${serverDisplayVersion.value}\n` +
         `User Agent: ${navigator.userAgent}\n` +
         `Security Context: ${window.isSecureContext}\n` +
         `Standalone: ${isiOSHomeScreenMode()}\n` +
@@ -220,7 +220,7 @@ function updateDiagnosisInformation(supportsWebAuthn: boolean, hasClipboardPermi
         `Clipboard Permission Granted: ${hasClipboardPermission}\n` +
         `Geolocation API Supported: ${!!navigator.geolocation}\n` +
         `Geolocation Permission Granted: ${hasGeolocationPermission}\n` +
-        `ezBookkeeping Server Settings:\n${getStringifiedServerSetting()}`;
+        `CodeBooks Server Settings:\n${getStringifiedServerSetting()}`;
 }
 
 function showDiagnosisInformation(): void {

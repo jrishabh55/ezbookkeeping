@@ -1,7 +1,7 @@
 {
     "global": {
         "app": {
-            "title": "ezBookkeeping"
+            "title": "CodeBooks"
         }
     },
     "language": {
@@ -175,23 +175,23 @@
             "ruleIndex": "Rule #{index}",
             "accountActivationAndResendValidationEmailTip": "Account activation link has been sent to your email address: {email}, If you don't receive the mail, please fill password again and click the button below to resend the validation mail.",
             "resendValidationEmailTip": "If you don't receive the mail, please fill password again and click the button below to resend the validation mail to: {email}",
-            "oauth2bindTip": "You're signing in to the {userName} user using {providerName}. Please enter your ezBookkeeping password to verify."
+            "oauth2bindTip": "You're signing in to the {userName} user using {providerName}. Please enter your CodeBooks password to verify."
         }
     },
     "dataExport": {
-        "defaultExportFilename": "ezBookkeeping_export_data",
-        "exportFilename": "ezBookkeeping_{nickname}_export_data",
-        "defaultExportStatisticsFileName": "ezBookkeeping_statistics_data",
-        "exportStatisticsFileName": "ezBookkeeping_{nickname}_statistics_data",
-        "defaultExportReconciliationStatementsFileName": "ezBookkeeping_reconciliation_statements",
-        "exportReconciliationStatementsFileName": "ezBookkeeping_{nickname}_reconciliation_statements",
-        "defaultInsightsExplorerQueryFileName": "ezBookkeeping_insights_explorer_query",
-        "insightsExplorerQueryFileName": "ezBookkeeping_{nickname}_insights_explorer_query",
-        "defaultImportDataMappingFileName": "ezBookkeeping_import_data_mapping",
-        "defaultImportHandlingScript": "ezBookkeeping_handling_script",
-        "defaultImportReplaceRuleFileName": "ezBookkeeping_import_replace_rule",
-        "defaultImportCheckResultFileName": "ezBookkeeping_import_check_result",
-        "defaultOverviewLayoutFileName": "ezBookkeeping_overview_layout"
+        "defaultExportFilename": "CodeBooks_export_data",
+        "exportFilename": "CodeBooks_{nickname}_export_data",
+        "defaultExportStatisticsFileName": "CodeBooks_statistics_data",
+        "exportStatisticsFileName": "CodeBooks_{nickname}_statistics_data",
+        "defaultExportReconciliationStatementsFileName": "CodeBooks_reconciliation_statements",
+        "exportReconciliationStatementsFileName": "CodeBooks_{nickname}_reconciliation_statements",
+        "defaultInsightsExplorerQueryFileName": "CodeBooks_insights_explorer_query",
+        "insightsExplorerQueryFileName": "CodeBooks_{nickname}_insights_explorer_query",
+        "defaultImportDataMappingFileName": "CodeBooks_import_data_mapping",
+        "defaultImportHandlingScript": "CodeBooks_handling_script",
+        "defaultImportReplaceRuleFileName": "CodeBooks_import_replace_rule",
+        "defaultImportCheckResultFileName": "CodeBooks_import_check_result",
+        "defaultOverviewLayoutFileName": "CodeBooks_overview_layout"
     },
     "calendar": {
         "Gregorian": "Gregorian",
@@ -1843,8 +1843,8 @@
     "Change Language": "Change Language",
     "Date is too early": "Date is too early",
     "User Canceled": "User Canceled",
-    "Welcome to ezBookkeeping": "Welcome to ezBookkeeping",
-    "Please log in with your ezBookkeeping account": "Please log in with your ezBookkeeping account",
+    "Welcome to ezBookkeeping": "Welcome to CodeBooks",
+    "Please log in with your ezBookkeeping account": "Please log in with your CodeBooks account",
     "Unlock Application": "Unlock Application",
     "Please enter your PIN code or use WebAuthn to unlock application": "Please enter your PIN code or use WebAuthn to unlock application",
     "Please enter your PIN code to unlock application": "Please enter your PIN code to unlock application",
@@ -2306,7 +2306,7 @@
     "Filter Description": "Filter Description",
     "How to import this file?": "How to import this file?",
     "How to export this file?": "How to export this file?",
-    "ezBookkeeping File Format": "ezBookkeeping File Format",
+    "ezBookkeeping File Format": "CodeBooks File Format",
     "Custom File Format": "Custom File Format",
     "General Data Exchange Format": "General Data Exchange Format",
     "General Bank Statement Format": "General Bank Statement Format",
@@ -3073,6 +3073,7 @@
     "Message": "Message",
     "Sent on": "Sent on",
     "Emails": "Emails",
+    "Based on": "Based on",
     "Regenerate with Current Customer Details": "Regenerate with Current Customer Details",
     "Regenerate this invoice with the customer's current details? The PDF and public link will show them too.": "Regenerate this invoice with the customer's current details? The PDF and public link will show them too.",
     "No emails sent yet.": "No emails sent yet.",

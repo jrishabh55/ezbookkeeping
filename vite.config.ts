@@ -157,9 +157,9 @@ export default defineConfig(() => {
                 injectRegister: false,
                 manifestFilename: 'manifest.json',
                 manifest: {
-                    name: 'ezBookkeeping',
-                    short_name: 'ezBookkeeping',
-                    description: 'An open source, powerful, self-hosted personal finance app that is easy to use.',
+                    name: 'CodeBooks',
+                    short_name: 'CodeBooks',
+                    description: 'Self-hosted bookkeeping and invoicing by Codeation.',
                     theme_color: '#C67E48',
                     background_color: '#F6F7F8',
                     start_url: './',
@@ -169,12 +169,12 @@ export default defineConfig(() => {
                     prefer_related_applications: false,
                     icons: [
                         {
-                            src: 'img/ezbookkeeping-192.png',
+                            src: 'img/codebooks-192.png',
                             sizes: '192x192',
                             type: 'image/png'
                         },
                         {
-                            src: 'img/ezbookkeeping-512.png',
+                            src: 'img/codebooks-512.png',
                             sizes: '512x512',
                             type: 'image/png'
                         }

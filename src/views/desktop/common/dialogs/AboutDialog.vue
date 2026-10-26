@@ -38,21 +38,12 @@
                                 </v-row>
                                 <v-row no-gutters>
                                     <v-col cols="12" md="2">
-                                        <span class="text-body-large">{{ tt('Official Website') }}</span>
+                                        <span class="text-body-large">{{ tt('Based on') }}</span>
                                     </v-col>
                                     <v-col cols="12" md="10" class="mb-6">
+                                        <!-- CodeBooks is a fork; the MIT license requires keeping this attribution -->
                                         <a class="text-body-large link-no-color" href="https://github.com/mayswind/ezbookkeeping" target="_blank">
-                                            https://github.com/mayswind/ezbookkeeping
-                                        </a>
-                                    </v-col>
-                                </v-row>
-                                <v-row no-gutters>
-                                    <v-col cols="12" md="2">
-                                        <span class="text-body-large">{{ tt('Report Issue') }}</span>
-                                    </v-col>
-                                    <v-col cols="12" md="10" class="mb-6">
-                                        <a class="text-body-large link-no-color" href="https://github.com/mayswind/ezbookkeeping/issues" target="_blank">
-                                            https://github.com/mayswind/ezbookkeeping/issues
+                                            ezBookkeeping (https://github.com/mayswind/ezbookkeeping)
                                         </a>
                                     </v-col>
                                 </v-row>

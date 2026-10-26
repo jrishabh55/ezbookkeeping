@@ -1,7 +1,7 @@
 {
     "global": {
         "app": {
-            "title": "ezBookkeeping"
+            "title": "CodeBooks"
         }
     },
     "language": {
@@ -175,23 +175,23 @@
             "ruleIndex": "Rule #{index}",
             "accountActivationAndResendValidationEmailTip": "Ссылка для активации учетной записи была отправлена на ваш электронный адрес: {email}. Если вы не получили письмо, заполните пароль снова и нажмите кнопку ниже, чтобы отправить письмо повторно.",
             "resendValidationEmailTip": "Если вы не получили письмо, заполните пароль снова и нажмите кнопку ниже, чтобы отправить письмо повторно на: {email}",
-            "oauth2bindTip": "Вы входите как пользователь {userName} используя {providerName}. Пожалуйста введите ваш ezBookkeeping пароль для подтверждения."
+            "oauth2bindTip": "Вы входите как пользователь {userName} используя {providerName}. Пожалуйста введите ваш CodeBooks пароль для подтверждения."
         }
     },
     "dataExport": {
-        "defaultExportFilename": "ezBookkeeping_export_data",
-        "exportFilename": "ezBookkeeping_{nickname}_export_data",
-        "defaultExportStatisticsFileName": "ezBookkeeping_statistics_data",
-        "exportStatisticsFileName": "ezBookkeeping_{nickname}_statistics_data",
-        "defaultExportReconciliationStatementsFileName": "ezBookkeeping_reconciliation_statements",
-        "exportReconciliationStatementsFileName": "ezBookkeeping_{nickname}_reconciliation_statements",
-        "defaultInsightsExplorerQueryFileName": "ezBookkeeping_insights_explorer_query",
-        "insightsExplorerQueryFileName": "ezBookkeeping_{nickname}_insights_explorer_query",
-        "defaultImportDataMappingFileName": "ezBookkeeping_import_data_mapping",
-        "defaultImportHandlingScript": "ezBookkeeping_handling_script",
-        "defaultImportReplaceRuleFileName": "ezBookkeeping_import_replace_rule",
-        "defaultImportCheckResultFileName": "ezBookkeeping_import_check_result",
-        "defaultOverviewLayoutFileName": "ezBookkeeping_overview_layout"
+        "defaultExportFilename": "CodeBooks_export_data",
+        "exportFilename": "CodeBooks_{nickname}_export_data",
+        "defaultExportStatisticsFileName": "CodeBooks_statistics_data",
+        "exportStatisticsFileName": "CodeBooks_{nickname}_statistics_data",
+        "defaultExportReconciliationStatementsFileName": "CodeBooks_reconciliation_statements",
+        "exportReconciliationStatementsFileName": "CodeBooks_{nickname}_reconciliation_statements",
+        "defaultInsightsExplorerQueryFileName": "CodeBooks_insights_explorer_query",
+        "insightsExplorerQueryFileName": "CodeBooks_{nickname}_insights_explorer_query",
+        "defaultImportDataMappingFileName": "CodeBooks_import_data_mapping",
+        "defaultImportHandlingScript": "CodeBooks_handling_script",
+        "defaultImportReplaceRuleFileName": "CodeBooks_import_replace_rule",
+        "defaultImportCheckResultFileName": "CodeBooks_import_check_result",
+        "defaultOverviewLayoutFileName": "CodeBooks_overview_layout"
     },
     "calendar": {
         "Gregorian": "Грегорианский",
@@ -1798,8 +1798,8 @@
     "Change Language": "Изменить язык",
     "Date is too early": "Дата слишком ранняя",
     "User Canceled": "Отменено пользователем",
-    "Welcome to ezBookkeeping": "Добро пожаловать в ezBookkeeping",
-    "Please log in with your ezBookkeeping account": "Пожалуйста, войдите в свою учетную запись ezBookkeeping",
+    "Welcome to ezBookkeeping": "Добро пожаловать в CodeBooks",
+    "Please log in with your ezBookkeeping account": "Пожалуйста, войдите в свою учетную запись CodeBooks",
     "Unlock Application": "Разблокировать приложение",
     "Please enter your PIN code or use WebAuthn to unlock application": "Пожалуйста, введите PIN-код или используйте WebAuthn для разблокировки приложения",
     "Please enter your PIN code to unlock application": "Пожалуйста, введите PIN-код для разблокировки приложения",
@@ -2258,7 +2258,7 @@
     "Filter Description": "Описание фильтра",
     "How to import this file?": "Как импортировать этот файл?",
     "How to export this file?": "Как экспортировать этот файл?",
-    "ezBookkeeping File Format": "ezBookkeeping формат файлов",
+    "ezBookkeeping File Format": "CodeBooks формат файлов",
     "Custom File Format": "Пользовательский формат файла",
     "General Data Exchange Format": "Общий формат обмена данными",
     "General Bank Statement Format": "Общий формат банковской выписки",

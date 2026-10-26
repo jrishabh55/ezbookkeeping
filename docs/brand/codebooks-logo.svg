@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title description">
+  <title id="title">CodeBooks</title>
+  <desc id="description">An open ledger with code brackets, in white and mint on a deep indigo rounded square.</desc>
+  <rect width="512" height="512" rx="112" fill="#25265B"/>
+  <!-- Two broad pages and an open spine stay distinct at favicon sizes. -->
+  <path fill="#FFFFFF" d="M112 128H164C198 128 226 140 244 156V384C222 364 194 352 164 352H112C103 352 96 345 96 336V144C96 135 103 128 112 128Z"/>
+  <path fill="#6EE7B7" d="M400 128H348C314 128 286 140 268 156V384C290 364 318 352 348 352H400C409 352 416 345 416 336V144C416 135 409 128 400 128Z"/>
+  <g fill="none" stroke="#25265B" stroke-width="24" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M190 216L152 254L190 292"/>
+    <path d="M322 216L360 254L322 292"/>
+  </g>
+</svg>
