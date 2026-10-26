@@ -9,6 +9,7 @@ import {
     type BucketNewDisplayOrderRequest,
     type BucketAllocateRequest,
     type BucketWithdrawRequest,
+    BucketStatus,
     Bucket,
     BucketTransaction
 } from '@/models/bucket.ts';
@@ -83,6 +84,16 @@ export const useBucketsStore = defineStore('buckets', () => {
         const bucket = allBucketsMap.value[bucketId];
         if (bucket) {
             bucket.hidden = hidden;
+        }
+    }
+
+    function applyBucketBalanceDelta(bucket: Bucket, delta: number): void {
+        bucket.currentBalance += delta;
+
+        // mirror the backend: status follows the balance only when the bucket has a target
+        if (bucket.targetAmount > 0) {
+            bucket.progress = (bucket.currentBalance / bucket.targetAmount) * 100;
+            bucket.status = bucket.currentBalance >= bucket.targetAmount ? BucketStatus.Completed.type : BucketStatus.InProgress.type;
         }
     }
 
@@ -323,10 +334,7 @@ export const useBucketsStore = defineStore('buckets', () => {
                 // Update bucket balance in list
                 const bucket = allBucketsMap.value[request.bucketId];
                 if (bucket) {
-                    bucket.currentBalance += request.amount;
-                    if (bucket.targetAmount > 0) {
-                        bucket.progress = (bucket.currentBalance / bucket.targetAmount) * 100;
-                    }
+                    applyBucketBalanceDelta(bucket, request.amount);
                 }
 
                 resolve(transaction);
@@ -359,10 +367,7 @@ export const useBucketsStore = defineStore('buckets', () => {
                 // Update bucket balance in list
                 const bucket = allBucketsMap.value[request.bucketId];
                 if (bucket) {
-                    bucket.currentBalance -= request.amount;
-                    if (bucket.targetAmount > 0) {
-                        bucket.progress = (bucket.currentBalance / bucket.targetAmount) * 100;
-                    }
+                    applyBucketBalanceDelta(bucket, -request.amount);
                 }
 
                 resolve(transaction);
