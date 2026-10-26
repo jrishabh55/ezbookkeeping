@@ -35,6 +35,11 @@
                     <v-icon :icon="mdiPrinterOutline" />
                     <v-tooltip activator="parent">{{ tt('Print / Save PDF') }}</v-tooltip>
                 </v-btn>
+                <v-btn density="comfortable" color="default" variant="text" class="ms-1" :icon="true"
+                       :aria-label="tt('Share Link')" :disabled="!invoice || loading || updating" @click="share">
+                    <v-icon :icon="mdiShareVariantOutline" />
+                    <v-tooltip activator="parent">{{ tt('Share Link') }}</v-tooltip>
+                </v-btn>
             </template>
 
             <template #content>
@@ -97,6 +102,25 @@
     <invoice-edit-dialog ref="invoiceEditDialog" />
     <confirm-dialog ref="confirmDialog"/>
     <snack-bar ref="snackbar" />
+
+    <v-dialog width="640" v-model="showShareDialog">
+        <v-card class="dialog-layout-card">
+            <v-toolbar color="primary">
+                <v-toolbar-title>{{ tt('Share Link') }}</v-toolbar-title>
+            </v-toolbar>
+            <v-card-text class="pa-4">
+                <div class="text-body-medium mb-3">{{ tt('Anyone with this link can view this invoice.') }}</div>
+                <v-text-field readonly density="comfortable" :model-value="publicLinkUrl" @focus="selectLinkField" />
+            </v-card-text>
+            <v-card-actions class="px-4 pb-4">
+                <v-btn color="error" variant="text" :disabled="updating" @click="updatePublicLink(false)">{{ tt('Disable Link') }}</v-btn>
+                <v-btn color="default" variant="text" :disabled="updating" @click="updatePublicLink(true)">{{ tt('Reset Link') }}</v-btn>
+                <v-spacer />
+                <v-btn color="gray" @click="showShareDialog = false">{{ tt('Close') }}</v-btn>
+                <v-btn color="primary" @click="copyLink">{{ tt('Copy') }}</v-btn>
+            </v-card-actions>
+        </v-card>
+    </v-dialog>
 </template>
 
 <script setup lang="ts">
@@ -109,7 +133,8 @@ import {
     mdiLockOpenVariantOutline,
     mdiDeleteOutline,
     mdiPrinterOutline,
-    mdiLinkOff
+    mdiLinkOff,
+    mdiShareVariantOutline
 } from '@mdi/js';
 
 import ConfirmDialog from '@/components/desktop/ConfirmDialog.vue';
@@ -147,9 +172,12 @@ const {
     balanceDue,
     shortfall,
     shortfallName,
+    publicLinkUrl,
     formatAmount,
     formatPaymentDescription,
-    printInvoice
+    printInvoice,
+    setPublicLink,
+    copyPublicLink
 } = useInvoiceDetailPageBase();
 
 const invoicesStore = useInvoicesStore();
@@ -167,6 +195,7 @@ let rejectFunc: ((reason?: unknown) => void) | null = null;
 const showState = ref<boolean>(false);
 const invoiceId = ref<string>('');
 const changed = ref<boolean>(false);
+const showShareDialog = ref<boolean>(false);
 
 // resolves open()'s promise on every dismissal (X/Close, Escape, backdrop click), not just the explicit close() call
 watch(showState, value => {
@@ -300,6 +329,52 @@ function remove(): void {
             }
         });
     });
+}
+
+// first share creates the link; afterwards the dialog just shows it
+function share(): void {
+    if (!invoice.value) {
+        return;
+    }
+
+    if (invoice.value.publicToken) {
+        showShareDialog.value = true;
+    } else {
+        updatePublicLink(true);
+    }
+}
+
+function updatePublicLink(enabled: boolean): void {
+    updating.value = true;
+
+    setPublicLink(enabled).then(() => {
+        updating.value = false;
+        changed.value = true;
+        showShareDialog.value = enabled;
+
+        if (!enabled) {
+            snackbar.value?.showMessage('Public link has been disabled');
+        }
+    }).catch(error => {
+        updating.value = false;
+
+        if (!error.processed) {
+            snackbar.value?.showError(error);
+        }
+    });
+}
+
+function copyLink(): void {
+    copyPublicLink().then(copied => {
+        if (copied) {
+            snackbar.value?.showMessage('Link copied');
+        }
+    });
+}
+
+// no clipboard (plain http): select the URL so it can be copied by hand
+function selectLinkField(event: FocusEvent): void {
+    (event.target as HTMLInputElement | null)?.select();
 }
 
 function close(): void {

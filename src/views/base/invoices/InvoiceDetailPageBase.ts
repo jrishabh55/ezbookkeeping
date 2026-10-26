@@ -3,6 +3,7 @@ import { ref, computed } from 'vue';
 import { useI18n } from '@/locales/helpers.ts';
 
 import { useAccountsStore } from '@/stores/account.ts';
+import { useInvoicesStore } from '@/stores/invoice.ts';
 
 import type { TextualYearMonthDay } from '@/core/datetime.ts';
 import { type Invoice, type InvoicePayment, type InvoiceProfile, INVOICE_CURRENCY } from '@/models/invoice.ts';
@@ -14,8 +15,9 @@ import {
     getInvoiceDisplayBalanceDue,
     getInvoiceShortfall,
     getInvoiceDisplayStatus,
-    getInvoicePdfFileName,
-    getTodayTextualDate
+    getInvoicePublicLinkUrl,
+    getTodayTextualDate,
+    printInvoiceDocument
 } from '@/lib/invoice.ts';
 
 import { getInvoiceDisplayStatusName } from './InvoiceListPageBase.ts';
@@ -24,6 +26,7 @@ export function useInvoiceDetailPageBase() {
     const { formatAmountToLocalizedNumeralsWithCurrency, formatGregorianTextualYearMonthDayToLongDate, formatDateTimeToLongDate } = useI18n();
 
     const accountsStore = useAccountsStore();
+    const invoicesStore = useInvoicesStore();
 
     const loading = ref<boolean>(true);
     const updating = ref<boolean>(false);
@@ -46,6 +49,7 @@ export function useInvoiceDetailPageBase() {
 
         return '';
     });
+    const publicLinkUrl = computed<string>(() => invoice.value?.publicToken ? getInvoicePublicLinkUrl(invoice.value.publicToken) : '');
 
     function formatAmount(paise: number): string {
         return formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(paise), INVOICE_CURRENCY);
@@ -62,18 +66,33 @@ export function useInvoiceDetailPageBase() {
         return [date, accountName, payment.comment].filter(part => !!part).join(' · ');
     }
 
-    // the browser suggests document.title as the PDF file name
     function printInvoice(): void {
-        if (!invoice.value) {
-            return;
+        if (invoice.value) {
+            printInvoiceDocument(invoice.value);
+        }
+    }
+
+    // enabled=true issues a fresh token (first share, or "Reset Link": the old URL stops working); false disables the link
+    function setPublicLink(enabled: boolean): Promise<string> {
+        const current = invoice.value;
+
+        if (!current) {
+            return Promise.reject({ message: 'Unable to update public link' });
         }
 
-        const originalTitle = document.title;
-        document.title = getInvoicePdfFileName(invoice.value.number, invoice.value.dueDate);
-        window.addEventListener('afterprint', () => {
-            document.title = originalTitle;
-        }, { once: true });
-        window.print();
+        return invoicesStore.updateInvoicePublicLink({ invoiceId: current.id, enabled }).then(token => {
+            current.publicToken = token;
+            return token;
+        });
+    }
+
+    // resolves false when the browser offers no clipboard (plain http, old WebViews); the page then shows the URL to copy by hand
+    function copyPublicLink(): Promise<boolean> {
+        if (!publicLinkUrl.value || !navigator.clipboard) {
+            return Promise.resolve(false);
+        }
+
+        return navigator.clipboard.writeText(publicLinkUrl.value).then(() => true).catch(() => false);
     }
 
     return {
@@ -89,10 +108,13 @@ export function useInvoiceDetailPageBase() {
         balanceDue,
         shortfall,
         shortfallName,
+        publicLinkUrl,
         // functions
         formatAmount,
         formatDate,
         formatPaymentDescription,
-        printInvoice
+        printInvoice,
+        setPublicLink,
+        copyPublicLink
     };
 }

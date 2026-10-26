@@ -140,6 +140,11 @@ export const useInvoicesStore = defineStore('invoices', () => {
         return request(services.unlinkInvoicePayment({ invoiceId, transactionId }), 'Unable to unlink this transaction');
     }
 
+    // enabled=true issues a fresh token every time (first share or "Reset Link"); false disables the link; resolves the stored token
+    function updateInvoicePublicLink({ invoiceId, enabled }: { invoiceId: string, enabled: boolean }): Promise<string> {
+        return request(services.updateInvoicePublicLink({ id: invoiceId, enabled }), 'Unable to update public link').then(result => result.publicToken);
+    }
+
     function loadAllCustomers({ force }: { force?: boolean }): Promise<Customer[]> {
         if (!force && !customerListStateInvalid.value) {
             return Promise.resolve(allCustomers.value);
@@ -224,6 +229,7 @@ export const useInvoicesStore = defineStore('invoices', () => {
         getInvoicePaymentSuggestions,
         linkInvoicePayment,
         unlinkInvoicePayment,
+        updateInvoicePublicLink,
         loadAllCustomers,
         saveCustomer,
         deleteCustomer,

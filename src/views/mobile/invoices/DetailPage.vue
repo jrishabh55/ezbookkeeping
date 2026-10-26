@@ -68,6 +68,7 @@
                 <f7-actions-button @click="f7router.navigate(`/invoice/add?duplicateFrom=${invoiceId}`)">{{ tt('Duplicate') }}</f7-actions-button>
                 <f7-actions-button @click="toggleClosed">{{ invoice?.closedManually ? tt('Reopen') : tt('Mark as Paid') }}</f7-actions-button>
                 <f7-actions-button @click="printInvoice">{{ tt('Print / Save PDF') }}</f7-actions-button>
+                <f7-actions-button @click="share">{{ tt('Share Link') }}</f7-actions-button>
             </f7-actions-group>
             <f7-actions-group>
                 <f7-actions-button color="red" @click="showDeleteActionSheet = true">{{ tt('Delete') }}</f7-actions-button>
@@ -81,6 +82,19 @@
             <f7-actions-group>
                 <f7-actions-label>{{ tt('Are you sure you want to delete this invoice?') }}</f7-actions-label>
                 <f7-actions-button color="red" @click="remove">{{ tt('Delete') }}</f7-actions-button>
+            </f7-actions-group>
+            <f7-actions-group>
+                <f7-actions-button bold close>{{ tt('Cancel') }}</f7-actions-button>
+            </f7-actions-group>
+        </f7-actions>
+
+        <f7-actions close-by-outside-click close-on-escape :opened="showShareActionSheet" @actions:closed="showShareActionSheet = false">
+            <f7-actions-group>
+                <f7-actions-label>{{ tt('Anyone with this link can view this invoice.') }}</f7-actions-label>
+                <f7-actions-label class="invoice-public-link">{{ publicLinkUrl }}</f7-actions-label>
+                <f7-actions-button @click="copyLink">{{ tt('Copy') }}</f7-actions-button>
+                <f7-actions-button @click="updatePublicLink(true)">{{ tt('Reset Link') }}</f7-actions-button>
+                <f7-actions-button color="red" @click="updatePublicLink(false)">{{ tt('Disable Link') }}</f7-actions-button>
             </f7-actions-group>
             <f7-actions-group>
                 <f7-actions-button bold close>{{ tt('Cancel') }}</f7-actions-button>
@@ -111,7 +125,7 @@ const props = defineProps<{
 }>();
 
 const { tt, getCurrentLanguageTextDirection } = useI18n();
-const { showToast, routeBackOnError } = useI18nUIComponents();
+const { showToast, showPrompt, routeBackOnError } = useI18nUIComponents();
 const {
     loading,
     updating,
@@ -123,10 +137,13 @@ const {
     balanceDue,
     shortfall,
     shortfallName,
+    publicLinkUrl,
     formatAmount,
     formatDate,
     formatPaymentDescription,
-    printInvoice
+    printInvoice,
+    setPublicLink,
+    copyPublicLink
 } = useInvoiceDetailPageBase();
 
 const invoicesStore = useInvoicesStore();
@@ -136,6 +153,7 @@ const loadingError = ref<unknown | null>(null);
 const invoiceId = ref<string>(props.f7route.query['id'] || '');
 const showMoreActionSheet = ref<boolean>(false);
 const showDeleteActionSheet = ref<boolean>(false);
+const showShareActionSheet = ref<boolean>(false);
 
 const textDirection = computed<TextDirection>(() => getCurrentLanguageTextDirection());
 
@@ -228,6 +246,53 @@ function remove(): void {
     });
 }
 
+// first share creates the link; afterwards the sheet just shows it
+function share(): void {
+    if (!invoice.value) {
+        return;
+    }
+
+    if (invoice.value.publicToken) {
+        showShareActionSheet.value = true;
+    } else {
+        updatePublicLink(true);
+    }
+}
+
+function updatePublicLink(enabled: boolean): void {
+    showShareActionSheet.value = false;
+    updating.value = true;
+    showLoading(() => updating.value);
+
+    setPublicLink(enabled).then(() => {
+        updating.value = false;
+        hideLoading();
+
+        if (enabled) {
+            showShareActionSheet.value = true;
+        } else {
+            showToast('Public link has been disabled');
+        }
+    }).catch(error => {
+        updating.value = false;
+        hideLoading();
+
+        if (!error.processed) {
+            showToast(error.message || error);
+        }
+    });
+}
+
+function copyLink(): void {
+    copyPublicLink().then(copied => {
+        if (copied) {
+            showToast('Link copied');
+        } else {
+            showPrompt('Share Link', publicLinkUrl.value); // no clipboard (plain http): a field to copy from by hand
+        }
+    });
+}
+
 function onPageAfterIn(): void {
     if (!loading.value) {
         load(); // back from the edit page
@@ -242,5 +307,9 @@ load();
 <style>
 .invoice-document-preview {
     overflow-x: auto;
+}
+
+.invoice-public-link {
+    word-break: break-all;
 }
 </style>

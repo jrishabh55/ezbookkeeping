@@ -220,7 +220,9 @@ import type {
     InvoiceInfoResponse,
     InvoiceCreateRequest,
     InvoiceModifyRequest,
-    InvoicePayment
+    InvoicePayment,
+    InvoicePublicLinkResponse,
+    PublicInvoiceResponse
 } from '@/models/invoice.ts';
 
 import {
@@ -1091,6 +1093,16 @@ export default {
     },
     unlinkInvoicePayment: (req: { invoiceId: string, transactionId: string }): ApiResponsePromise<boolean> => {
         return axios.post<ApiResponse<boolean>>('v1/invoices/payment/unlink.json', req);
+    },
+    updateInvoicePublicLink: (req: { id: string, enabled: boolean }): ApiResponsePromise<InvoicePublicLinkResponse> => {
+        return axios.post<ApiResponse<InvoicePublicLinkResponse>>('v1/invoices/public_link/update.json', req);
+    },
+    // unauthenticated: no bearer token, and a failure must never clear the login of whoever opened the link
+    getPublicInvoice: ({ token }: { token: string }): ApiResponsePromise<PublicInvoiceResponse> => {
+        return axios.get<ApiResponse<PublicInvoiceResponse>>('public/invoices/view.json?token=' + encodeURIComponent(token), {
+            noAuth: true,
+            ignoreError: true
+        } as ApiRequestConfig);
     },
     getServerVersion: (): ApiResponsePromise<VersionInfo> => {
         return axios.get<ApiResponse<VersionInfo>>('v1/systems/version.json');
