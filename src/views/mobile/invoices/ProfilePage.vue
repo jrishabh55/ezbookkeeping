@@ -39,11 +39,17 @@
                                :label="tt('Website')" :placeholder="tt('Website')"
                                v-model:value="newProfile.website"></f7-list-input>
                 <f7-list-input type="text" autocomplete="off" clear-button
+                               :label="tt('GSTIN')" :placeholder="tt('GSTIN')"
+                               v-model:value="newProfile.gstin"></f7-list-input>
+                <f7-list-input type="text" autocomplete="off" clear-button
                                :label="tt('Invoice Number Prefix')" :placeholder="tt('Invoice Number Prefix')"
                                v-model:value="newProfile.numberPrefix"></f7-list-input>
                 <list-number-input :label="tt('Payment Terms (days)')" :placeholder="tt('Payment Terms (days)')"
                                    :min-value="0" :max-value="365" :max-decimal-count="0"
                                    v-model="newProfile.defaultTermsDays"></list-number-input>
+                <f7-list-input type="text" autocomplete="off" clear-button
+                               :label="tt('Default SAC')" :placeholder="tt('Default SAC')"
+                               v-model:value="newProfile.defaultSac"></f7-list-input>
                 <f7-list-input type="textarea" style="height: auto" autocomplete="off"
                                :label="tt('Default Notes / Terms')" :placeholder="tt('Default Notes / Terms')"
                                v-textarea-auto-size v-model:value="newProfile.defaultNotes"></f7-list-input>

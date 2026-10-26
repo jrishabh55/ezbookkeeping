@@ -55,6 +55,25 @@
                                           v-model="customer.accountNumber" />
                         </v-col>
                         <v-col cols="12" md="6">
+                            <v-text-field type="text" autocomplete="off" persistent-placeholder
+                                          :disabled="loading || submitting"
+                                          :label="tt('GSTIN')" :placeholder="tt('GSTIN')"
+                                          v-model="customer.gstin" />
+                        </v-col>
+                        <v-col cols="6" md="3">
+                            <v-select item-title="displayName" item-value="type" persistent-placeholder
+                                      :disabled="loading || submitting"
+                                      :label="tt('Tax')" :placeholder="tt('Tax')"
+                                      :items="allTaxTypes"
+                                      v-model="customer.taxType" />
+                        </v-col>
+                        <v-col cols="6" md="3">
+                            <number-input :disabled="loading || submitting || customer.taxType === 'none'" persistent-placeholder
+                                          :label="tt('Tax Rate (%)')" :placeholder="tt('Tax Rate (%)')"
+                                          :min-value="0" :max-value="100" :max-decimal-count="2"
+                                          v-model="taxRatePercent" />
+                        </v-col>
+                        <v-col cols="12" md="6">
                             <number-input :disabled="loading || submitting" persistent-placeholder
                                           :label="tt('Payment Terms (days, 0 = default)')" :placeholder="tt('Payment Terms (days, 0 = default)')"
                                           :min-value="0" :max-value="365" :max-decimal-count="0"
@@ -119,7 +138,9 @@ const {
     title,
     saveButtonTitle,
     inputEmptyProblemMessage,
-    inputIsEmpty
+    inputIsEmpty,
+    allTaxTypes,
+    taxRatePercent
 } = useCustomerEditPageBase();
 
 const invoicesStore = useInvoicesStore();

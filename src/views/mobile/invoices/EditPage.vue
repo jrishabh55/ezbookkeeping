@@ -73,6 +73,9 @@
                         <f7-list-input type="textarea" style="height: auto" autocomplete="off"
                                        :label="tt('Description')" :placeholder="tt('Description (optional)')"
                                        v-textarea-auto-size v-model:value="line.description"></f7-list-input>
+                        <f7-list-input type="text" autocomplete="off" clear-button
+                                       :label="tt('SAC')" :placeholder="tt('SAC')"
+                                       v-model:value="line.sac"></f7-list-input>
                         <list-number-input :label="tt('Qty')" :placeholder="tt('Qty')"
                                            :min-value="0.01" :max-value="10000" :max-decimal-count="2"
                                            :model-value="line.quantity / INVOICE_QUANTITY_SCALE"
@@ -93,10 +96,30 @@
             </f7-block>
 
             <f7-list strong inset dividers class="margin-vertical">
-                <f7-list-item :title="tt('Total')" :after="formatAmount(totals.total)"></f7-list-item>
-                <f7-list-input type="textarea" style="height: auto" autocomplete="off"
-                               :label="tt('Notes / Terms')" :placeholder="tt('Notes / Terms')"
-                               v-textarea-auto-size v-model:value="invoice.notes"></f7-list-input>
+                <template #list>
+                    <f7-list-item class="list-item-with-header-and-title" link="#" no-chevron
+                                  :header="tt('Tax')"
+                                  :title="selectedTaxTypeName"
+                                  @click="showTaxTypeSheet = true">
+                        <list-item-selection-sheet value-type="item"
+                                                   key-field="type" value-field="type" title-field="displayName"
+                                                   :items="allTaxTypes"
+                                                   v-model:show="showTaxTypeSheet"
+                                                   v-model="invoice.taxType">
+                        </list-item-selection-sheet>
+                    </f7-list-item>
+                    <list-number-input :label="tt('Tax Rate (%)')" :placeholder="tt('Tax Rate (%)')"
+                                       :min-value="0" :max-value="100" :max-decimal-count="2"
+                                       v-model="taxRatePercent" v-if="invoice.taxType !== 'none'"></list-number-input>
+                    <template v-if="invoice.taxType !== 'none'">
+                        <f7-list-item :title="tt('Subtotal')" :after="formatAmount(totals.subtotal)"></f7-list-item>
+                        <f7-list-item :title="row.label" :after="formatAmount(row.amount)" :key="row.label" v-for="row in taxRows"></f7-list-item>
+                    </template>
+                    <f7-list-item :title="tt('Total')" :after="formatAmount(totals.total)"></f7-list-item>
+                    <f7-list-input type="textarea" style="height: auto" autocomplete="off"
+                                   :label="tt('Notes / Terms')" :placeholder="tt('Notes / Terms')"
+                                   v-textarea-auto-size v-model:value="invoice.notes"></f7-list-input>
+                </template>
             </f7-list>
         </template>
 
@@ -144,6 +167,10 @@ const {
     inputEmptyProblemMessage,
     inputIsEmpty,
     totals,
+    taxRows,
+    allTaxTypes,
+    selectedTaxTypeName,
+    taxRatePercent,
     addLine,
     removeLine,
     setInvoice,
@@ -162,6 +189,7 @@ const showMoreActionSheet = ref<boolean>(false);
 const showCustomerPopup = ref<boolean>(false);
 const showInvoiceDateSheet = ref<boolean>(false);
 const showDueDateSheet = ref<boolean>(false);
+const showTaxTypeSheet = ref<boolean>(false);
 const rateSheetLineIndex = ref<number>(-1);
 const customerIdsBeforeAdding = ref<Set<string> | null>(null);
 
@@ -189,7 +217,7 @@ function init(): void {
         profile.value = loadedProfile;
 
         if (loadedInvoice) {
-            setInvoice(loadedInvoice);
+            setInvoice(loadedInvoice, loadedProfile);
         } else {
             prepareNewInvoice(loadedProfile, duplicateFrom);
             suggestNumber();
