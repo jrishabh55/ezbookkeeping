@@ -2,36 +2,28 @@ package templates
 
 import (
 	"bytes"
+	"html/template"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestInvoiceEmailTemplateRendersParagraphsButtonAndSummary(t *testing.T) {
-	t.Chdir("../..") // templates are read relative to the repository root
-
+// A fixed heading, button or footer in the outer document would make an intentionally empty body impossible.
+func TestInvoiceEmailTemplateWrapsOnlyEditableBody(t *testing.T) {
+	t.Chdir("../..")
 	tmpl, err := GetTemplate(TEMPLATE_INVOICE_EMAIL)
-	assert.Nil(t, err)
-
+	require.NoError(t, err)
 	var body bytes.Buffer
-	err = tmpl.Execute(&body, map[string]any{
-		"Subject":    "Invoice CA/2026-27/01 from Rishabh Jain",
-		"Paragraphs": []string{"Hi Kanika,", "Please find invoice <b>CA/2026-27/01</b> attached."},
-		"ViewUrl":    "https://books.codeation.io/i/abc",
-		"Number":     "CA/2026-27/01",
-		"AmountDue":  "₹1,180.00",
-		"DueDate":    "April 30, 2026",
-	})
-	assert.Nil(t, err)
-
-	html := body.String()
-	assert.Contains(t, html, "<title>Invoice CA/2026-27/01 from Rishabh Jain</title>")
-	assert.Contains(t, html, ">Hi Kanika,</p>")
-	// the message is plain text: markup in it is escaped, never rendered
-	assert.Contains(t, html, "&lt;b&gt;CA/2026-27/01&lt;/b&gt;")
-	assert.NotContains(t, html, "<b>CA")
-	assert.Contains(t, html, `href="https://books.codeation.io/i/abc"`)
-	assert.Contains(t, html, "View invoice")
-	assert.Contains(t, html, "₹1,180.00")
-	assert.Contains(t, html, "April 30, 2026")
+	err = tmpl.Execute(&body, map[string]any{"Subject": "My <subject>", "Body": template.HTML(`<h1>Custom heading</h1><p>Custom footer</p>`)})
+	require.NoError(t, err)
+	require.Contains(t, body.String(), "<title>My &lt;subject&gt;</title>")
+	require.Contains(t, body.String(), "<h1>Custom heading</h1><p>Custom footer</p>")
+	require.Contains(t, body.String(), "max-width: 600px")
+	for _, fixed := range []string{"View invoice", "Amount due", "Invoice ", "Due "} {
+		require.NotContains(t, body.String(), fixed)
+	}
+	body.Reset()
+	require.NoError(t, tmpl.Execute(&body, map[string]any{"Subject": "Invoice", "Body": template.HTML("")}))
+	require.NotContains(t, body.String(), "Custom heading")
+	require.NotContains(t, body.String(), "<a ")
 }

@@ -109,6 +109,14 @@
                         </div>
                     </v-card-text>
 
+                    <v-card-text v-if="!loading">
+                        <h3 class="text-title-medium mb-4">{{ tt('Invoice Email Template') }}</h3>
+                        <invoice-email-template-form v-model:subject="newProfile.emailSubjectTemplate"
+                                                     v-model:body="newProfile.emailBodyTemplate"
+                                                     :disabled="saving" allow-restore
+                                                     @validity-change="emailTemplateValid = $event" />
+                    </v-card-text>
+
                     <v-card-text class="d-flex flex-wrap gap-4">
                         <v-tooltip :disabled="!inputIsInvalid" :text="inputInvalidProblemMessage ? tt(inputInvalidProblemMessage) : ''">
                             <template v-slot:activator="{ props }">
@@ -137,6 +145,7 @@ import { useTemplateRef } from 'vue';
 import { mdiImageOutline } from '@mdi/js';
 
 import SnackBar from '@/components/desktop/SnackBar.vue';
+import InvoiceEmailTemplateForm from '@/components/common/InvoiceEmailTemplateForm.vue';
 
 import { useI18n } from '@/locales/helpers.ts';
 import { useInvoiceProfilePageBase } from '@/views/base/invoices/InvoiceProfilePageBase.ts';
@@ -149,6 +158,7 @@ const { tt } = useI18n();
 const {
     loading,
     saving,
+    emailTemplateValid,
     newProfile,
     inputIsNotChanged,
     inputInvalidProblemMessage,
@@ -196,6 +206,10 @@ function onLogoChosen(event: Event): void {
 }
 
 function save(): void {
+    if (saving.value || inputIsInvalid.value) {
+        return;
+    }
+
     saving.value = true;
 
     invoicesStore.updateInvoiceProfile({ profile: newProfile.value }).then(profile => {

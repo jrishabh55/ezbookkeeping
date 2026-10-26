@@ -10,6 +10,7 @@ const MAX_INVOICE_LOGO_FILE_SIZE = 250 * 1024;
 export function useInvoiceProfilePageBase() {
     const loading = ref<boolean>(true);
     const saving = ref<boolean>(false);
+    const emailTemplateValid = ref<boolean>(false);
     const newProfile = ref<InvoiceProfile>(InvoiceProfile.createNewProfile());
     const oldProfile = ref<InvoiceProfile>(InvoiceProfile.createNewProfile());
 
@@ -20,6 +21,12 @@ export function useInvoiceProfilePageBase() {
             return 'Invoice number prefix cannot be blank';
         } else if (newProfile.value.defaultTermsDays < 0 || newProfile.value.defaultTermsDays > 365) {
             return 'Payment terms must be between 0 and 365 days';
+        } else if (Array.from(newProfile.value.emailSubjectTemplate).length > 256) {
+            return 'Email subject must be at most 256 characters';
+        } else if (Array.from(newProfile.value.emailBodyTemplate).length > 32000) {
+            return 'Email body must be at most 32000 characters';
+        } else if (!emailTemplateValid.value) {
+            return 'Preview the current email before saving or sending';
         }
 
         return null;
@@ -60,6 +67,7 @@ export function useInvoiceProfilePageBase() {
         // states
         loading,
         saving,
+        emailTemplateValid,
         newProfile,
         oldProfile,
         // computed states

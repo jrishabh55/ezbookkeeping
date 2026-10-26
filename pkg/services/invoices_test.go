@@ -798,8 +798,10 @@ func withSmtpEnabled(t *testing.T) {
 	t.Helper()
 	config := settings.Container.GetCurrentConfig()
 	original := config.EnableSMTP
+	originalRoot := config.RootUrl
+	config.RootUrl = "https://books.example/"
 	config.EnableSMTP = true
-	t.Cleanup(func() { config.EnableSMTP = original })
+	t.Cleanup(func() { config.EnableSMTP = original; config.RootUrl = originalRoot })
 }
 
 func TestSendInvoiceWithSmtpDisabledReturnsSmtpErrorBeforeTouchingTheInvoice(t *testing.T) {
@@ -837,7 +839,6 @@ func TestSendInvoiceFailedSendLeavesSentUnixTimeUntouched(t *testing.T) {
 	customer := createTestCustomer(t, uid)
 	invoice := createTestInvoice(t, uid, customer.CustomerId, "CA/2026-27/01", 100000)
 	withSmtpEnabled(t)
-	t.Chdir("../..") // the email template is read relative to the repository root
 
 	// no mailer is configured in tests, so the send itself fails after the token, PDF and body were built
 	err := Invoices.SendInvoice(ctx, uid, invoice.InvoiceId, "accounts@qubertech.com", "", "Line one\nLine two")

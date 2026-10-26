@@ -316,7 +316,7 @@ export default defineConfig(() => {
                             {
                                 name:  'common',
                                 test: id => {
-                                    if (/[\\/]src[\\/](core|consts|models|stores)[\\/]/i.test(id)) {
+                                    if (/[\\/]src[\\/](core|consts|models|stores|composables)[\\/]/i.test(id)) {
                                         return true;
                                     } else if (/[\\/]src[\\/]lib[\\/](map[\\/]|ui[\\/]common|calendar[\\/]|[a-zA-Z0-9-_]+\.(js|ts))/i.test(id)) {
                                         return true;

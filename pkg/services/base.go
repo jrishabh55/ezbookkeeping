@@ -66,7 +66,7 @@ func (s *ServiceUsingConfig) CurrentConfig() *settings.Config {
 
 // ServiceUsingMailer represents a service that need to use mailer
 type ServiceUsingMailer struct {
-	container *mail.MailerContainer
+	container mail.Mailer
 }
 
 // SendMail sends an email according to argument

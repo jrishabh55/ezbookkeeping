@@ -4,6 +4,8 @@ import { defineStore } from 'pinia';
 import {
     type InvoicePayment,
     type InvoiceSendRequest,
+    type InvoiceEmailPreviewRequest,
+    type InvoiceEmailPreviewResponse,
     InvoiceProfile,
     Customer,
     Invoice,
@@ -156,6 +158,10 @@ export const useInvoicesStore = defineStore('invoices', () => {
         return request(services.sendInvoice(req), 'Unable to send invoice').then(result => Invoice.of(result));
     }
 
+    function previewInvoiceEmail(req: InvoiceEmailPreviewRequest): Promise<InvoiceEmailPreviewResponse> {
+        return request(services.previewInvoiceEmail(req), 'Unable to preview invoice email');
+    }
+
     function loadAllCustomers({ force }: { force?: boolean }): Promise<Customer[]> {
         if (!force && !customerListStateInvalid.value) {
             return Promise.resolve(allCustomers.value);
@@ -299,6 +305,7 @@ export const useInvoicesStore = defineStore('invoices', () => {
         unlinkInvoicePayment,
         updateInvoicePublicLink,
         sendInvoice,
+        previewInvoiceEmail,
         loadAllCustomers,
         saveCustomer,
         deleteCustomer,

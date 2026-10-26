@@ -2,6 +2,36 @@ import { describe, expect, test } from 'vitest';
 
 import { Invoice, InvoiceProfile } from '@/models/invoice.ts';
 
+describe('InvoiceProfile email templates', () => {
+    test('cloning and saving preserves template variables rather than sample values', () => {
+        const profile = InvoiceProfile.of({
+            ...InvoiceProfile.createNewProfile().toUpdateRequest(),
+            emailSubjectTemplate: 'Invoice {{invoice_number}} for {{customer_name}}',
+            emailBodyTemplate: '<p>Hello <span data-invoice-variable="contact_name">{{contact_name}}</span></p>'
+        });
+        const saved = profile.clone().toUpdateRequest();
+        expect(saved.emailSubjectTemplate).toBe('Invoice {{invoice_number}} for {{customer_name}}');
+        expect(saved.emailBodyTemplate).toBe('<p>Hello <span data-invoice-variable="contact_name">{{contact_name}}</span></p>');
+    });
+
+    test('an intentionally empty body survives clone and update serialization', () => {
+        const profile = InvoiceProfile.of({
+            ...InvoiceProfile.createNewProfile().toUpdateRequest(),
+            emailSubjectTemplate: 'Invoice {{invoice_number}}',
+            emailBodyTemplate: ''
+        });
+        expect(profile.clone().toUpdateRequest().emailBodyTemplate).toBe('');
+        expect(profile.clone().toUpdateRequest().emailSubjectTemplate).toBe('Invoice {{invoice_number}}');
+    });
+
+    test('responses predating email templates still load', () => {
+        const legacy = InvoiceProfile.createNewProfile().toUpdateRequest();
+        const profile = InvoiceProfile.of({ ...legacy, emailSubjectTemplate: undefined, emailBodyTemplate: undefined } as unknown as InvoiceProfile);
+        expect(profile.emailSubjectTemplate).toBe('');
+        expect(profile.emailBodyTemplate).toBe('');
+    });
+});
+
 describe('InvoiceProfile logo visibility', () => {
     test('cloning and saving a hidden logo preserves its uploaded image', () => {
         const profile = InvoiceProfile.createNewProfile();

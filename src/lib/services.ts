@@ -214,6 +214,8 @@ import type {
 import type {
     InvoiceProfileInfoResponse,
     InvoiceProfileUpdateRequest,
+    InvoiceEmailPreviewRequest,
+    InvoiceEmailPreviewResponse,
     CustomerInfoResponse,
     CustomerCreateRequest,
     CustomerModifyRequest,
@@ -1052,6 +1054,9 @@ export default {
     },
     updateInvoiceProfile: (req: InvoiceProfileUpdateRequest): ApiResponsePromise<InvoiceProfileInfoResponse> => {
         return axios.post<ApiResponse<InvoiceProfileInfoResponse>>('v1/invoice_profile/update.json', req);
+    },
+    previewInvoiceEmail: (req: InvoiceEmailPreviewRequest): ApiResponsePromise<InvoiceEmailPreviewResponse> => {
+        return axios.post<ApiResponse<InvoiceEmailPreviewResponse>>('v1/invoice_profile/preview_email.json', req);
     },
     getAllCustomers: (): ApiResponsePromise<CustomerInfoResponse[]> => {
         return axios.get<ApiResponse<CustomerInfoResponse[]>>('v1/customers/list.json');

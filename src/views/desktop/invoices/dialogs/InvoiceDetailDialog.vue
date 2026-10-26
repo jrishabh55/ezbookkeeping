@@ -148,19 +148,15 @@
                               :disabled="sending"
                               :label="tt('To')" :placeholder="tt('Email')"
                               v-model="sendRequest.to" />
-                <v-text-field type="text" autocomplete="off" persistent-placeholder class="mb-2"
-                              :disabled="sending"
-                              :label="tt('Subject')" :placeholder="tt('Subject')"
-                              v-model="sendRequest.subject" />
-                <v-textarea type="text" autocomplete="off" persistent-placeholder rows="6" auto-grow
-                            :disabled="sending"
-                            :label="tt('Message')" :placeholder="tt('Message')"
-                            v-model="sendRequest.message" />
+                <invoice-email-template-form v-if="showSendDialog" :key="sendRequest.id"
+                                             v-model:subject="sendRequest.subject" v-model:body="sendRequest.bodyHtml"
+                                             :invoice-id="sendRequest.id" :disabled="sending"
+                                             @validity-change="emailTemplateValid = $event" />
             </v-card-text>
             <v-card-actions class="px-4 pb-4">
                 <v-spacer />
                 <v-btn color="gray" :disabled="sending" @click="showSendDialog = false">{{ tt('Cancel') }}</v-btn>
-                <v-btn color="primary" :disabled="sending || !sendRequest.to" @click="send">
+                <v-btn color="primary" :disabled="sending || !sendRequest.to || !emailTemplateValid" @click="send">
                     {{ tt('Send') }}
                     <v-progress-circular indeterminate size="22" class="ms-2" v-if="sending"></v-progress-circular>
                 </v-btn>
@@ -190,6 +186,7 @@ import ConfirmDialog from '@/components/desktop/ConfirmDialog.vue';
 import AmountInputDialog from '@/components/desktop/AmountInputDialog.vue';
 import SnackBar from '@/components/desktop/SnackBar.vue';
 import InvoiceDocument from '@/components/common/InvoiceDocument.vue';
+import InvoiceEmailTemplateForm from '@/components/common/InvoiceEmailTemplateForm.vue';
 import InvoiceEditDialog from './InvoiceEditDialog.vue';
 import RecurringInvoiceEditDialog from './RecurringInvoiceEditDialog.vue';
 
@@ -264,7 +261,8 @@ const changed = ref<boolean>(false);
 const showShareDialog = ref<boolean>(false);
 const showSendDialog = ref<boolean>(false);
 const sending = ref<boolean>(false);
-const sendRequest = ref<InvoiceSendForm>({ id: '', to: '', subject: '', message: '' });
+const emailTemplateValid = ref<boolean>(false);
+const sendRequest = ref<InvoiceSendForm & { bodyHtml: string }>({ id: '', to: '', subject: '', bodyHtml: '', message: '' });
 
 // resolves open()'s promise on every dismissal (X/Close, Escape, backdrop click), not just the explicit close() call
 watch(showState, value => {
@@ -491,7 +489,8 @@ function openSend(): void {
     prepareSendRequest().then(request => {
         updating.value = false;
         changed.value = true; // the link may have been created
-        sendRequest.value = { ...request };
+        emailTemplateValid.value = false;
+        sendRequest.value = { ...request, bodyHtml: request.bodyHtml ?? '' };
         showSendDialog.value = true;
     }).catch(error => {
         updating.value = false;
@@ -503,6 +502,10 @@ function openSend(): void {
 }
 
 function send(): void {
+    if (sending.value || !sendRequest.value.to || !emailTemplateValid.value) {
+        return;
+    }
+
     sending.value = true;
 
     sendInvoice(sendRequest.value).then(() => {

@@ -25,6 +25,8 @@ export interface InvoiceProfileInfoResponse {
     readonly gstin: string;
     readonly defaultSac: string;
     readonly defaultCurrency: string; // empty from the server means INR
+    readonly emailSubjectTemplate: string;
+    readonly emailBodyTemplate: string;
 }
 
 export type InvoiceProfileUpdateRequest = InvoiceProfileInfoResponse;
@@ -120,6 +122,29 @@ export interface InvoiceSendRequest {
     readonly to: string;
     readonly subject: string;
     readonly message: string;
+    readonly bodyHtml?: string;
+}
+
+export interface InvoiceEmailVariable {
+    readonly key: string;
+    readonly label: string;
+    readonly value: string;
+}
+
+export interface InvoiceEmailPreviewRequest {
+    readonly invoiceId?: string;
+    readonly subject?: string;
+    readonly bodyHtml?: string;
+}
+
+export interface InvoiceEmailPreviewResponse {
+    readonly subject: string;
+    readonly bodyHtml: string;
+    readonly emailHtml: string;
+    readonly variables: InvoiceEmailVariable[];
+    readonly defaultSubjectTemplate: string;
+    readonly defaultBodyTemplate: string;
+    readonly sample: boolean;
 }
 
 // the editable form behind a send request
@@ -200,6 +225,8 @@ export class InvoiceProfile implements InvoiceProfileInfoResponse {
     public gstin: string = '';
     public defaultSac: string = '';
     public defaultCurrency: string = INVOICE_DEFAULT_CURRENCY;
+    public emailSubjectTemplate: string = '';
+    public emailBodyTemplate: string = '';
 
     public fillFrom(other: InvoiceProfileInfoResponse): void {
         this.businessName = other.businessName;
@@ -214,6 +241,8 @@ export class InvoiceProfile implements InvoiceProfileInfoResponse {
         this.gstin = other.gstin;
         this.defaultSac = other.defaultSac;
         this.defaultCurrency = other.defaultCurrency || INVOICE_DEFAULT_CURRENCY; // profiles saved before multi-currency
+        this.emailSubjectTemplate = other.emailSubjectTemplate ?? '';
+        this.emailBodyTemplate = other.emailBodyTemplate ?? '';
     }
 
     public toUpdateRequest(): InvoiceProfileUpdateRequest {
@@ -229,7 +258,9 @@ export class InvoiceProfile implements InvoiceProfileInfoResponse {
             defaultTermsDays: this.defaultTermsDays,
             gstin: this.gstin.trim().toUpperCase(),
             defaultSac: this.defaultSac.trim(),
-            defaultCurrency: this.defaultCurrency
+            defaultCurrency: this.defaultCurrency,
+            emailSubjectTemplate: this.emailSubjectTemplate,
+            emailBodyTemplate: this.emailBodyTemplate
         };
     }
 

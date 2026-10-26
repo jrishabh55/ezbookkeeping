@@ -1,6 +1,9 @@
 package models
 
-import "github.com/mayswind/ezbookkeeping/pkg/utils"
+import (
+	"github.com/mayswind/ezbookkeeping/pkg/invoiceemail"
+	"github.com/mayswind/ezbookkeeping/pkg/utils"
+)
 
 // INVOICE_KIND_INVOICE is the only invoice kind for now; quotes and credit notes can be added later
 const INVOICE_KIND_INVOICE = "invoice"
@@ -30,21 +33,23 @@ const InvoicePaymentSuggestionMaxCount = 10
 
 // InvoiceProfile represents the user's own business details printed on every invoice
 type InvoiceProfile struct {
-	Uid              int64  `xorm:"PK"`
-	BusinessName     string `xorm:"VARCHAR(128) NOT NULL"`
-	AddressLines     string `xorm:"VARCHAR(512) NOT NULL"`
-	Phone            string `xorm:"VARCHAR(32) NOT NULL"`
-	Website          string `xorm:"VARCHAR(128) NOT NULL"`
-	LogoDataUrl      string `xorm:"MEDIUMTEXT"`
-	HideLogo         bool   `xorm:"NOT NULL DEFAULT false"`
-	DefaultNotes     string `xorm:"VARCHAR(2048) NOT NULL"`
-	NumberPrefix     string `xorm:"VARCHAR(16) NOT NULL"`
-	DefaultTermsDays int32  `xorm:"NOT NULL"`
-	Gstin            string `xorm:"VARCHAR(15) NOT NULL DEFAULT ''"`
-	DefaultSac       string `xorm:"VARCHAR(8) NOT NULL DEFAULT ''"`
-	CreatedUnixTime  int64
-	UpdatedUnixTime  int64
-	DefaultCurrency  string `xorm:"VARCHAR(3) NOT NULL DEFAULT ''"` // empty means INVOICE_DEFAULT_CURRENCY
+	EmailSubjectTemplate string `xorm:"VARCHAR(256) NOT NULL DEFAULT ''"`
+	EmailBodyTemplate    string `xorm:"MEDIUMTEXT"`
+	Uid                  int64  `xorm:"PK"`
+	BusinessName         string `xorm:"VARCHAR(128) NOT NULL"`
+	AddressLines         string `xorm:"VARCHAR(512) NOT NULL"`
+	Phone                string `xorm:"VARCHAR(32) NOT NULL"`
+	Website              string `xorm:"VARCHAR(128) NOT NULL"`
+	LogoDataUrl          string `xorm:"MEDIUMTEXT"`
+	HideLogo             bool   `xorm:"NOT NULL DEFAULT false"`
+	DefaultNotes         string `xorm:"VARCHAR(2048) NOT NULL"`
+	NumberPrefix         string `xorm:"VARCHAR(16) NOT NULL"`
+	DefaultTermsDays     int32  `xorm:"NOT NULL"`
+	Gstin                string `xorm:"VARCHAR(15) NOT NULL DEFAULT ''"`
+	DefaultSac           string `xorm:"VARCHAR(8) NOT NULL DEFAULT ''"`
+	CreatedUnixTime      int64
+	UpdatedUnixTime      int64
+	DefaultCurrency      string `xorm:"VARCHAR(3) NOT NULL DEFAULT ''"` // empty means INVOICE_DEFAULT_CURRENCY
 }
 
 // Customer represents an invoice customer stored in database
@@ -163,34 +168,38 @@ func InvoiceReceivedAmount(payments []*InvoicePaymentInfo) int64 {
 
 // InvoiceProfileUpdateRequest represents all parameters of invoice profile update request
 type InvoiceProfileUpdateRequest struct {
-	BusinessName     string `json:"businessName" binding:"max=128"`
-	AddressLines     string `json:"addressLines" binding:"max=512"`
-	Phone            string `json:"phone" binding:"max=32"`
-	Website          string `json:"website" binding:"max=128"`
-	LogoDataUrl      string `json:"logoDataUrl" binding:"max=350000"`
-	HideLogo         bool   `json:"hideLogo"`
-	DefaultNotes     string `json:"defaultNotes" binding:"max=2048"`
-	NumberPrefix     string `json:"numberPrefix" binding:"required,notBlank,max=16"`
-	DefaultTermsDays int32  `json:"defaultTermsDays" binding:"min=0,max=365"`
-	Gstin            string `json:"gstin" binding:"max=15"`
-	DefaultSac       string `json:"defaultSac" binding:"max=8"`
-	DefaultCurrency  string `json:"defaultCurrency" binding:"max=3"` // empty means INR; checked against the known currencies by the handler
+	EmailSubjectTemplate *string `json:"emailSubjectTemplate" binding:"omitempty,max=256"`
+	EmailBodyTemplate    *string `json:"emailBodyTemplate" binding:"omitempty,max=32000"`
+	BusinessName         string  `json:"businessName" binding:"max=128"`
+	AddressLines         string  `json:"addressLines" binding:"max=512"`
+	Phone                string  `json:"phone" binding:"max=32"`
+	Website              string  `json:"website" binding:"max=128"`
+	LogoDataUrl          string  `json:"logoDataUrl" binding:"max=350000"`
+	HideLogo             bool    `json:"hideLogo"`
+	DefaultNotes         string  `json:"defaultNotes" binding:"max=2048"`
+	NumberPrefix         string  `json:"numberPrefix" binding:"required,notBlank,max=16"`
+	DefaultTermsDays     int32   `json:"defaultTermsDays" binding:"min=0,max=365"`
+	Gstin                string  `json:"gstin" binding:"max=15"`
+	DefaultSac           string  `json:"defaultSac" binding:"max=8"`
+	DefaultCurrency      string  `json:"defaultCurrency" binding:"max=3"` // empty means INR; checked against the known currencies by the handler
 }
 
 // InvoiceProfileResponse represents a view-object of invoice profile
 type InvoiceProfileResponse struct {
-	BusinessName     string `json:"businessName"`
-	AddressLines     string `json:"addressLines"`
-	Phone            string `json:"phone"`
-	Website          string `json:"website"`
-	LogoDataUrl      string `json:"logoDataUrl"`
-	HideLogo         bool   `json:"hideLogo"`
-	DefaultNotes     string `json:"defaultNotes"`
-	NumberPrefix     string `json:"numberPrefix"`
-	DefaultTermsDays int32  `json:"defaultTermsDays"`
-	Gstin            string `json:"gstin"`
-	DefaultSac       string `json:"defaultSac"`
-	DefaultCurrency  string `json:"defaultCurrency"`
+	EmailSubjectTemplate string `json:"emailSubjectTemplate"`
+	EmailBodyTemplate    string `json:"emailBodyTemplate"`
+	BusinessName         string `json:"businessName"`
+	AddressLines         string `json:"addressLines"`
+	Phone                string `json:"phone"`
+	Website              string `json:"website"`
+	LogoDataUrl          string `json:"logoDataUrl"`
+	HideLogo             bool   `json:"hideLogo"`
+	DefaultNotes         string `json:"defaultNotes"`
+	NumberPrefix         string `json:"numberPrefix"`
+	DefaultTermsDays     int32  `json:"defaultTermsDays"`
+	Gstin                string `json:"gstin"`
+	DefaultSac           string `json:"defaultSac"`
+	DefaultCurrency      string `json:"defaultCurrency"`
 }
 
 // CustomerCreateRequest represents all parameters of customer creation request
@@ -314,12 +323,31 @@ type InvoicePublicViewRequest struct {
 	Token string `form:"token" binding:"max=64"`
 }
 
-// InvoiceSendRequest represents all parameters of emailing an invoice; a blank subject gets the default "Invoice <number> from <business name>"
+// InvoiceSendRequest supports saved templates, rich overrides and the legacy plain text message.
 type InvoiceSendRequest struct {
-	Id      int64  `json:"id,string" binding:"required,min=1"`
-	To      string `json:"to" binding:"required,notBlank,max=128,validEmail"`
-	Subject string `json:"subject" binding:"max=256"`
-	Message string `json:"message" binding:"max=2048"`
+	Id       int64   `json:"id,string" binding:"required,min=1"`
+	To       string  `json:"to" binding:"required,notBlank,max=128,validEmail"`
+	Subject  string  `json:"subject" binding:"max=256"`
+	Message  *string `json:"message" binding:"omitempty,max=2048"`
+	BodyHtml *string `json:"bodyHtml" binding:"omitempty,max=32000"`
+}
+
+// InvoiceEmailPreviewRequest accepts unsaved overrides; absence and an empty body are distinct.
+type InvoiceEmailPreviewRequest struct {
+	InvoiceId int64   `json:"invoiceId,string" binding:"min=0"`
+	Subject   *string `json:"subject" binding:"omitempty,max=256"`
+	BodyHtml  *string `json:"bodyHtml" binding:"omitempty,max=32000"`
+}
+
+// InvoiceEmailPreviewResponse is a rendered email and editor metadata, with no sending side effects.
+type InvoiceEmailPreviewResponse struct {
+	Subject                string                  `json:"subject"`
+	BodyHtml               string                  `json:"bodyHtml"`
+	EmailHtml              string                  `json:"emailHtml"`
+	Variables              []invoiceemail.Variable `json:"variables"`
+	DefaultSubjectTemplate string                  `json:"defaultSubjectTemplate"`
+	DefaultBodyTemplate    string                  `json:"defaultBodyTemplate"`
+	Sample                 bool                    `json:"sample"`
 }
 
 // InvoiceLineResponse represents a view-object of invoice line
@@ -411,19 +439,22 @@ type PublicInvoiceResponse struct {
 
 // ToInvoiceProfileResponse returns a view-object according to database model
 func (p *InvoiceProfile) ToInvoiceProfileResponse() *InvoiceProfileResponse {
+	subject, body := invoiceemail.EffectiveTemplates(p.EmailSubjectTemplate, p.EmailBodyTemplate)
 	return &InvoiceProfileResponse{
-		BusinessName:     p.BusinessName,
-		AddressLines:     p.AddressLines,
-		Phone:            p.Phone,
-		Website:          p.Website,
-		LogoDataUrl:      p.LogoDataUrl,
-		HideLogo:         p.HideLogo,
-		DefaultNotes:     p.DefaultNotes,
-		NumberPrefix:     p.NumberPrefix,
-		DefaultTermsDays: p.DefaultTermsDays,
-		Gstin:            p.Gstin,
-		DefaultSac:       p.DefaultSac,
-		DefaultCurrency:  p.DefaultCurrency,
+		EmailSubjectTemplate: subject,
+		EmailBodyTemplate:    body,
+		BusinessName:         p.BusinessName,
+		AddressLines:         p.AddressLines,
+		Phone:                p.Phone,
+		Website:              p.Website,
+		LogoDataUrl:          p.LogoDataUrl,
+		HideLogo:             p.HideLogo,
+		DefaultNotes:         p.DefaultNotes,
+		NumberPrefix:         p.NumberPrefix,
+		DefaultTermsDays:     p.DefaultTermsDays,
+		Gstin:                p.Gstin,
+		DefaultSac:           p.DefaultSac,
+		DefaultCurrency:      p.DefaultCurrency,
 	}
 }
 

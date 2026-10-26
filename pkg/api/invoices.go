@@ -135,7 +135,7 @@ func (a *InvoicesApi) InvoiceProfileUpdateHandler(c *core.WebContext) (any, *err
 		DefaultCurrency:  defaultCurrency,
 	}
 
-	if err := a.invoices.SaveProfile(c, profile); err != nil {
+	if err := a.invoices.SaveProfileWithEmailTemplates(c, profile, req.EmailSubjectTemplate, req.EmailBodyTemplate); err != nil {
 		log.Errorf(c, "[invoices.InvoiceProfileUpdateHandler] failed to save invoice profile for user \"uid:%d\", because %s", uid, err.Error())
 		return nil, errs.Or(err, errs.ErrOperationFailed)
 	}
@@ -593,7 +593,7 @@ func (a *InvoicesApi) InvoiceSendHandler(c *core.WebContext) (any, *errs.Error) 
 
 	uid := c.GetCurrentUid()
 
-	if err := a.invoices.SendInvoice(c, uid, req.Id, req.To, req.Subject, req.Message); err != nil {
+	if err := a.invoices.SendInvoiceWithContent(c, uid, req.Id, req.To, req.Subject, req.Message, req.BodyHtml); err != nil {
 		log.Errorf(c, "[invoices.InvoiceSendHandler] failed to send invoice \"id:%d\" for user \"uid:%d\", because %s", req.Id, uid, err.Error())
 		return nil, errs.Or(err, errs.ErrOperationFailed)
 	}
@@ -635,4 +635,17 @@ func (a *InvoicesApi) InvoicePublicPdfHandler(c *core.WebContext) ([]byte, strin
 	}
 
 	return pdf, invoicepdf.FileName(invoice.Number, invoice.DueDate), nil
+}
+
+// InvoiceEmailPreviewHandler renders an unsaved draft using owned invoice data or deterministic samples.
+func (a *InvoicesApi) InvoiceEmailPreviewHandler(c *core.WebContext) (any, *errs.Error) {
+	var req models.InvoiceEmailPreviewRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		return nil, errs.NewIncompleteOrIncorrectSubmissionError(err)
+	}
+	preview, err := a.invoices.PreviewInvoiceEmail(c, c.GetCurrentUid(), req.InvoiceId, req.Subject, req.BodyHtml)
+	if err != nil {
+		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+	return preview, nil
 }
