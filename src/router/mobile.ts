@@ -64,6 +64,7 @@ import InvoiceDetailPage from '@/views/mobile/invoices/DetailPage.vue';
 import InvoiceCustomerListPage from '@/views/mobile/invoices/CustomerListPage.vue';
 import InvoiceCustomerEditPage from '@/views/mobile/invoices/CustomerEditPage.vue';
 import InvoiceProfilePage from '@/views/mobile/invoices/ProfilePage.vue';
+import InvoiceRecurringListPage from '@/views/mobile/invoices/RecurringListPage.vue';
 
 function asyncResolve(component: unknown): (ctx: Router.RouteCallbackCtx) => void {
     return function({ resolve }: { resolve: ({ component }: { component: unknown }) => void }): void {
@@ -460,6 +461,11 @@ const routes: Router.RouteParameters[] = [
     {
         path: '/invoice/profile',
         async: asyncResolve(InvoiceProfilePage),
+        beforeEnter: [checkLogin]
+    },
+    {
+        path: '/invoice/recurring/list',
+        async: asyncResolve(InvoiceRecurringListPage),
         beforeEnter: [checkLogin]
     },
     {

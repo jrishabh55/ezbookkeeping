@@ -35,6 +35,11 @@
                     <v-icon :icon="mdiPrinterOutline" />
                     <v-tooltip activator="parent">{{ tt('Print / Save PDF') }}</v-tooltip>
                 </v-btn>
+                <v-btn density="comfortable" color="default" variant="text" class="ms-1" :icon="true"
+                       :aria-label="tt('Repeat Monthly')" :disabled="!invoice || loading || updating" @click="repeatMonthly">
+                    <v-icon :icon="mdiRepeat" />
+                    <v-tooltip activator="parent">{{ tt('Repeat Monthly') }}</v-tooltip>
+                </v-btn>
             </template>
 
             <template #content>
@@ -95,6 +100,7 @@
     </v-dialog>
 
     <invoice-edit-dialog ref="invoiceEditDialog" />
+    <recurring-invoice-edit-dialog ref="recurringInvoiceEditDialog" />
     <confirm-dialog ref="confirmDialog"/>
     <snack-bar ref="snackbar" />
 </template>
@@ -109,13 +115,15 @@ import {
     mdiLockOpenVariantOutline,
     mdiDeleteOutline,
     mdiPrinterOutline,
-    mdiLinkOff
+    mdiLinkOff,
+    mdiRepeat
 } from '@mdi/js';
 
 import ConfirmDialog from '@/components/desktop/ConfirmDialog.vue';
 import SnackBar from '@/components/desktop/SnackBar.vue';
 import InvoiceDocument from '@/components/common/InvoiceDocument.vue';
 import InvoiceEditDialog from './InvoiceEditDialog.vue';
+import RecurringInvoiceEditDialog from './RecurringInvoiceEditDialog.vue';
 
 import { useI18n } from '@/locales/helpers.ts';
 import { useInvoiceDetailPageBase } from '@/views/base/invoices/InvoiceDetailPageBase.ts';
@@ -130,6 +138,7 @@ import type { InvoiceDisplayStatus } from '@/lib/invoice.ts';
 type ConfirmDialogType = InstanceType<typeof ConfirmDialog>;
 type SnackBarType = InstanceType<typeof SnackBar>;
 type InvoiceEditDialogType = InstanceType<typeof InvoiceEditDialog>;
+type RecurringInvoiceEditDialogType = InstanceType<typeof RecurringInvoiceEditDialog>;
 
 interface InvoiceDetailResponse {
     changed: boolean;
@@ -158,6 +167,7 @@ const accountsStore = useAccountsStore();
 const confirmDialog = useTemplateRef<ConfirmDialogType>('confirmDialog');
 const snackbar = useTemplateRef<SnackBarType>('snackbar');
 const invoiceEditDialog = useTemplateRef<InvoiceEditDialogType>('invoiceEditDialog');
+const recurringInvoiceEditDialog = useTemplateRef<RecurringInvoiceEditDialogType>('recurringInvoiceEditDialog');
 
 const statusColors: Record<InvoiceDisplayStatus, string> = { unpaid: 'warning', partial: 'primary', paid: 'success', overdue: 'error' };
 
@@ -299,6 +309,21 @@ function remove(): void {
                 snackbar.value?.showError(error);
             }
         });
+    });
+}
+
+function repeatMonthly(): void {
+    if (!invoice.value) {
+        return;
+    }
+
+    recurringInvoiceEditDialog.value?.open({ invoice: invoice.value }).then(result => {
+        snackbar.value?.showMessage(result.message);
+        changed.value = true; // the list page reloads its recurring list on close
+    }).catch(error => {
+        if (error && !error.processed) {
+            snackbar.value?.showError(error);
+        }
     });
 }
 

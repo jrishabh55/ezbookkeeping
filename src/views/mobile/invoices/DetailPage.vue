@@ -68,6 +68,7 @@
                 <f7-actions-button @click="f7router.navigate(`/invoice/add?duplicateFrom=${invoiceId}`)">{{ tt('Duplicate') }}</f7-actions-button>
                 <f7-actions-button @click="toggleClosed">{{ invoice?.closedManually ? tt('Reopen') : tt('Mark as Paid') }}</f7-actions-button>
                 <f7-actions-button @click="printInvoice">{{ tt('Print / Save PDF') }}</f7-actions-button>
+                <f7-actions-button @click="showRepeatMonthlyPopup = true">{{ tt('Repeat Monthly') }}</f7-actions-button>
             </f7-actions-group>
             <f7-actions-group>
                 <f7-actions-button color="red" @click="showDeleteActionSheet = true">{{ tt('Delete') }}</f7-actions-button>
@@ -86,6 +87,8 @@
                 <f7-actions-button bold close>{{ tt('Cancel') }}</f7-actions-button>
             </f7-actions-group>
         </f7-actions>
+
+        <recurring-invoice-add-popup :invoice="invoice" v-model:show="showRepeatMonthlyPopup" />
     </f7-page>
 </template>
 
@@ -94,6 +97,7 @@ import { ref, computed } from 'vue';
 import type { Router } from 'framework7/types';
 
 import InvoiceDocument from '@/components/common/InvoiceDocument.vue';
+import RecurringInvoiceAddPopup from './RecurringInvoiceAddPopup.vue';
 
 import { useI18n } from '@/locales/helpers.ts';
 import { useI18nUIComponents, showLoading, hideLoading } from '@/lib/ui/mobile.ts';
@@ -136,6 +140,7 @@ const loadingError = ref<unknown | null>(null);
 const invoiceId = ref<string>(props.f7route.query['id'] || '');
 const showMoreActionSheet = ref<boolean>(false);
 const showDeleteActionSheet = ref<boolean>(false);
+const showRepeatMonthlyPopup = ref<boolean>(false);
 
 const textDirection = computed<TextDirection>(() => getCurrentLanguageTextDirection());
 

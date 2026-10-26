@@ -32,6 +32,14 @@
                     <span class="nav-item-title">{{ tt('Customers') }}</span>
                 </a>
             </li>
+            <li class="nav-link">
+                <a class="d-flex align-center cursor-pointer"
+                   :class="{ 'router-link-active router-link-exact-active': activeView === 'recurring', 'disabled': loading }"
+                   @click="activeView = 'recurring'">
+                    <v-icon class="nav-item-icon" :icon="mdiRepeat"/>
+                    <span class="nav-item-title">{{ tt('Recurring') }}</span>
+                </a>
+            </li>
         </template>
 
         <template #content>
@@ -40,9 +48,9 @@
                     <v-card>
                         <template #title>
                             <div class="title-and-toolbar d-flex align-center">
-                                <span>{{ activeView === 'invoices' ? tt('Invoices') : tt('Customers') }}</span>
+                                <span>{{ tt(activeViewTitle) }}</span>
                                 <v-btn class="ms-3" color="default" variant="outlined"
-                                       :disabled="loading || updating" @click="add">{{ tt('Add') }}</v-btn>
+                                       :disabled="loading || updating" @click="add" v-if="activeView !== 'recurring'">{{ tt('Add') }}</v-btn>
                                 <v-btn density="compact" color="default" variant="text" class="ms-2"
                                        :aria-label="tt('Refresh')" :icon="true" :disabled="loading || updating"
                                        :loading="loading" @click="reload(true)">
@@ -146,6 +154,45 @@
                             </tr>
                             </tbody>
                         </v-table>
+
+                        <v-table class="table-striped" :hover="!loading" v-if="activeView === 'recurring'">
+                            <thead>
+                            <tr>
+                                <th>{{ tt('Customer') }}</th>
+                                <th>{{ tt('Source Invoice') }}</th>
+                                <th>{{ tt('Next Date') }}</th>
+                                <th>{{ tt('Enabled') }}</th>
+                                <th class="text-right">{{ tt('Operation') }}</th>
+                            </tr>
+                            </thead>
+
+                            <tbody v-if="!loading && noAvailableRecurringInvoice">
+                            <tr><td colspan="5">{{ tt('No available recurring invoice') }}</td></tr>
+                            </tbody>
+
+                            <tbody>
+                            <tr :key="recurring.id" v-for="recurring in allRecurringInvoices"
+                                @mouseover="hoveredRecurringId = recurring.id" @mouseleave="hoveredRecurringId = ''">
+                                <td>{{ recurring.customerName }}</td>
+                                <td>
+                                    <a class="cursor-pointer" @click="viewRecurringSource(recurring)" v-if="recurring.sourceInvoiceNumber">{{ recurring.sourceInvoiceNumber }}</a>
+                                    <span class="text-medium-emphasis" v-else>{{ getSourceNumber(recurring) }}</span>
+                                </td>
+                                <td>{{ formatDate(recurring.nextDate) }}</td>
+                                <td>
+                                    <v-switch density="compact" hide-details color="primary"
+                                              :disabled="loading || updating" :model-value="recurring.enabled"
+                                              @update:model-value="setRecurringEnabled(recurring, !!$event)" />
+                                </td>
+                                <td class="text-right">
+                                    <v-btn class="px-2" color="default" density="comfortable" variant="text"
+                                           :prepend-icon="mdiDeleteOutline" :disabled="loading || updating"
+                                           v-if="hoveredRecurringId === recurring.id && !loading"
+                                           @click="removeRecurring(recurring)">{{ tt('Delete') }}</v-btn>
+                                </td>
+                            </tr>
+                            </tbody>
+                        </v-table>
                     </v-card>
                 </v-col>
             </v-row>
@@ -171,7 +218,8 @@ import {
     mdiDeleteOutline,
     mdiFileDocumentOutline,
     mdiFileDocumentEditOutline,
-    mdiAccountMultipleOutline
+    mdiAccountMultipleOutline,
+    mdiRepeat
 } from '@mdi/js';
 
 import ConfirmDialog from '@/components/desktop/ConfirmDialog.vue';
@@ -182,10 +230,11 @@ import CustomerEditDialog from './dialogs/CustomerEditDialog.vue';
 
 import { useI18n } from '@/locales/helpers.ts';
 import { useInvoiceListPageBase } from '@/views/base/invoices/InvoiceListPageBase.ts';
+import { useRecurringInvoiceListPageBase } from '@/views/base/invoices/RecurringInvoiceListPageBase.ts';
 
 import { useInvoicesStore } from '@/stores/invoice.ts';
 
-import type { Customer, Invoice } from '@/models/invoice.ts';
+import type { Customer, Invoice, RecurringInvoice } from '@/models/invoice.ts';
 
 import { type InvoiceDisplayStatus, getInvoiceDisplayBalanceDue } from '@/lib/invoice.ts';
 
@@ -209,6 +258,11 @@ const {
     getDisplayStatus,
     getDisplayStatusName
 } = useInvoiceListPageBase();
+const {
+    allRecurringInvoices,
+    noAvailableRecurringInvoice,
+    getSourceNumber
+} = useRecurringInvoiceListPageBase();
 
 const invoicesStore = useInvoicesStore();
 
@@ -220,18 +274,21 @@ const customerEditDialog = useTemplateRef<CustomerEditDialogType>('customerEditD
 
 const statusColors: Record<InvoiceDisplayStatus, string> = { unpaid: 'warning', partial: 'primary', paid: 'success', overdue: 'error' };
 
-const activeView = ref<'invoices' | 'customers'>('invoices');
+const activeView = ref<'invoices' | 'customers' | 'recurring'>('invoices');
 const updating = ref<boolean>(false);
 const hoveredCustomerId = ref<string>('');
+const hoveredRecurringId = ref<string>('');
 
 const allCustomers = computed<Customer[]>(() => invoicesStore.allCustomers);
+const activeViewTitle = computed<string>(() => activeView.value === 'invoices' ? 'Invoices' : activeView.value === 'customers' ? 'Customers' : 'Recurring');
 
 function reload(force: boolean): void {
     loading.value = true;
 
     Promise.all([
         invoicesStore.loadAllInvoices({ force: force }),
-        invoicesStore.loadAllCustomers({ force: force })
+        invoicesStore.loadAllCustomers({ force: force }),
+        invoicesStore.loadAllRecurringInvoices({ force: force })
     ]).then(() => {
         loading.value = false;
 
@@ -299,6 +356,54 @@ function removeCustomer(customer: Customer): void {
         updating.value = true;
 
         invoicesStore.deleteCustomer({ customer }).then(() => {
+            updating.value = false;
+        }).catch(error => {
+            updating.value = false;
+
+            if (!error.processed) {
+                snackbar.value?.showError(error);
+            }
+        });
+    });
+}
+
+function viewRecurringSource(recurring: RecurringInvoice): void {
+    invoiceDetailDialog.value?.open({ id: recurring.sourceInvoiceId }).then(result => {
+        if (result.changed) {
+            reload(false);
+        }
+    }).catch(error => {
+        if (error && !error.processed) {
+            snackbar.value?.showError(error);
+        }
+    });
+}
+
+function setRecurringEnabled(recurring: RecurringInvoice, enabled: boolean): void {
+    if (recurring.enabled === enabled) {
+        return;
+    }
+
+    const modified = recurring.clone();
+    modified.enabled = enabled;
+    updating.value = true;
+
+    invoicesStore.modifyRecurringInvoice({ recurring: modified }).then(() => {
+        updating.value = false;
+    }).catch(error => {
+        updating.value = false;
+
+        if (!error.processed) {
+            snackbar.value?.showError(error);
+        }
+    });
+}
+
+function removeRecurring(recurring: RecurringInvoice): void {
+    confirmDialog.value?.open('Are you sure you want to delete this recurring invoice?').then(() => {
+        updating.value = true;
+
+        invoicesStore.deleteRecurringInvoice({ recurring }).then(() => {
             updating.value = false;
         }).catch(error => {
             updating.value = false;
