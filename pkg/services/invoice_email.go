@@ -14,6 +14,7 @@ import (
 	"github.com/mayswind/ezbookkeeping/pkg/invoicepdf"
 	"github.com/mayswind/ezbookkeeping/pkg/mail"
 	"github.com/mayswind/ezbookkeeping/pkg/models"
+	"github.com/mayswind/ezbookkeeping/pkg/uuid"
 )
 
 func invoiceEmailTemplateError(err error) error {
@@ -186,10 +187,39 @@ func (s *InvoiceService) SendInvoiceWithContent(c core.Context, uid, invoiceID i
 		return err
 	}
 	now := time.Now().Unix()
+	sent := &models.InvoiceEmail{EmailId: s.GenerateUuid(uuid.UUID_TYPE_INVOICE), Uid: uid, InvoiceId: invoiceID, ToAddress: to, Subject: rendered.Subject, EmailHtml: rendered.EmailHTML, SentUnixTime: now}
 	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+		if _, err := sess.Insert(sent); err != nil {
+			return err
+		}
 		_, err := sess.Cols("sent_unix_time", "updated_unix_time").Where("uid=? AND deleted=? AND invoice_id=?", uid, false, invoiceID).Update(&models.Invoice{SentUnixTime: now, UpdatedUnixTime: now})
 		return err
 	})
+}
+
+// GetInvoiceEmails returns the emails sent for an invoice, newest first, without their content
+func (s *InvoiceService) GetInvoiceEmails(c core.Context, uid, invoiceID int64) ([]*models.InvoiceEmail, error) {
+	if uid <= 0 {
+		return nil, errs.ErrUserIdInvalid
+	}
+	var emails []*models.InvoiceEmail
+	err := s.UserDataDB(uid).NewSession(c).Where("uid=? AND invoice_id=?", uid, invoiceID).Omit("email_html").OrderBy("sent_unix_time desc").Find(&emails)
+	return emails, err
+}
+
+// GetInvoiceEmail returns one sent email of the user, including the HTML that was sent
+func (s *InvoiceService) GetInvoiceEmail(c core.Context, uid, emailID int64) (*models.InvoiceEmail, error) {
+	if uid <= 0 {
+		return nil, errs.ErrUserIdInvalid
+	}
+	email := &models.InvoiceEmail{}
+	has, err := s.UserDataDB(uid).NewSession(c).Where("uid=? AND email_id=?", uid, emailID).Get(email)
+	if err != nil {
+		return nil, err
+	} else if !has {
+		return nil, errs.ErrInvoiceNotFound
+	}
+	return email, nil
 }
 
 // SaveInvoiceEmailTemplate saves only the authenticated user's email template.

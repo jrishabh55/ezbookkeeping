@@ -138,6 +138,31 @@ type InvoicePayment struct {
 	SettledAmount  int64 `xorm:"NOT NULL DEFAULT 0"` // in invoice currency; 0 = same currency, the transaction amount counts
 }
 
+// InvoiceEmail is one sent invoice email, kept exactly as it went out
+type InvoiceEmail struct {
+	EmailId      int64  `xorm:"PK"`
+	Uid          int64  `xorm:"NOT NULL"`
+	InvoiceId    int64  `xorm:"INDEX(IDX_invoice_email_invoice_id) NOT NULL"`
+	ToAddress    string `xorm:"VARCHAR(128) NOT NULL"`
+	Subject      string `xorm:"VARCHAR(256) NOT NULL"`
+	EmailHtml    string `xorm:"MEDIUMTEXT"`
+	SentUnixTime int64  `xorm:"NOT NULL"`
+}
+
+// InvoiceEmailResponse is a sent email; EmailHtml is only filled when one email is requested
+type InvoiceEmailResponse struct {
+	Id           string `json:"id"`
+	To           string `json:"to"`
+	Subject      string `json:"subject"`
+	SentUnixTime int64  `json:"sentUnixTime"`
+	EmailHtml    string `json:"emailHtml,omitempty"`
+}
+
+// ToInvoiceEmailResponse returns a view-object of the sent email
+func (e *InvoiceEmail) ToInvoiceEmailResponse() *InvoiceEmailResponse {
+	return &InvoiceEmailResponse{Id: utils.Int64ToString(e.EmailId), To: e.ToAddress, Subject: e.Subject, SentUnixTime: e.SentUnixTime, EmailHtml: e.EmailHtml}
+}
+
 // InvoicePaymentInfo is a linked (or suggested) transaction with the account currency it was received in
 // and, for a payment in another currency, the amount it settled in the invoice currency
 type InvoicePaymentInfo struct {
@@ -168,18 +193,18 @@ func InvoiceReceivedAmount(payments []*InvoicePaymentInfo) int64 {
 
 // InvoiceProfileUpdateRequest represents all parameters of invoice profile update request
 type InvoiceProfileUpdateRequest struct {
-	BusinessName         string  `json:"businessName" binding:"max=128"`
-	AddressLines         string  `json:"addressLines" binding:"max=512"`
-	Phone                string  `json:"phone" binding:"max=32"`
-	Website              string  `json:"website" binding:"max=128"`
-	LogoDataUrl          string  `json:"logoDataUrl" binding:"max=350000"`
-	HideLogo             bool    `json:"hideLogo"`
-	DefaultNotes         string  `json:"defaultNotes" binding:"max=2048"`
-	NumberPrefix         string  `json:"numberPrefix" binding:"required,notBlank,max=16"`
-	DefaultTermsDays     int32   `json:"defaultTermsDays" binding:"min=0,max=365"`
-	Gstin                string  `json:"gstin" binding:"max=15"`
-	DefaultSac           string  `json:"defaultSac" binding:"max=8"`
-	DefaultCurrency      string  `json:"defaultCurrency" binding:"max=3"` // empty means INR; checked against the known currencies by the handler
+	BusinessName     string `json:"businessName" binding:"max=128"`
+	AddressLines     string `json:"addressLines" binding:"max=512"`
+	Phone            string `json:"phone" binding:"max=32"`
+	Website          string `json:"website" binding:"max=128"`
+	LogoDataUrl      string `json:"logoDataUrl" binding:"max=350000"`
+	HideLogo         bool   `json:"hideLogo"`
+	DefaultNotes     string `json:"defaultNotes" binding:"max=2048"`
+	NumberPrefix     string `json:"numberPrefix" binding:"required,notBlank,max=16"`
+	DefaultTermsDays int32  `json:"defaultTermsDays" binding:"min=0,max=365"`
+	Gstin            string `json:"gstin" binding:"max=15"`
+	DefaultSac       string `json:"defaultSac" binding:"max=8"`
+	DefaultCurrency  string `json:"defaultCurrency" binding:"max=3"` // empty means INR; checked against the known currencies by the handler
 }
 
 // InvoiceProfileResponse represents a view-object of invoice profile
@@ -403,6 +428,7 @@ type InvoiceInfoResponse struct {
 	Payments           []*InvoicePaymentResponse `json:"payments,omitempty"`
 	PublicToken        string                    `json:"publicToken,omitempty"`
 	SentUnixTime       int64                     `json:"sentUnixTime,omitempty"`
+	Emails             []*InvoiceEmailResponse   `json:"emails,omitempty"`
 }
 
 // PublicInvoiceProfileResponse is the part of the invoice profile a recipient of a public link may see

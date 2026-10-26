@@ -46,6 +46,20 @@
                 </f7-list-item>
             </f7-list>
 
+            <f7-list strong inset dividers class="margin-vertical">
+                <f7-list-item group-title>
+                    <small>{{ tt('Emails') }}</small>
+                </f7-list-item>
+                <f7-list-item :title="tt('No emails sent yet.')" v-if="!invoice.emails.length"></f7-list-item>
+                <f7-list-item link="#" no-chevron
+                              :class="{ 'disabled': loadingEmail }"
+                              :title="email.subject"
+                              :footer="`${email.to} · ${formatEmailSentTime(email)}`"
+                              :key="email.id"
+                              v-for="email in invoice.emails"
+                              @click="openEmail(email)"></f7-list-item>
+            </f7-list>
+
             <f7-list strong inset dividers class="margin-vertical" v-if="displayStatus !== 'paid'">
                 <f7-list-item group-title>
                     <small>{{ tt('Suggested Matches') }}</small>
@@ -106,6 +120,23 @@
         </f7-actions>
 
         <recurring-invoice-add-popup :invoice="invoice" v-model:show="showRepeatMonthlyPopup" />
+
+        <f7-popup push swipe-to-close :opened="showEmailPopup" @popup:closed="showEmailPopup = false">
+            <f7-page>
+                <f7-navbar>
+                    <f7-nav-left>
+                        <f7-link popup-close icon-f7="xmark" :aria-label="tt('Close')"></f7-link>
+                    </f7-nav-left>
+                    <f7-nav-title :title="viewedEmail?.subject"></f7-nav-title>
+                </f7-navbar>
+                <template v-if="viewedEmail">
+                    <f7-block-title>{{ tt('To') }}: {{ viewedEmail.to }} · {{ formatEmailSentTime(viewedEmail) }}</f7-block-title>
+                    <!-- exactly what was sent; sandboxed like the send preview -->
+                    <iframe class="invoice-sent-email-frame" sandbox="" referrerpolicy="no-referrer"
+                            :title="viewedEmail.subject" :srcdoc="viewedEmail.emailHtml"></iframe>
+                </template>
+            </f7-page>
+        </f7-popup>
         <f7-actions close-by-outside-click close-on-escape :opened="showShareActionSheet" @actions:closed="showShareActionSheet = false">
             <f7-actions-group>
                 <f7-actions-label>{{ tt('Anyone with this link can view this invoice.') }}</f7-actions-label>
@@ -137,7 +168,7 @@ import { useAccountsStore } from '@/stores/account.ts';
 
 import { TextDirection } from '@/core/text.ts';
 import { TRANSACTION_MAX_AMOUNT } from '@/consts/transaction.ts';
-import type { InvoicePayment } from '@/models/invoice.ts';
+import type { InvoiceEmail, InvoicePayment } from '@/models/invoice.ts';
 
 const props = defineProps<{
     f7route: Router.Route;
@@ -160,11 +191,15 @@ const {
     shortfallName,
     publicLinkUrl,
     sentOnText,
+    viewedEmail,
+    loadingEmail,
     formatAmount,
     formatDate,
     needsSettledAmount,
     formatPaymentAmount,
     formatPaymentDescription,
+    formatEmailSentTime,
+    viewEmail,
     printInvoice,
     setPublicLink,
     copyPublicLink,
@@ -173,6 +208,16 @@ const {
 
 function downloadPdf(): void {
     downloadInvoicePdf().catch(error => showToast(error.message || error));
+}
+
+function openEmail(email: InvoiceEmail): void {
+    viewEmail(email).then(() => {
+        showEmailPopup.value = true;
+    }).catch(error => {
+        if (!error.processed) {
+            showToast(error.message || error);
+        }
+    });
 }
 
 const invoicesStore = useInvoicesStore();
@@ -185,6 +230,7 @@ const showDeleteActionSheet = ref<boolean>(false);
 const showRepeatMonthlyPopup = ref<boolean>(false);
 const showShareActionSheet = ref<boolean>(false);
 const showSettledAmountSheet = ref<boolean>(false);
+const showEmailPopup = ref<boolean>(false);
 const settledAmount = ref<number>(0);
 const settledAmountSuggestion = ref<InvoicePayment | null>(null); // the cross-currency suggestion waiting for its settled amount
 
@@ -361,5 +407,16 @@ load();
 
 .invoice-public-link {
     word-break: break-all;
+}
+
+.invoice-sent-email-frame {
+    display: block;
+    box-sizing: border-box;
+    width: calc(100% - 32px);
+    height: 70vh;
+    margin: 0 16px;
+    border: 1px solid var(--f7-list-item-border-color, #ddd);
+    border-radius: 4px;
+    background: white;
 }
 </style>

@@ -242,3 +242,37 @@ func TestInvoiceEmailPreviewFillsBusinessValuesForNonDefaultProfile(t *testing.T
 		require.Contains(t, preview.BodyHtml, value)
 	}
 }
+
+// Overwriting a single sent time, logging failed sends, or storing anything but the delivered HTML breaks this test.
+func TestInvoiceEmailHistoryKeepsEverySuccessfulSend(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	withSmtpEnabled(t)
+	customer := createTestCustomer(t, uid)
+	invoice := createTestInvoice(t, uid, customer.CustomerId, "HISTORY-1", 100000)
+	fake := &invoiceEmailCaptureMailer{}
+	service := *Invoices
+	service.ServiceUsingMailer.container = fake
+	require.NoError(t, service.SendInvoiceWithContent(ctx, uid, invoice.InvoiceId, "first@example.com", "First", nil, stringPointer("<p>One</p>")))
+	require.NoError(t, service.SendInvoiceWithContent(ctx, uid, invoice.InvoiceId, "second@example.com", "Second", nil, stringPointer("<p>Two</p>")))
+	fake.failure = errors.New("SMTP delivery failed")
+	require.Error(t, service.SendInvoiceWithContent(ctx, uid, invoice.InvoiceId, "third@example.com", "Third", nil, stringPointer("<p>Three</p>")))
+
+	emails, err := Invoices.GetInvoiceEmails(ctx, uid, invoice.InvoiceId)
+	require.NoError(t, err)
+	require.Len(t, emails, 2)
+	subjects := []string{emails[0].Subject, emails[1].Subject}
+	require.ElementsMatch(t, []string{"First", "Second"}, subjects)
+	require.Empty(t, emails[0].EmailHtml, "the list omits the content")
+	for _, listed := range emails {
+		full, err := Invoices.GetInvoiceEmail(ctx, uid, listed.EmailId)
+		require.NoError(t, err)
+		sentBody := fake.messages[0].Body
+		if full.Subject == "Second" {
+			sentBody = fake.messages[1].Body
+			require.Equal(t, "second@example.com", full.ToAddress)
+		}
+		require.Equal(t, sentBody, full.EmailHtml)
+	}
+	_, err = Invoices.GetInvoiceEmail(ctx, uid+1, emails[0].EmailId)
+	require.Error(t, err, "another user cannot read the email")
+}

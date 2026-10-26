@@ -94,6 +94,17 @@
                         </v-list>
                         <div class="text-body-medium px-4 pb-2" v-else>{{ tt('No payments linked yet.') }}</div>
 
+                        <v-divider class="my-2" />
+                        <div class="text-title-small px-4 py-2">{{ tt('Emails') }}</div>
+                        <v-list density="compact" v-if="invoice.emails.length">
+                            <v-list-item :key="email.id" v-for="email in invoice.emails" link
+                                         :title="email.subject" :subtitle="`${email.to} · ${formatEmailSentTime(email)}`"
+                                         :disabled="loadingEmail" @click="openEmail(email)">
+                                <template #append><v-icon :icon="mdiEmailOutline" /></template>
+                            </v-list-item>
+                        </v-list>
+                        <div class="text-body-medium px-4 pb-2" v-else>{{ tt('No emails sent yet.') }}</div>
+
                         <template v-if="displayStatus !== 'paid'">
                             <v-divider class="my-2" />
                             <div class="text-title-small px-4 py-2">{{ tt('Suggested Matches') }}</div>
@@ -118,6 +129,24 @@
     <confirm-dialog ref="confirmDialog"/>
     <amount-input-dialog ref="amountInputDialog" />
     <snack-bar ref="snackbar" />
+
+    <v-dialog width="800" v-model="showEmailDialog">
+        <v-card class="dialog-layout-card" v-if="viewedEmail">
+            <v-toolbar color="primary">
+                <v-toolbar-title>{{ viewedEmail.subject }}</v-toolbar-title>
+            </v-toolbar>
+            <v-card-text class="pa-4">
+                <div class="text-body-medium mb-3">{{ tt('To') }}: {{ viewedEmail.to }} · {{ formatEmailSentTime(viewedEmail) }}</div>
+                <!-- exactly what was sent; sandboxed like the send preview -->
+                <iframe class="invoice-sent-email-frame" sandbox="" referrerpolicy="no-referrer"
+                        :title="viewedEmail.subject" :srcdoc="viewedEmail.emailHtml"></iframe>
+            </v-card-text>
+            <v-card-actions class="px-4 pb-4">
+                <v-spacer />
+                <v-btn color="gray" @click="showEmailDialog = false">{{ tt('Close') }}</v-btn>
+            </v-card-actions>
+        </v-card>
+    </v-dialog>
 
     <v-dialog width="640" v-model="showShareDialog">
         <v-card class="dialog-layout-card">
@@ -196,7 +225,7 @@ import { useInvoiceDetailPageBase } from '@/views/base/invoices/InvoiceDetailPag
 import { useInvoicesStore } from '@/stores/invoice.ts';
 import { useAccountsStore } from '@/stores/account.ts';
 
-import type { InvoicePayment, InvoiceSendForm } from '@/models/invoice.ts';
+import type { InvoiceEmail, InvoicePayment, InvoiceSendForm } from '@/models/invoice.ts';
 
 import type { InvoiceDisplayStatus } from '@/lib/invoice.ts';
 
@@ -225,10 +254,14 @@ const {
     shortfallName,
     publicLinkUrl,
     sentOnText,
+    viewedEmail,
+    loadingEmail,
     formatAmount,
     needsSettledAmount,
     formatPaymentAmount,
     formatPaymentDescription,
+    formatEmailSentTime,
+    viewEmail,
     printInvoice,
     setPublicLink,
     copyPublicLink,
@@ -239,6 +272,16 @@ const {
 
 function downloadPdf(): void {
     downloadInvoicePdf().catch(error => snackbar.value?.showError(error));
+}
+
+function openEmail(email: InvoiceEmail): void {
+    viewEmail(email).then(() => {
+        showEmailDialog.value = true;
+    }).catch(error => {
+        if (!error.processed) {
+            snackbar.value?.showError(error);
+        }
+    });
 }
 
 const invoicesStore = useInvoicesStore();
@@ -260,6 +303,7 @@ const invoiceId = ref<string>('');
 const changed = ref<boolean>(false);
 const showShareDialog = ref<boolean>(false);
 const showSendDialog = ref<boolean>(false);
+const showEmailDialog = ref<boolean>(false);
 const sending = ref<boolean>(false);
 const emailTemplateValid = ref<boolean>(false);
 const sendRequest = ref<InvoiceSendForm & { bodyHtml: string }>({ id: '', to: '', subject: '', bodyHtml: '', message: '' });
@@ -530,3 +574,14 @@ defineExpose({
     open
 });
 </script>
+
+<style>
+.invoice-sent-email-frame {
+    display: block;
+    width: 100%;
+    height: 60vh;
+    border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+    border-radius: 4px;
+    background: white;
+}
+</style>

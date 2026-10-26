@@ -217,6 +217,7 @@ import type {
     InvoiceEmailTemplateUpdateRequest,
     InvoiceEmailPreviewRequest,
     InvoiceEmailPreviewResponse,
+    InvoiceEmail,
     CustomerInfoResponse,
     CustomerCreateRequest,
     CustomerModifyRequest,
@@ -1079,6 +1080,9 @@ export default {
     },
     getInvoice: ({ id }: { id: string }): ApiResponsePromise<InvoiceInfoResponse> => {
         return axios.get<ApiResponse<InvoiceInfoResponse>>('v1/invoices/get.json?id=' + id);
+    },
+    getInvoiceEmail: ({ id }: { id: string }): ApiResponsePromise<InvoiceEmail> => {
+        return axios.get<ApiResponse<InvoiceEmail>>('v1/invoices/emails/get.json?id=' + id);
     },
     addInvoice: (req: InvoiceCreateRequest): ApiResponsePromise<InvoiceInfoResponse> => {
         return axios.post<ApiResponse<InvoiceInfoResponse>>('v1/invoices/add.json', req);

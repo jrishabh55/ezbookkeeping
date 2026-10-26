@@ -283,7 +283,40 @@ func (a *InvoicesApi) getInvoiceResponse(c *core.WebContext, uid int64, invoiceI
 		return nil, err
 	}
 
-	return invoice.ToInvoiceInfoResponse(lines, payments[invoiceId]), nil
+	emails, err := a.invoices.GetInvoiceEmails(c, uid, invoiceId)
+
+	if err != nil {
+		return nil, err
+	}
+
+	resp := invoice.ToInvoiceInfoResponse(lines, payments[invoiceId])
+	resp.Emails = make([]*models.InvoiceEmailResponse, len(emails))
+
+	for idx, email := range emails {
+		resp.Emails[idx] = email.ToInvoiceEmailResponse()
+	}
+
+	return resp, nil
+}
+
+// InvoiceEmailGetHandler returns one sent invoice email of current user, with the HTML that was sent
+func (a *InvoicesApi) InvoiceEmailGetHandler(c *core.WebContext) (any, *errs.Error) {
+	var req models.InvoiceIdRequest
+
+	if err := c.ShouldBindQuery(&req); err != nil {
+		log.Warnf(c, "[invoices.InvoiceEmailGetHandler] parse request failed, because %s", err.Error())
+		return nil, errs.NewIncompleteOrIncorrectSubmissionError(err)
+	}
+
+	uid := c.GetCurrentUid()
+	email, err := a.invoices.GetInvoiceEmail(c, uid, req.Id)
+
+	if err != nil {
+		log.Errorf(c, "[invoices.InvoiceEmailGetHandler] failed to get invoice email \"id:%d\" for user \"uid:%d\", because %s", req.Id, uid, err.Error())
+		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+
+	return email.ToInvoiceEmailResponse(), nil
 }
 
 // InvoiceGetHandler returns one invoice of current user with lines and payments

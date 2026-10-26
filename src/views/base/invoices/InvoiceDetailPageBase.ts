@@ -10,7 +10,7 @@ import { createInvoiceEmailSendRequest } from '@/lib/invoiceEmail.ts';
 import { startDownloadFile } from '@/lib/ui/common.ts';
 
 import type { TextualYearMonthDay } from '@/core/datetime.ts';
-import type { Invoice, InvoicePayment, InvoiceProfile, InvoiceSendRequest } from '@/models/invoice.ts';
+import type { Invoice, InvoiceEmail, InvoicePayment, InvoiceProfile, InvoiceSendRequest } from '@/models/invoice.ts';
 
 import { parseBigDecimal } from '@/lib/numeral.ts';
 import { parseDateTimeFromUnixTimeWithTimezoneOffset, getTimezoneOffsetMinutes } from '@/lib/datetime.ts';
@@ -29,7 +29,7 @@ import {
 import { getInvoiceDisplayStatusName } from './InvoiceListPageBase.ts';
 
 export function useInvoiceDetailPageBase() {
-    const { formatAmountToLocalizedNumeralsWithCurrency, formatGregorianTextualYearMonthDayToLongDate, formatDateTimeToLongDate } = useI18n();
+    const { formatAmountToLocalizedNumeralsWithCurrency, formatGregorianTextualYearMonthDayToLongDate, formatDateTimeToLongDate, formatDateTimeToLongDateTime } = useI18n();
 
     const accountsStore = useAccountsStore();
     const invoicesStore = useInvoicesStore();
@@ -40,6 +40,8 @@ export function useInvoiceDetailPageBase() {
     const invoice = ref<Invoice | null>(null);
     const profile = ref<InvoiceProfile | null>(null);
     const suggestions = ref<InvoicePayment[]>([]);
+    const viewedEmail = ref<InvoiceEmail | null>(null); // a sent email opened with its full content
+    const loadingEmail = ref<boolean>(false);
 
     const displayStatus = computed<InvoiceDisplayStatus | null>(() => invoice.value ? getInvoiceDisplayStatus(invoice.value, getTodayTextualDate()) : null);
     const displayStatusName = computed<string>(() => displayStatus.value ? getInvoiceDisplayStatusName(displayStatus.value) : '');
@@ -97,6 +99,22 @@ export function useInvoiceDetailPageBase() {
     }
 
     // Preserve the existing public-link creation flow before opening the actual-invoice preview.
+    function formatEmailSentTime(email: InvoiceEmail): string {
+        return formatDateTimeToLongDateTime(parseDateTimeFromUnixTimeWithTimezoneOffset(email.sentUnixTime, getTimezoneOffsetMinutes(email.sentUnixTime)));
+    }
+
+    // fetches the HTML that was sent, so it can be shown exactly as the customer received it
+    function viewEmail(email: InvoiceEmail): Promise<InvoiceEmail> {
+        loadingEmail.value = true;
+
+        return invoicesStore.getInvoiceEmail({ emailId: email.id }).then(full => {
+            viewedEmail.value = full;
+            return full;
+        }).finally(() => {
+            loadingEmail.value = false;
+        });
+    }
+
     function prepareSendRequest(): Promise<InvoiceSendRequest> {
         if (invoice.value?.publicToken) {
             return Promise.resolve(buildSendRequest());
@@ -111,6 +129,7 @@ export function useInvoiceDetailPageBase() {
             if (invoice.value && invoice.value.id === sent.id) {
                 invoice.value.publicToken = sent.publicToken;
                 invoice.value.sentUnixTime = sent.sentUnixTime;
+                invoice.value.emails = sent.emails;
             }
 
             return sent;
@@ -169,6 +188,8 @@ export function useInvoiceDetailPageBase() {
         invoice,
         profile,
         suggestions,
+        viewedEmail,
+        loadingEmail,
         // computed states
         displayStatus,
         displayStatusName,
@@ -183,6 +204,8 @@ export function useInvoiceDetailPageBase() {
         needsSettledAmount,
         formatPaymentAmount,
         formatPaymentDescription,
+        formatEmailSentTime,
+        viewEmail,
         printInvoice,
         setPublicLink,
         copyPublicLink,

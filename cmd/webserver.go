@@ -569,6 +569,7 @@ func startWebServer(c *core.CliContext) error {
 			apiV1Route.POST("/customers/delete.json", bindApi(api.Invoices.CustomerDeleteHandler, config))
 			apiV1Route.GET("/invoices/list.json", bindApi(api.Invoices.InvoiceListHandler, config))
 			apiV1Route.GET("/invoices/get.json", bindApi(api.Invoices.InvoiceGetHandler, config))
+			apiV1Route.GET("/invoices/emails/get.json", bindApi(api.Invoices.InvoiceEmailGetHandler, config))
 			apiV1Route.GET("/invoices/pdf/:id", bindPdf(api.Invoices.InvoicePdfHandler, config))
 			apiV1Route.POST("/invoices/add.json", bindApi(api.Invoices.InvoiceCreateHandler, config))
 			apiV1Route.POST("/invoices/modify.json", bindApi(api.Invoices.InvoiceModifyHandler, config))

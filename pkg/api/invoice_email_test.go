@@ -35,7 +35,7 @@ func TestInvoiceEmailProfileUpdateHandlerPreservesOmittedTemplatesAndPreviewsUns
 	config := &settings.Config{RootUrl: "https://books.example/", DatabaseConfig: &settings.DatabaseConfig{DatabaseType: settings.Sqlite3DbType, DatabasePath: filepath.Join(t.TempDir(), "email-api.db"), MaxIdleConnection: 1}}
 	settings.SetCurrentConfig(config)
 	require.NoError(t, datastore.InitializeDataStore(config))
-	require.NoError(t, datastore.Container.UserDataStore.SyncStructs(new(models.InvoiceProfile), new(models.Invoice), new(models.InvoiceLine), new(models.InvoicePayment), new(models.Transaction), new(models.Account)))
+	require.NoError(t, datastore.Container.UserDataStore.SyncStructs(new(models.InvoiceProfile), new(models.Invoice), new(models.InvoiceLine), new(models.InvoicePayment), new(models.InvoiceEmail), new(models.Transaction), new(models.Account)))
 	engine := binding.Validator.Engine().(*validator.Validate)
 	require.NoError(t, engine.RegisterValidation("notBlank", validators.NotBlank))
 	_, apiErr := Invoices.InvoiceEmailTemplateUpdateHandler(invoiceEmailPostContext(123, `{"subject":"Private {{invoice_number}}","bodyHtml":"<p>Private body</p>"}`))

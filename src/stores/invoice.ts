@@ -3,6 +3,7 @@ import { defineStore } from 'pinia';
 
 import {
     type InvoicePayment,
+    type InvoiceEmail,
     type InvoiceSendRequest,
     type InvoiceEmailPreviewRequest,
     type InvoiceEmailPreviewResponse,
@@ -107,6 +108,10 @@ export const useInvoicesStore = defineStore('invoices', () => {
 
     function getInvoice({ invoiceId }: { invoiceId: string }): Promise<Invoice> {
         return request(services.getInvoice({ id: invoiceId }), 'Unable to retrieve invoice').then(result => Invoice.of(result));
+    }
+
+    function getInvoiceEmail({ emailId }: { emailId: string }): Promise<InvoiceEmail> {
+        return request(services.getInvoiceEmail({ id: emailId }), 'Unable to retrieve invoice email');
     }
 
     function saveInvoice({ invoice, isEdit }: { invoice: Invoice, isEdit: boolean }): Promise<Invoice> {
@@ -313,6 +318,7 @@ export const useInvoicesStore = defineStore('invoices', () => {
         unlinkInvoicePayment,
         updateInvoicePublicLink,
         sendInvoice,
+        getInvoiceEmail,
         previewInvoiceEmail,
         loadAllCustomers,
         saveCustomer,

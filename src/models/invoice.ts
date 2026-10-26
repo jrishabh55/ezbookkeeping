@@ -119,6 +119,16 @@ export interface InvoiceInfoResponse {
     readonly payments?: InvoicePayment[];
     readonly publicToken?: string;
     readonly sentUnixTime?: number; // when the invoice was last emailed; absent = never
+    readonly emails?: InvoiceEmail[]; // newest first, without emailHtml
+}
+
+// one email sent for an invoice; emailHtml is only filled when that email is fetched on its own
+export interface InvoiceEmail {
+    readonly id: string;
+    readonly to: string;
+    readonly subject: string;
+    readonly sentUnixTime: number;
+    readonly emailHtml?: string;
 }
 
 // emailing an invoice: a blank subject gets the server default "Invoice <number> from <business name>"
@@ -405,6 +415,7 @@ export class Invoice implements InvoiceInfoResponse {
     public payments: InvoicePayment[] = [];
     public publicToken: string = ''; // empty = no public link
     public sentUnixTime: number = 0; // 0 = never emailed
+    public emails: InvoiceEmail[] = [];
 
     public fillFrom(other: InvoiceInfoResponse): void {
         this.id = other.id;
@@ -433,6 +444,7 @@ export class Invoice implements InvoiceInfoResponse {
         this.payments = (other.payments ?? []).map(payment => ({ ...payment }));
         this.publicToken = other.publicToken ?? '';
         this.sentUnixTime = other.sentUnixTime ?? 0;
+        this.emails = [...(other.emails ?? [])];
     }
 
     public toCreateRequest(): InvoiceCreateRequest {
