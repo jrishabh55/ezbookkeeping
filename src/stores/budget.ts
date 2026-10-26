@@ -1,6 +1,8 @@
 import { ref, computed } from 'vue';
 import { defineStore } from 'pinia';
 
+import { type BeforeResolveFunction } from '@/core/base.ts';
+
 import {
     type BudgetProgressResponse,
     type BudgetCreateRequest,
@@ -9,6 +11,7 @@ import {
     Budget
 } from '@/models/budget.ts';
 
+import { isEquals } from '@/lib/common.ts';
 import services from '@/lib/services.ts';
 import logger from '@/lib/logger.ts';
 
@@ -103,14 +106,18 @@ export const useBudgetsStore = defineStore('budgets', () => {
                     return;
                 }
 
-                const budgets: Budget[] = [];
+                const budgets: Budget[] = Budget.ofMulti(data.result);
 
-                for (const budgetResp of data.result) {
-                    budgets.push(Budget.fromResponse(budgetResp));
+                if (budgetListStateInvalid.value) {
+                    budgetListStateInvalid.value = false;
+                }
+
+                if (force && isEquals(allBudgets.value, budgets)) {
+                    reject({ message: 'Budget list is up to date', isUpToDate: true });
+                    return;
                 }
 
                 loadBudgetList(budgets);
-                budgetListStateInvalid.value = false;
 
                 resolve(budgets);
             }).catch(error => {
@@ -269,7 +276,7 @@ export const useBudgetsStore = defineStore('budgets', () => {
         });
     }
 
-    function deleteBudget({ budget }: { budget: Budget }): Promise<boolean> {
+    function deleteBudget({ budget, beforeResolve }: { budget: Budget, beforeResolve?: BeforeResolveFunction }): Promise<boolean> {
         return new Promise((resolve, reject) => {
             services.deleteBudget({ id: budget.id }).then(response => {
                 const data = response.data;
@@ -279,7 +286,13 @@ export const useBudgetsStore = defineStore('budgets', () => {
                     return;
                 }
 
-                removeBudgetFromBudgetList(budget.id);
+                if (beforeResolve) {
+                    beforeResolve(() => {
+                        removeBudgetFromBudgetList(budget.id);
+                    });
+                } else {
+                    removeBudgetFromBudgetList(budget.id);
+                }
 
                 resolve(true);
             }).catch(error => {

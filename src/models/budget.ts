@@ -119,12 +119,12 @@ export class Budget implements BudgetInfoResponse {
         this.currentCycle = currentCycle;
     }
 
-    public static createNewBudget(): Budget {
+    public static createNewBudget(currency?: string): Budget {
         return new Budget(
             '',
             '',
             0,
-            '',
+            currency || '',
             BudgetPeriodType.Monthly.type,
             0,
             0,
@@ -162,6 +162,82 @@ export class Budget implements BudgetInfoResponse {
             response.tagIds,
             response.currentCycle
         );
+    }
+
+    public static of(response: BudgetInfoResponse): Budget {
+        return Budget.fromResponse(response);
+    }
+
+    public static ofMulti(responses: BudgetInfoResponse[]): Budget[] {
+        return responses.map(response => Budget.of(response));
+    }
+
+    public fillFrom(other: Budget): void {
+        this.id = other.id;
+        this.name = other.name;
+        this.amount = other.amount;
+        this.currency = other.currency;
+        this.periodType = other.periodType;
+        this.startTime = other.startTime;
+        this.endTime = other.endTime;
+        this.rolloverType = other.rolloverType;
+        this.autoCreateNextCycle = other.autoCreateNextCycle;
+        this.warningThreshold = other.warningThreshold;
+        this.alertThreshold = other.alertThreshold;
+        this.overspentThreshold = other.overspentThreshold;
+        this.displayOrder = other.displayOrder;
+        this.hidden = other.hidden;
+        this.categoryIds = other.categoryIds ? [...other.categoryIds] : other.categoryIds;
+        this.accountIds = other.accountIds ? [...other.accountIds] : other.accountIds;
+        this.tagIds = other.tagIds ? [...other.tagIds] : other.tagIds;
+        this.currentCycle = other.currentCycle;
+    }
+
+    public clone(): Budget {
+        const cloned = Budget.createNewBudget();
+        cloned.fillFrom(this);
+        return cloned;
+    }
+
+    public toCreateRequest(clientSessionId: string): BudgetCreateRequest {
+        return {
+            name: this.name,
+            amount: this.amount,
+            currency: this.currency,
+            periodType: this.periodType,
+            startTime: this.startTime,
+            endTime: this.endTime,
+            rolloverType: this.rolloverType,
+            autoCreateNextCycle: this.autoCreateNextCycle,
+            warningThreshold: this.warningThreshold,
+            alertThreshold: this.alertThreshold,
+            overspentThreshold: this.overspentThreshold,
+            categoryIds: this.categoryIds,
+            accountIds: this.accountIds,
+            tagIds: this.tagIds,
+            clientSessionId: clientSessionId
+        };
+    }
+
+    public toModifyRequest(): BudgetModifyRequest {
+        return {
+            id: this.id,
+            name: this.name,
+            amount: this.amount,
+            currency: this.currency,
+            periodType: this.periodType,
+            startTime: this.startTime,
+            endTime: this.endTime,
+            rolloverType: this.rolloverType,
+            autoCreateNextCycle: this.autoCreateNextCycle,
+            warningThreshold: this.warningThreshold,
+            alertThreshold: this.alertThreshold,
+            overspentThreshold: this.overspentThreshold,
+            categoryIds: this.categoryIds,
+            accountIds: this.accountIds,
+            tagIds: this.tagIds,
+            visible: !this.hidden
+        };
     }
 
     public getPeriodTypeName(): string {

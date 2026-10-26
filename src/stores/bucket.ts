@@ -1,6 +1,8 @@
 import { ref, computed } from 'vue';
 import { defineStore } from 'pinia';
 
+import { type BeforeResolveFunction } from '@/core/base.ts';
+
 import {
     type BucketCreateRequest,
     type BucketModifyRequest,
@@ -11,6 +13,7 @@ import {
     BucketTransaction
 } from '@/models/bucket.ts';
 
+import { isEquals } from '@/lib/common.ts';
 import services from '@/lib/services.ts';
 import logger from '@/lib/logger.ts';
 
@@ -104,14 +107,18 @@ export const useBucketsStore = defineStore('buckets', () => {
                     return;
                 }
 
-                const buckets: Bucket[] = [];
+                const buckets: Bucket[] = Bucket.ofMulti(data.result);
 
-                for (const bucketResp of data.result) {
-                    buckets.push(Bucket.fromResponse(bucketResp));
+                if (bucketListStateInvalid.value) {
+                    bucketListStateInvalid.value = false;
+                }
+
+                if (force && isEquals(allBuckets.value, buckets)) {
+                    reject({ message: 'Bucket list is up to date', isUpToDate: true });
+                    return;
                 }
 
                 loadBucketList(buckets);
-                bucketListStateInvalid.value = false;
 
                 resolve(buckets);
             }).catch(error => {
@@ -268,7 +275,7 @@ export const useBucketsStore = defineStore('buckets', () => {
         });
     }
 
-    function deleteBucket({ bucket }: { bucket: Bucket }): Promise<boolean> {
+    function deleteBucket({ bucket, beforeResolve }: { bucket: Bucket, beforeResolve?: BeforeResolveFunction }): Promise<boolean> {
         return new Promise((resolve, reject) => {
             services.deleteBucket({ id: bucket.id }).then(response => {
                 const data = response.data;
@@ -278,7 +285,13 @@ export const useBucketsStore = defineStore('buckets', () => {
                     return;
                 }
 
-                removeBucketFromBucketList(bucket.id);
+                if (beforeResolve) {
+                    beforeResolve(() => {
+                        removeBucketFromBucketList(bucket.id);
+                    });
+                } else {
+                    removeBucketFromBucketList(bucket.id);
+                }
 
                 resolve(true);
             }).catch(error => {

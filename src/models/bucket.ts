@@ -82,13 +82,13 @@ export class Bucket implements BucketInfoResponse {
         this.accountIds = accountIds;
     }
 
-    public static createNewBucket(): Bucket {
+    public static createNewBucket(currency?: string): Bucket {
         return new Bucket(
             '',
             '',
             0,
             0,
-            '',
+            currency || '',
             BucketStatus.InProgress.type,
             '1',
             '000000',
@@ -116,6 +116,64 @@ export class Bucket implements BucketInfoResponse {
             response.progress,
             response.accountIds
         );
+    }
+
+    public static of(response: BucketInfoResponse): Bucket {
+        return Bucket.fromResponse(response);
+    }
+
+    public static ofMulti(responses: BucketInfoResponse[]): Bucket[] {
+        return responses.map(response => Bucket.of(response));
+    }
+
+    public fillFrom(other: Bucket): void {
+        this.id = other.id;
+        this.name = other.name;
+        this.targetAmount = other.targetAmount;
+        this.currentBalance = other.currentBalance;
+        this.currency = other.currency;
+        this.status = other.status;
+        this.icon = other.icon;
+        this.color = other.color;
+        this.comment = other.comment;
+        this.displayOrder = other.displayOrder;
+        this.hidden = other.hidden;
+        this.progress = other.progress;
+        this.accountIds = other.accountIds ? [...other.accountIds] : other.accountIds;
+    }
+
+    public clone(): Bucket {
+        const cloned = Bucket.createNewBucket();
+        cloned.fillFrom(this);
+        return cloned;
+    }
+
+    public toCreateRequest(clientSessionId: string): BucketCreateRequest {
+        return {
+            name: this.name,
+            targetAmount: this.targetAmount,
+            currency: this.currency,
+            icon: this.icon,
+            color: this.color,
+            comment: this.comment,
+            accountIds: this.accountIds,
+            clientSessionId: clientSessionId
+        };
+    }
+
+    public toModifyRequest(): BucketModifyRequest {
+        return {
+            id: this.id,
+            name: this.name,
+            targetAmount: this.targetAmount,
+            currency: this.currency,
+            icon: this.icon,
+            color: this.color,
+            comment: this.comment,
+            status: this.status,
+            accountIds: this.accountIds,
+            visible: !this.hidden
+        };
     }
 
     public getStatusName(): string {
