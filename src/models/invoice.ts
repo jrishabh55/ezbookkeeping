@@ -143,6 +143,7 @@ export interface PublicInvoiceProfileResponse {
     readonly phone: string;
     readonly website: string;
     readonly logoDataUrl: string;
+    readonly gstin: string;
 }
 
 export interface PublicInvoiceResponse {
@@ -153,10 +154,15 @@ export interface PublicInvoiceResponse {
     readonly billToEmail: string;
     readonly billToPhone: string;
     readonly billToPan: string;
+    readonly billToGstin: string;
     readonly currency: string;
     readonly invoiceDate: TextualYearMonthDay;
     readonly dueDate: TextualYearMonthDay;
     readonly notes: string;
+    readonly taxType: InvoiceTaxType;
+    readonly taxRate: number; // basis points
+    readonly subtotal: number;
+    readonly taxAmount: number;
     readonly total: number;
     readonly received: number;
     readonly closedManually: boolean;
@@ -222,6 +228,7 @@ export class InvoiceProfile implements InvoiceProfileInfoResponse {
         profile.phone = response.phone;
         profile.website = response.website;
         profile.logoDataUrl = response.logoDataUrl;
+        profile.gstin = response.gstin;
         return profile;
     }
 

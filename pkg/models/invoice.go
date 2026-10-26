@@ -330,6 +330,7 @@ type PublicInvoiceProfileResponse struct {
 	Phone        string `json:"phone"`
 	Website      string `json:"website"`
 	LogoDataUrl  string `json:"logoDataUrl"`
+	Gstin        string `json:"gstin"`
 }
 
 // PublicInvoiceResponse is what a recipient of a public link sees: the printed document plus the amount received.
@@ -342,10 +343,15 @@ type PublicInvoiceResponse struct {
 	BillToEmail        string                        `json:"billToEmail"`
 	BillToPhone        string                        `json:"billToPhone"`
 	BillToPan          string                        `json:"billToPan"`
+	BillToGstin        string                        `json:"billToGstin"`
 	Currency           string                        `json:"currency"`
 	InvoiceDate        string                        `json:"invoiceDate"`
 	DueDate            string                        `json:"dueDate"`
 	Notes              string                        `json:"notes"`
+	TaxType            string                        `json:"taxType"`
+	TaxRate            int32                         `json:"taxRate"`
+	Subtotal           int64                         `json:"subtotal"`
+	TaxAmount          int64                         `json:"taxAmount"`
 	Total              int64                         `json:"total"`
 	Received           int64                         `json:"received"`
 	ClosedManually     bool                          `json:"closedManually"`
@@ -466,10 +472,15 @@ func (i *Invoice) ToPublicInvoiceResponse(lines []*InvoiceLine, received int64, 
 		BillToEmail:        i.BillToEmail,
 		BillToPhone:        i.BillToPhone,
 		BillToPan:          i.BillToPan,
+		BillToGstin:        i.BillToGstin,
 		Currency:           i.Currency,
 		InvoiceDate:        i.InvoiceDate,
 		DueDate:            i.DueDate,
 		Notes:              i.Notes,
+		TaxType:            i.TaxType,
+		TaxRate:            i.TaxRate,
+		Subtotal:           i.Subtotal,
+		TaxAmount:          i.TaxAmount,
 		Total:              i.Total,
 		Received:           received,
 		ClosedManually:     i.ClosedManually,
@@ -480,6 +491,7 @@ func (i *Invoice) ToPublicInvoiceResponse(lines []*InvoiceLine, received int64, 
 			Phone:        profile.Phone,
 			Website:      profile.Website,
 			LogoDataUrl:  profile.LogoDataUrl,
+			Gstin:        profile.Gstin,
 		},
 	}
 
@@ -487,6 +499,7 @@ func (i *Invoice) ToPublicInvoiceResponse(lines []*InvoiceLine, received int64, 
 		resp.Lines[idx] = &InvoiceLineResponse{
 			ItemName:    line.ItemName,
 			Description: line.Description,
+			Sac:         line.Sac,
 			Quantity:    line.Quantity,
 			Rate:        line.Rate,
 			Amount:      line.Amount,
