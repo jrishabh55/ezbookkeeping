@@ -21,11 +21,17 @@
                                 </template>
                             </v-autocomplete>
                         </v-col>
-                        <v-col cols="12" md="6">
+                        <v-col cols="12" md="3">
                             <v-text-field type="text" autocomplete="off" persistent-placeholder
                                           :disabled="loading || submitting"
                                           :label="tt('Invoice Number')" :placeholder="tt('Invoice Number')"
                                           v-model="invoice.number" />
+                        </v-col>
+                        <v-col cols="12" md="3">
+                            <!-- lines and payments are in this currency, so it is fixed once the invoice exists -->
+                            <currency-select :disabled="loading || submitting || !!editInvoiceId"
+                                             :label="tt('Currency')" :placeholder="tt('Currency')"
+                                             v-model="invoice.currency" />
                         </v-col>
                         <v-col cols="12" md="6">
                             <date-select :disabled="loading || submitting"

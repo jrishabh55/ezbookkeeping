@@ -31,7 +31,7 @@
                 </f7-list-item>
                 <f7-list-item :title="tt('No payments linked yet.')" v-if="!invoice.payments.length"></f7-list-item>
                 <f7-list-item swipeout
-                              :title="formatAmount(payment.amount)"
+                              :title="formatPaymentAmount(payment)"
                               :footer="formatPaymentDescription(payment)"
                               :key="payment.transactionId"
                               v-for="payment in invoice.payments">
@@ -47,7 +47,7 @@
                     <small>{{ tt('Suggested Matches') }}</small>
                 </f7-list-item>
                 <f7-list-item :title="tt('No matching income transactions found yet.')" v-if="!suggestions.length"></f7-list-item>
-                <f7-list-item :title="formatAmount(suggestion.amount)"
+                <f7-list-item :title="formatPaymentAmount(suggestion)"
                               :footer="formatPaymentDescription(suggestion)"
                               :key="suggestion.transactionId"
                               v-for="suggestion in suggestions">
@@ -60,6 +60,16 @@
             <f7-block class="invoice-document-preview">
                 <invoice-document :invoice="invoice" :profile="profile" />
             </f7-block>
+
+            <!-- a suggestion in another currency first asks what it settled in the invoice currency -->
+            <number-pad-sheet :min-value="0"
+                              :max-value="TRANSACTION_MAX_AMOUNT"
+                              :currency="invoice.currency"
+                              :hint="tt('Please enter the amount this payment settles in the invoice currency')"
+                              v-model:show="showSettledAmountSheet"
+                              v-model="settledAmount"
+                              @update:model-value="onSettledAmountEntered"
+            ></number-pad-sheet>
         </template>
 
         <f7-actions close-by-outside-click close-on-escape :opened="showMoreActionSheet" @actions:closed="showMoreActionSheet = false">
@@ -121,6 +131,7 @@ import { useInvoicesStore } from '@/stores/invoice.ts';
 import { useAccountsStore } from '@/stores/account.ts';
 
 import { TextDirection } from '@/core/text.ts';
+import { TRANSACTION_MAX_AMOUNT } from '@/consts/transaction.ts';
 import type { InvoicePayment } from '@/models/invoice.ts';
 
 const props = defineProps<{
@@ -144,6 +155,8 @@ const {
     publicLinkUrl,
     formatAmount,
     formatDate,
+    needsSettledAmount,
+    formatPaymentAmount,
     formatPaymentDescription,
     printInvoice,
     setPublicLink,
@@ -161,6 +174,9 @@ const showMoreActionSheet = ref<boolean>(false);
 const showDeleteActionSheet = ref<boolean>(false);
 const showRepeatMonthlyPopup = ref<boolean>(false);
 const showShareActionSheet = ref<boolean>(false);
+const showSettledAmountSheet = ref<boolean>(false);
+const settledAmount = ref<number>(0);
+const settledAmountSuggestion = ref<InvoicePayment | null>(null); // the cross-currency suggestion waiting for its settled amount
 
 const textDirection = computed<TextDirection>(() => getCurrentLanguageTextDirection());
 
@@ -214,8 +230,25 @@ function runAndReload(action: () => Promise<unknown>): void {
     });
 }
 
+// a suggestion in another currency first asks what it settled in the invoice currency; same-currency links stay one tap
 function link(suggestion: InvoicePayment): void {
+    if (needsSettledAmount(suggestion)) {
+        settledAmountSuggestion.value = suggestion;
+        settledAmount.value = balanceDue.value;
+        showSettledAmountSheet.value = true;
+        return;
+    }
+
     runAndReload(() => invoicesStore.linkInvoicePayment({ invoiceId: invoiceId.value, transactionId: suggestion.transactionId }));
+}
+
+function onSettledAmountEntered(amount: number): void {
+    const suggestion = settledAmountSuggestion.value;
+    settledAmountSuggestion.value = null;
+
+    if (suggestion && amount > 0) {
+        runAndReload(() => invoicesStore.linkInvoicePayment({ invoiceId: invoiceId.value, transactionId: suggestion.transactionId, settledAmount: amount }));
+    }
 }
 
 function unlink(payment: InvoicePayment): void {

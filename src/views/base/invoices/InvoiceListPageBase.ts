@@ -5,15 +5,16 @@ import { useI18n } from '@/locales/helpers.ts';
 import { useInvoicesStore } from '@/stores/invoice.ts';
 
 import type { TextualYearMonthDay } from '@/core/datetime.ts';
-import { type Invoice, INVOICE_CURRENCY } from '@/models/invoice.ts';
+import type { Invoice } from '@/models/invoice.ts';
 
 import { parseBigDecimal } from '@/lib/numeral.ts';
 import {
     type InvoiceDisplayStatus,
-    getInvoiceBalanceDue,
+    type InvoiceCurrencyAmount,
     getInvoiceStatus,
     getInvoiceDisplayStatus,
-    isInvoiceOverdue,
+    getInvoiceOutstandingByCurrency,
+    getInvoiceOverdueByCurrency,
     getTodayTextualDate
 } from '@/lib/invoice.ts';
 
@@ -41,16 +42,12 @@ export function useInvoiceListPageBase() {
     const displayInvoices = computed<Invoice[]>(() => showPaid.value ? allInvoices.value : allInvoices.value.filter(invoice => getInvoiceStatus(invoice) !== 'paid'));
     const noAvailableInvoice = computed<boolean>(() => displayInvoices.value.length < 1);
 
-    const outstandingTotal = computed<number>(() => allInvoices.value
-        .filter(invoice => getInvoiceStatus(invoice) !== 'paid')
-        .reduce((sum, invoice) => sum + getInvoiceBalanceDue(invoice), 0));
+    // one line per currency, INR first
+    const outstandingTotals = computed<InvoiceCurrencyAmount[]>(() => getInvoiceOutstandingByCurrency(allInvoices.value));
+    const overdueTotals = computed<InvoiceCurrencyAmount[]>(() => getInvoiceOverdueByCurrency(allInvoices.value, today));
 
-    const overdueTotal = computed<number>(() => allInvoices.value
-        .filter(invoice => isInvoiceOverdue(invoice, today))
-        .reduce((sum, invoice) => sum + getInvoiceBalanceDue(invoice), 0));
-
-    function formatAmount(paise: number): string {
-        return formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(paise), INVOICE_CURRENCY);
+    function formatAmount(minorUnits: number, currency: string): string {
+        return formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(minorUnits), currency);
     }
 
     function formatDate(date: TextualYearMonthDay): string {
@@ -74,8 +71,8 @@ export function useInvoiceListPageBase() {
         allInvoices,
         displayInvoices,
         noAvailableInvoice,
-        outstandingTotal,
-        overdueTotal,
+        outstandingTotals,
+        overdueTotals,
         // functions
         formatAmount,
         formatDate,

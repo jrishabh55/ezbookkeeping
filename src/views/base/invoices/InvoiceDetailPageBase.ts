@@ -8,12 +8,13 @@ import { useInvoicesStore } from '@/stores/invoice.ts';
 import services from '@/lib/services.ts';
 
 import type { TextualYearMonthDay } from '@/core/datetime.ts';
-import { type Invoice, type InvoicePayment, type InvoiceProfile, INVOICE_CURRENCY } from '@/models/invoice.ts';
+import type { Invoice, InvoicePayment, InvoiceProfile } from '@/models/invoice.ts';
 
 import { parseBigDecimal } from '@/lib/numeral.ts';
 import { parseDateTimeFromUnixTimeWithTimezoneOffset, getTimezoneOffsetMinutes } from '@/lib/datetime.ts';
 import {
     type InvoiceDisplayStatus,
+    INVOICE_DEFAULT_CURRENCY,
     getInvoiceDisplayBalanceDue,
     getInvoiceShortfall,
     getInvoiceDisplayStatus,
@@ -53,19 +54,31 @@ export function useInvoiceDetailPageBase() {
     });
     const publicLinkUrl = computed<string>(() => invoice.value?.publicToken ? getInvoicePublicLinkUrl(invoice.value.publicToken) : '');
 
-    function formatAmount(paise: number): string {
-        return formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(paise), INVOICE_CURRENCY);
+    // in the invoice currency unless another one is given
+    function formatAmount(minorUnits: number, currency?: string): string {
+        return formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(minorUnits), currency ?? invoice.value?.currency ?? INVOICE_DEFAULT_CURRENCY);
     }
 
     function formatDate(date: TextualYearMonthDay): string {
         return formatGregorianTextualYearMonthDayToLongDate(date);
     }
 
-    // "April 29, 2026 · PNB Savings · NEFT-QUBER TECH"
+    // a suggestion in another currency needs the settled amount (in invoice currency) typed in before it can be linked
+    function needsSettledAmount(payment: InvoicePayment): boolean {
+        return !!invoice.value && payment.currency !== invoice.value.currency;
+    }
+
+    // what the payment counts for: the settled amount in invoice currency, otherwise the transaction amount in its own currency
+    function formatPaymentAmount(payment: InvoicePayment): string {
+        return payment.settledAmount > 0 ? formatAmount(payment.settledAmount) : formatAmount(payment.amount, payment.currency);
+    }
+
+    // "April 29, 2026 · PNB Savings · NEFT-QUBER TECH", led by the realised amount ("$4,400.00") when it is in another currency
     function formatPaymentDescription(payment: InvoicePayment): string {
+        const realised = payment.settledAmount > 0 ? formatAmount(payment.amount, payment.currency) : '';
         const date = formatDateTimeToLongDate(parseDateTimeFromUnixTimeWithTimezoneOffset(payment.transactionTime, getTimezoneOffsetMinutes(payment.transactionTime)));
         const accountName = accountsStore.allAccountsMap[payment.accountId]?.name ?? '';
-        return [date, accountName, payment.comment].filter(part => !!part).join(' · ');
+        return [realised, date, accountName, payment.comment].filter(part => !!part).join(' · ');
     }
 
     function printInvoice(): void {
@@ -123,6 +136,8 @@ export function useInvoiceDetailPageBase() {
         // functions
         formatAmount,
         formatDate,
+        needsSettledAmount,
+        formatPaymentAmount,
         formatPaymentDescription,
         printInvoice,
         setPublicLink,

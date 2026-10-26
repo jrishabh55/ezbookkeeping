@@ -11,6 +11,8 @@ import {
     getInvoiceDisplayStatus,
     getInvoiceShortfall,
     getInvoiceDisplayBalanceDue,
+    getInvoiceOutstandingByCurrency,
+    getInvoiceOverdueByCurrency,
     formatInvoiceDocumentAmount,
     formatInvoiceDocumentDate,
     getInvoicePdfFileName,
@@ -132,9 +134,41 @@ describe('overdue', () => {
     });
 });
 
+describe('per-currency summaries', () => {
+    const row = (currency: string, total: number, received: number, dueDate: string, closedManually: boolean = false) => ({ currency, total, received, dueDate, closedManually });
+
+    test('outstanding and overdue sum the balance due per currency, INR first', () => {
+        const invoices = [
+            row('USD', 100000, 0, '2026-04-30'),
+            row('INR', 37000000, 10000000, '2026-04-30'),
+            row('INR', 500000, 0, '2026-05-10'),
+            row('INR', 200000, 200000, '2026-04-01'), // paid
+            row('EUR', 50000, 0, '2026-05-10')
+        ];
+
+        expect(getInvoiceOutstandingByCurrency(invoices)).toEqual([
+            { currency: 'INR', amount: 27500000 },
+            { currency: 'EUR', amount: 50000 },
+            { currency: 'USD', amount: 100000 }
+        ]);
+        expect(getInvoiceOverdueByCurrency(invoices, '2026-05-01')).toEqual([
+            { currency: 'INR', amount: 27000000 },
+            { currency: 'EUR', amount: 0 },
+            { currency: 'USD', amount: 100000 }
+        ]);
+    });
+
+    test('no invoices still gives one INR line', () => {
+        expect(getInvoiceOutstandingByCurrency([])).toEqual([{ currency: 'INR', amount: 0 }]);
+        expect(getInvoiceOverdueByCurrency([], '2026-05-01')).toEqual([{ currency: 'INR', amount: 0 }]);
+    });
+});
+
 describe('document formatting', () => {
-    test('amount like the Wave sample', () => {
-        expect(formatInvoiceDocumentAmount(37000000)).toBe('₹370,000.00');
+    test('amount like the Wave sample, with Indian grouping for INR', () => {
+        expect(formatInvoiceDocumentAmount(37000000, 'INR')).toBe('₹3,70,000.00');
+        expect(formatInvoiceDocumentAmount(100000, 'USD')).toBe('$1,000.00');
+        expect(formatInvoiceDocumentAmount(100000, 'EUR')).toBe('€1,000.00');
     });
 
     test('date like the Wave sample', () => {

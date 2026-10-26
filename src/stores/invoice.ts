@@ -135,8 +135,9 @@ export const useInvoicesStore = defineStore('invoices', () => {
         return request(services.getInvoicePaymentSuggestions({ id: invoiceId }), 'Unable to retrieve matching transactions');
     }
 
-    function linkInvoicePayment({ invoiceId, transactionId }: { invoiceId: string, transactionId: string }): Promise<boolean> {
-        return request(services.linkInvoicePayment({ invoiceId, transactionId }), 'Unable to link this transaction');
+    // settledAmount (in invoice currency) only when the transaction's account is in another currency
+    function linkInvoicePayment({ invoiceId, transactionId, settledAmount }: { invoiceId: string, transactionId: string, settledAmount?: number }): Promise<boolean> {
+        return request(services.linkInvoicePayment({ invoiceId, transactionId, settledAmount }), 'Unable to link this transaction');
     }
 
     function unlinkInvoicePayment({ invoiceId, transactionId }: { invoiceId: string, transactionId: string }): Promise<boolean> {

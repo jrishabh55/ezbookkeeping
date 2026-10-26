@@ -5,10 +5,10 @@ import { useI18n } from '@/locales/helpers.ts';
 import { useInvoicesStore } from '@/stores/invoice.ts';
 
 import type { TextualYearMonthDay } from '@/core/datetime.ts';
-import { type Customer, type InvoiceProfile, type InvoiceTaxType, Invoice, INVOICE_CURRENCY, INVOICE_TAX_TYPES } from '@/models/invoice.ts';
+import { type Customer, type InvoiceProfile, type InvoiceTaxType, Invoice, INVOICE_TAX_TYPES } from '@/models/invoice.ts';
 
 import { parseBigDecimal } from '@/lib/numeral.ts';
-import { type InvoiceTotals, computeInvoiceTotals, getInvoiceTaxRows, formatInvoiceTaxRate, addDaysToDate, getDaysBetweenDates, getTodayTextualDate } from '@/lib/invoice.ts';
+import { type InvoiceTotals, INVOICE_DEFAULT_CURRENCY, computeInvoiceTotals, getInvoiceTaxRows, formatInvoiceTaxRate, addDaysToDate, getDaysBetweenDates, getTodayTextualDate } from '@/lib/invoice.ts';
 
 export function useInvoiceEditPageBase() {
     const { tt, formatAmountToLocalizedNumeralsWithCurrency, formatGregorianTextualYearMonthDayToLongDate } = useI18n();
@@ -111,6 +111,7 @@ export function useInvoiceEditPageBase() {
         applyCustomerTaxDefaults(newInvoice, newInvoice.customerId);
 
         if (!duplicateFrom) {
+            newInvoice.currency = profile.defaultCurrency || INVOICE_DEFAULT_CURRENCY; // a duplicate keeps its source's currency
             newInvoice.notes = profile.defaultNotes;
             newInvoice.lines = [Invoice.createNewLine(profile.defaultSac)];
         }
@@ -161,8 +162,8 @@ export function useInvoiceEditPageBase() {
         });
     }
 
-    function formatAmount(paise: number): string {
-        return formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(paise), INVOICE_CURRENCY);
+    function formatAmount(minorUnits: number): string {
+        return formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(minorUnits), invoice.value.currency);
     }
 
     function formatDate(date: TextualYearMonthDay): string {

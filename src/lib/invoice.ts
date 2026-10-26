@@ -4,6 +4,9 @@ import type { InvoiceTaxType } from '@/models/invoice.ts';
 // mirrors models.InvoicePaidTolerance in pkg/models/invoice.go
 export const INVOICE_PAID_TOLERANCE = 0.03;
 
+// mirrors models.INVOICE_DEFAULT_CURRENCY: what an invoice (and the profile default) falls back to
+export const INVOICE_DEFAULT_CURRENCY = 'INR';
+
 export type InvoiceStatus = 'unpaid' | 'partial' | 'paid';
 export type InvoiceDisplayStatus = InvoiceStatus | 'overdue';
 
@@ -104,11 +107,47 @@ export function getInvoiceDisplayBalanceDue(invoice: InvoiceAmounts): number {
     return getInvoiceStatus(invoice) === 'paid' ? 0 : getInvoiceBalanceDue(invoice);
 }
 
-// ponytail: the printed document is always English / en-US style like the Wave original; app screens use the i18n helpers instead
-const invoiceDocumentAmountFormat = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'INR' });
+export interface InvoiceCurrencyAmount {
+    readonly currency: string;
+    readonly amount: number;
+}
 
-export function formatInvoiceDocumentAmount(paise: number): string {
-    return invoiceDocumentAmountFormat.format(paise / 100);
+type InvoiceSummaryRow = InvoiceAmounts & { readonly currency: string, readonly dueDate: string };
+
+// one line per currency found among the invoices (INR always, and first), summing the balance due of those matching the predicate
+function sumInvoiceBalanceDueByCurrency(invoices: InvoiceSummaryRow[], predicate: (invoice: InvoiceSummaryRow) => boolean): InvoiceCurrencyAmount[] {
+    const amounts = new Map<string, number>([[INVOICE_DEFAULT_CURRENCY, 0]]);
+
+    for (const invoice of invoices) {
+        amounts.set(invoice.currency, (amounts.get(invoice.currency) ?? 0) + (predicate(invoice) ? getInvoiceBalanceDue(invoice) : 0));
+    }
+
+    return [...amounts.entries()]
+        .map(([currency, amount]) => ({ currency, amount }))
+        .sort((a, b) => Number(b.currency === INVOICE_DEFAULT_CURRENCY) - Number(a.currency === INVOICE_DEFAULT_CURRENCY) || a.currency.localeCompare(b.currency));
+}
+
+export function getInvoiceOutstandingByCurrency(invoices: InvoiceSummaryRow[]): InvoiceCurrencyAmount[] {
+    return sumInvoiceBalanceDueByCurrency(invoices, invoice => getInvoiceStatus(invoice) !== 'paid');
+}
+
+export function getInvoiceOverdueByCurrency(invoices: InvoiceSummaryRow[], today: string): InvoiceCurrencyAmount[] {
+    return sumInvoiceBalanceDueByCurrency(invoices, invoice => isInvoiceOverdue(invoice, today));
+}
+
+// ponytail: the printed document is always English like the Wave original; app screens use the i18n helpers instead.
+// INR uses Indian grouping (₹3,70,000.00, as the Go PDF renderer prints it), every other currency en-US grouping.
+const invoiceDocumentAmountFormats = new Map<string, Intl.NumberFormat>();
+
+export function formatInvoiceDocumentAmount(minorUnits: number, currency: string): string {
+    let format = invoiceDocumentAmountFormats.get(currency);
+
+    if (!format) {
+        format = new Intl.NumberFormat(currency === INVOICE_DEFAULT_CURRENCY ? 'en-IN' : 'en-US', { style: 'currency', currency });
+        invoiceDocumentAmountFormats.set(currency, format);
+    }
+
+    return format.format(minorUnits / 100);
 }
 
 export function formatInvoiceDocumentDate(date: string): string {

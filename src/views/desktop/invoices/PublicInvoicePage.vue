@@ -2,7 +2,7 @@
     <div class="public-invoice-page">
         <div class="public-invoice-toolbar" v-if="invoice">
             <span class="public-invoice-status" :class="{ 'public-invoice-status-paid': isPaid }">
-                {{ isPaid ? tt('Paid') : tt('Amount Due') + ': ' + formatInvoiceDocumentAmount(balanceDue) }}
+                {{ isPaid ? tt('Paid') : tt('Amount Due') + ': ' + formatInvoiceDocumentAmount(balanceDue, invoice.currency) }}
             </span>
             <v-spacer />
             <v-btn color="primary" variant="tonal" :prepend-icon="mdiPrinterOutline" @click="print">{{ tt('Print') }}</v-btn>
