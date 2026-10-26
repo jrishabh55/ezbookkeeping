@@ -12,10 +12,17 @@ interface InvoiceAmounts {
     readonly closedManually: boolean;
 }
 
+// quantity is stored in hundredths (100 = 1, 750 = 7.5), mirroring models.InvoiceLine.Quantity
+export const INVOICE_QUANTITY_SCALE = 100;
+
 export function computeInvoiceTotals(lines: { quantity: number, rate: number }[]): { subtotal: number, total: number } {
-    const subtotal = lines.reduce((sum, line) => sum + line.quantity * line.rate, 0);
+    const subtotal = lines.reduce((sum, line) => sum + Math.round(line.quantity * line.rate / INVOICE_QUANTITY_SCALE), 0);
     // GST would add tax lines between subtotal and total here
     return { subtotal, total: subtotal };
+}
+
+export function formatInvoiceQuantity(hundredths: number): string {
+    return (hundredths / INVOICE_QUANTITY_SCALE).toString();
 }
 
 export function getInvoiceBalanceDue(invoice: InvoiceAmounts): number {

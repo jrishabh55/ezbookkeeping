@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 
 import {
     computeInvoiceTotals,
+    formatInvoiceQuantity,
     getInvoiceBalanceDue,
     getInvoiceStatus,
     isInvoiceOverdue,
@@ -20,9 +21,24 @@ const invoice = (total: number, received: number, closedManually = false, dueDat
     ({ total, received, closedManually, dueDate });
 
 describe('computeInvoiceTotals', () => {
-    test('sums quantity × rate', () => {
-        expect(computeInvoiceTotals([{ quantity: 1, rate: 37000000 }, { quantity: 3, rate: 150000 }])).toEqual({ subtotal: 37450000, total: 37450000 });
+    test('sums quantity (hundredths) × rate', () => {
+        expect(computeInvoiceTotals([{ quantity: 100, rate: 37000000 }, { quantity: 300, rate: 150000 }])).toEqual({ subtotal: 37450000, total: 37450000 });
         expect(computeInvoiceTotals([])).toEqual({ subtotal: 0, total: 0 });
+    });
+
+    test('rounds a fractional quantity to the paisa', () => {
+        expect(computeInvoiceTotals([{ quantity: 750, rate: 33333 }])).toEqual({ subtotal: 249998, total: 249998 });
+        expect(computeInvoiceTotals([{ quantity: 1, rate: 1 }])).toEqual({ subtotal: 0, total: 0 });
+    });
+});
+
+describe('formatInvoiceQuantity', () => {
+    test('trims trailing zeros', () => {
+        expect(formatInvoiceQuantity(100)).toBe('1');
+        expect(formatInvoiceQuantity(750)).toBe('7.5');
+        expect(formatInvoiceQuantity(225)).toBe('2.25');
+        expect(formatInvoiceQuantity(755)).toBe('7.55');
+        expect(formatInvoiceQuantity(1000000)).toBe('10000');
     });
 });
 
