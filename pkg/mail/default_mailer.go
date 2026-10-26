@@ -1,6 +1,7 @@
 package mail
 
 import (
+	"bytes"
 	"crypto/tls"
 	"net"
 
@@ -51,13 +52,22 @@ func (m *DefaultMailer) SendMail(message *MailMessage) error {
 		return errs.ErrSMTPServerNotEnabled
 	}
 
+	err := m.dialer.DialAndSend(m.buildMessage(message))
+
+	return err
+}
+
+// buildMessage converts a mail message into the gopkg.in/mail.v2 entity with its attachments
+func (m *DefaultMailer) buildMessage(message *MailMessage) *mail.Message {
 	mailMessage := mail.NewMessage()
 	mailMessage.SetHeader("From", m.fromAddress)
 	mailMessage.SetHeader("To", message.To)
 	mailMessage.SetHeader("Subject", message.Subject)
 	mailMessage.SetBody("text/html", message.Body)
 
-	err := m.dialer.DialAndSend(mailMessage)
+	for _, attachment := range message.Attachments {
+		mailMessage.AttachReader(attachment.Name, bytes.NewReader(attachment.Content))
+	}
 
-	return err
+	return mailMessage
 }
