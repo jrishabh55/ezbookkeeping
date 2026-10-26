@@ -13,9 +13,10 @@ Extend invoicing, in this order, without reworking the deployed schema or core l
 3. Multi-currency invoices whose payments land in INR accounts
 4. Linked-invoice badge on transactions
 5. Recurring (monthly) invoices created by cron
-6. Emailing the invoice as a PDF attachment
+6. Public invoice link (view and download without logging in)
+7. Emailing the invoice with the public link and a PDF attachment
 
-Each phase is shippable on its own. Later phases build on the earlier ones (emailing renders the GST and currency-aware document).
+Each phase is shippable on its own. Later phases build on the earlier ones (the public page and the email render the GST and currency-aware document).
 
 ## Shared constraints
 
@@ -121,23 +122,53 @@ Existing rows read back as `TaxType` empty, treated as `none`; `Subtotal` is bac
 
 ---
 
-## Phase 6: Emailing
+## Phase 6: Public invoice link
 
-**PDF renderer.** New package `pkg/invoicepdf` using `github.com/go-pdf/fpdf` with `DejaVuSans.ttf` and `DejaVuSans-Bold.ttf` embedded via `go:embed` (needed for ₹ and non-Latin text; core fonts are WinAnsi only). `Render(profile, invoice, lines) ([]byte, error)` mirrors `InvoiceDocumentContent.vue`: logo (decoded from the data URL, PNG or JPEG) top-left, business block top-right, "Invoice" banner, BILL TO and meta table, lines table (Services, optional SAC, optional Quantity, Rate, Amount), totals block (Subtotal / tax rows / Total / Payments received / Amount Due), Notes / Terms. Amount formatting matches the document's en-US style per currency.
+**Purpose.** Like Wave: a recipient opens one link, sees the invoice in the browser and downloads the PDF, with no account. The link is also the authenticity check: it is served from your domain and always shows the current state of the invoice (amount due, paid).
+
+**Model.** `Invoice.PublicToken VARCHAR(43)` (32 random bytes from `crypto/rand`, base64url, no padding), unique index on `(PublicToken)` where set. Empty means no public link. Generated on first "Share" or "Send"; "Disable link" clears it; "Reset link" generates a new one (the old URL stops working).
+
+**Public API (no login, `/api/v1` auth middleware not applied).** A new group `/api/public` with request id and request log middleware only:
+- `GET /api/public/invoices/view.json?token=` returns the invoice (lines, total, received, status fields) and the profile fields the document needs (business name, address, phone, website, logo, GSTIN). It never returns ids, customer ids or payment details beyond the received amount. Unknown or disabled token: the generic not-found error, same shape and timing as a wrong token (no token enumeration hints).
+- `GET /api/public/invoices/pdf?token=` returns the PDF (phase 7 renderer; until then, this endpoint is not registered).
+- Rate limit: the existing `APITokenIpLimit` middleware is not applicable; add the same simple per-IP limiter the forget-password endpoints use, or none if they use none (checked during planning).
+
+**Short URL.** `GET /i/:token` in `cmd/webserver.go` redirects (302) to `/desktop#/public/invoice/<token>`, so the shared link is `https://books.codeation.io/i/<token>`. The desktop build renders the document on phones too; the index page's user-agent redirect is bypassed because the link goes straight to `/desktop`.
+
+**Frontend.** Desktop route `/public/invoice/:token` with no `beforeEnter` guard (like `/login`), page `src/views/desktop/invoices/PublicInvoicePage.vue`: fetches the public view, renders `InvoiceDocumentContent` on white paper with a status badge (Paid / Amount due) and two buttons, Download PDF (phase 7) and Print. No app chrome, no store state, no token required. Invoice detail (desktop dialog and mobile page) gains "Share link": shows the URL with Copy, Reset link and Disable link.
+
+**Tests.** Go: view by token returns the invoice without ids; a cleared token returns not found; reset invalidates the old token; cross-user reset is refused.
+
+---
+
+## Phase 7: Emailing
+
+**PDF renderer.** New package `pkg/invoicepdf` using `github.com/go-pdf/fpdf` with `DejaVuSans.ttf` and `DejaVuSans-Bold.ttf` embedded via `go:embed` (needed for ₹ and non-Latin text; core fonts are WinAnsi only). `Render(profile, invoice, lines) ([]byte, error)` mirrors `InvoiceDocumentContent.vue`: logo (decoded from the data URL, PNG or JPEG) top-left, business block top-right, "Invoice" banner, BILL TO and meta table, lines table (Services, optional SAC, optional Quantity, Rate, Amount), totals block (Subtotal / tax rows / Total / Payments received / Amount Due), Notes / Terms, and a small footer line "Verify this invoice at <public URL>" when the invoice has a public link (see Digital signature below). Amount formatting matches the document's en-US style per currency.
 
 **Mail.** `mail.MailMessage` gains `Attachments []MailAttachment{Name string, Content []byte}`; `DefaultMailer.SendMail` attaches each with `gopkg.in/mail.v2`'s `AttachReader`.
 
 **API.**
-- `GET invoices/pdf?id=` returns the PDF (`Content-Disposition: attachment; filename=Invoice_<number>_<dueDate>.pdf`).
-- `POST invoices/send.json {id, to, subject, message}`: `to` required (valid email, max 128); `subject` max 256; `message` max 2048. Refused with the existing SMTP-not-enabled error when mail is off. Body is `message` as plain paragraphs in a minimal HTML wrapper. On success sets `Invoice.SentUnixTime` (new column) and returns the invoice.
+- `GET invoices/pdf?id=` (logged in) and `GET /api/public/invoices/pdf?token=` (phase 6) return the PDF (`Content-Disposition: attachment; filename=Invoice_<number>_<dueDate>.pdf`).
+- `POST invoices/send.json {id, to, subject, message}`: `to` required (valid email, max 128); `subject` max 256; `message` max 2048. Refused with the existing SMTP-not-enabled error when mail is off. Generates the public token if the invoice has none. Body is `message` as plain paragraphs in a minimal HTML wrapper (a `pkg/templates` email template, like `email/verify_email`), followed by a "View invoice" button linking to the public URL, with the PDF attached. On success sets `Invoice.SentUnixTime` (new column) and returns the invoice.
 
-**UI.** Invoice detail gains "Send" (desktop dialog, mobile page) with To (prefilled from bill-to email), Subject (`Invoice <number> from <business name>`), Message (default: amount due, due date, thank-you line), Send button; "Sent on <date>" under the status once sent. "Download PDF" sits next to Print and calls the server PDF. The print path is unchanged.
+**UI.** Invoice detail gains "Send" (desktop dialog, mobile page) with To (prefilled from bill-to email), Subject (`Invoice <number> from <business name>`), Message (default: amount due, due date, the public link, thank-you line), Send button; "Sent on <date>" under the status once sent. "Download PDF" sits next to Print and calls the server PDF. The print path is unchanged.
 
 **Deploy prerequisite.** SMTP settings in the Dokploy environment: `EBK_MAIL_ENABLE_SMTP=true`, `EBK_MAIL_SMTP_HOST`, `EBK_MAIL_SMTP_USER`, `EBK_MAIL_SMTP_PASSWD`, `EBK_MAIL_FROM_ADDRESS` (section `mail` of `conf/ezbookkeeping.ini`, read via `getConfigItemValueEnvironmentKey`). Without them the Send button reports that SMTP is disabled.
 
 **Tests.** Go: `Render` succeeds for an invoice with logo, GST and a non-INR currency and the output starts with `%PDF`; `send` with SMTP disabled returns the SMTP error; cross-user send is refused.
 
 ---
+
+## Digital signature of PDFs: assessment
+
+Asked: should the PDF carry a digital signature as proof of authenticity? Recommendation: **not now**; the public link does the job.
+
+- A PDF signature only proves anything if the signing certificate chains to a root the reader trusts. Adobe Reader trusts AATL certificates; Indian Class 3 DSCs are issued on USB tokens and cannot be used by a server. A self-signed certificate shows "validity unknown" with a warning, which looks less trustworthy than no signature.
+- A CA-issued document-signing certificate usable server-side costs money yearly and needs key storage on the server; that is a real operational burden for a one-person business.
+- GST rules do not require a digital signature on an electronically issued invoice for a supplier below the e-invoicing threshold, so there is no compliance driver.
+- The public link gives the recipient a stronger, free check: open the URL on your domain and see the same invoice with its live status. The PDF footer prints that URL.
+
+Seam if this changes: `invoicepdf.Render` returns bytes; a `Sign(pdf, cert, key)` step with `github.com/digitorus/pdfsign` can wrap it later with no other change.
 
 ## Error handling
 
@@ -147,4 +178,4 @@ Existing rows read back as `TaxType` empty, treated as `none`; `Subtotal` is bac
 
 ## Out of scope
 
-Automatic emailing of generated recurring invoices, quotes and credit notes, per-line tax rates, editing an invoice's currency after creation, FX gain/loss accounting, PDF layouts other than the Wave one.
+PDF digital signatures (see assessment), online payment buttons on the public page, automatic emailing of generated recurring invoices, quotes and credit notes, per-line tax rates, editing an invoice's currency after creation, FX gain/loss accounting, PDF layouts other than the Wave one.
