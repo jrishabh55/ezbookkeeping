@@ -106,6 +106,7 @@ export interface InvoiceInfoResponse {
     readonly closedManually: boolean;
     readonly lines?: InvoiceLine[];
     readonly payments?: InvoicePayment[];
+    readonly publicToken?: string;
 }
 
 export interface InvoiceLineRequest {
@@ -129,6 +130,38 @@ export interface InvoiceCreateRequest {
 
 export interface InvoiceModifyRequest extends InvoiceCreateRequest {
     readonly id: string;
+}
+
+export interface InvoicePublicLinkResponse {
+    readonly publicToken: string;
+}
+
+// what a recipient of a public link sees: the printed document plus the amount received, no ids or payments
+export interface PublicInvoiceProfileResponse {
+    readonly businessName: string;
+    readonly addressLines: string;
+    readonly phone: string;
+    readonly website: string;
+    readonly logoDataUrl: string;
+}
+
+export interface PublicInvoiceResponse {
+    readonly number: string;
+    readonly billToName: string;
+    readonly billToContactName: string;
+    readonly billToAddressLines: string;
+    readonly billToEmail: string;
+    readonly billToPhone: string;
+    readonly billToPan: string;
+    readonly currency: string;
+    readonly invoiceDate: TextualYearMonthDay;
+    readonly dueDate: TextualYearMonthDay;
+    readonly notes: string;
+    readonly total: number;
+    readonly received: number;
+    readonly closedManually: boolean;
+    readonly lines: InvoiceLine[];
+    readonly profile: PublicInvoiceProfileResponse;
 }
 
 export class InvoiceProfile implements InvoiceProfileInfoResponse {
@@ -178,6 +211,17 @@ export class InvoiceProfile implements InvoiceProfileInfoResponse {
     public static of(response: InvoiceProfileInfoResponse): InvoiceProfile {
         const profile = new InvoiceProfile();
         profile.fillFrom(response);
+        return profile;
+    }
+
+    // the profile as seen through a public link: only the fields printed on the document
+    public static ofPublic(response: PublicInvoiceProfileResponse): InvoiceProfile {
+        const profile = new InvoiceProfile();
+        profile.businessName = response.businessName;
+        profile.addressLines = response.addressLines;
+        profile.phone = response.phone;
+        profile.website = response.website;
+        profile.logoDataUrl = response.logoDataUrl;
         return profile;
     }
 
@@ -288,6 +332,7 @@ export class Invoice implements InvoiceInfoResponse {
     public closedManually: boolean = false;
     public lines: InvoiceLine[] = [];
     public payments: InvoicePayment[] = [];
+    public publicToken: string = ''; // empty = no public link
 
     public fillFrom(other: InvoiceInfoResponse): void {
         this.id = other.id;
@@ -314,6 +359,7 @@ export class Invoice implements InvoiceInfoResponse {
         this.closedManually = other.closedManually;
         this.lines = (other.lines ?? []).map(line => ({ ...line }));
         this.payments = (other.payments ?? []).map(payment => ({ ...payment }));
+        this.publicToken = other.publicToken ?? '';
     }
 
     public toCreateRequest(): InvoiceCreateRequest {
@@ -363,6 +409,13 @@ export class Invoice implements InvoiceInfoResponse {
 
     public static ofMulti(responses: InvoiceInfoResponse[]): Invoice[] {
         return responses.map(response => Invoice.of(response));
+    }
+
+    // the invoice as seen through a public link: no id, customer id, payments or token
+    public static ofPublic(response: PublicInvoiceResponse): Invoice {
+        const invoice = new Invoice();
+        invoice.fillFrom({ ...response, id: '', kind: 'invoice', customerId: '', payments: [] });
+        return invoice;
     }
 
     public static createNewInvoice(): Invoice {

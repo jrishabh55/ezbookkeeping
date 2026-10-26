@@ -138,3 +138,18 @@ export function getTodayTextualDate(): TextualYearMonthDay {
     const now = new Date();
     return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())).toISOString().substring(0, 10) as TextualYearMonthDay;
 }
+
+// the short link the server redirects to the public document page (GET /i/:token in cmd/webserver.go)
+export function getInvoicePublicLinkUrl(publicToken: string): string {
+    return `${window.location.origin}/i/${publicToken}`;
+}
+
+// prints the document; the browser suggests document.title as the PDF file name
+export function printInvoiceDocument(invoice: { readonly number: string, readonly dueDate: string }): void {
+    const originalTitle = document.title;
+    document.title = getInvoicePdfFileName(invoice.number, invoice.dueDate);
+    window.addEventListener('afterprint', () => {
+        document.title = originalTitle;
+    }, { once: true });
+    window.print();
+}

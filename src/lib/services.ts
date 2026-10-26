@@ -224,6 +224,9 @@ import type {
     RecurringInvoiceInfoResponse,
     RecurringInvoiceCreateRequest,
     RecurringInvoiceModifyRequest
+,
+    InvoicePublicLinkResponse,
+    PublicInvoiceResponse
 } from '@/models/invoice.ts';
 
 import {
@@ -1106,6 +1109,16 @@ export default {
     },
     deleteRecurringInvoice: ({ id }: { id: string }): ApiResponsePromise<boolean> => {
         return axios.post<ApiResponse<boolean>>('v1/recurring_invoices/delete.json', { id });
+    },
+    updateInvoicePublicLink: (req: { id: string, enabled: boolean }): ApiResponsePromise<InvoicePublicLinkResponse> => {
+        return axios.post<ApiResponse<InvoicePublicLinkResponse>>('v1/invoices/public_link/update.json', req);
+    },
+    // unauthenticated: no bearer token, and a failure must never clear the login of whoever opened the link
+    getPublicInvoice: ({ token }: { token: string }): ApiResponsePromise<PublicInvoiceResponse> => {
+        return axios.get<ApiResponse<PublicInvoiceResponse>>('public/invoices/view.json?token=' + encodeURIComponent(token), {
+            noAuth: true,
+            ignoreError: true
+        } as ApiRequestConfig);
     },
     getServerVersion: (): ApiResponsePromise<VersionInfo> => {
         return axios.get<ApiResponse<VersionInfo>>('v1/systems/version.json');

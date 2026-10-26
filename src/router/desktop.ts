@@ -50,6 +50,7 @@ import ExchangeRatesListPage from '@/views/desktop/exchangerates/ListPage.vue';
 import BudgetListPage from '@/views/desktop/budgets/ListPage.vue';
 import BucketListPage from '@/views/desktop/buckets/ListPage.vue';
 import InvoiceListPage from '@/views/desktop/invoices/ListPage.vue';
+import PublicInvoicePage from '@/views/desktop/invoices/PublicInvoicePage.vue';
 
 function checkLogin(): NavigationGuardReturn {
     if (!isUserLogined()) {
@@ -339,6 +340,14 @@ const router = createRouter({
             path: '/unlock',
             component: UnlockPage,
             beforeEnter: checkLocked
+        },
+        {
+            // the public invoice document: no login guard, opened from the /i/<token> short link
+            path: '/public/invoice/:token',
+            component: PublicInvoicePage,
+            props: route => ({
+                token: route.params['token']
+            })
         }
     ],
 })

@@ -517,3 +517,93 @@ func TestGetLinkedInvoicesByTransactionIds(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, 0, len(empty))
 }
+
+func TestInvoicePublicTokenViewReturnsInvoice(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	customer := createTestCustomer(t, uid)
+	invoice := createTestInvoice(t, uid, customer.CustomerId, "CA/2026-27/01", 37000000)
+
+	profile, err := Invoices.GetProfile(ctx, uid)
+	assert.Nil(t, err)
+	profile.BusinessName = "Rishabh Jain"
+	assert.Nil(t, Invoices.SaveProfile(ctx, profile))
+
+	token, err := Invoices.SetInvoicePublicToken(ctx, uid, invoice.InvoiceId, true)
+	assert.Nil(t, err)
+	assert.Equal(t, 43, len(token))
+
+	viewed, lines, received, viewedProfile, err := Invoices.GetInvoiceByPublicToken(ctx, token)
+	assert.Nil(t, err)
+	assert.Equal(t, invoice.InvoiceId, viewed.InvoiceId)
+	assert.Equal(t, "CA/2026-27/01", viewed.Number)
+	assert.Equal(t, 1, len(lines))
+	assert.Equal(t, int64(0), received)
+	assert.Equal(t, "Rishabh Jain", viewedProfile.BusinessName)
+
+	// the token is also returned with the invoice so the owner can show the link
+	reloaded, _, err := Invoices.GetInvoice(ctx, uid, invoice.InvoiceId)
+	assert.Nil(t, err)
+	assert.Equal(t, token, reloaded.PublicToken)
+}
+
+func TestInvoicePublicTokenClearedReturnsNotFound(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	customer := createTestCustomer(t, uid)
+	invoice := createTestInvoice(t, uid, customer.CustomerId, "CA/2026-27/01", 100)
+
+	_, _, _, _, err := Invoices.GetInvoiceByPublicToken(ctx, "")
+	assert.Equal(t, errs.ErrInvoiceNotFound, err)
+
+	token, err := Invoices.SetInvoicePublicToken(ctx, uid, invoice.InvoiceId, true)
+	assert.Nil(t, err)
+
+	cleared, err := Invoices.SetInvoicePublicToken(ctx, uid, invoice.InvoiceId, false)
+	assert.Nil(t, err)
+	assert.Equal(t, "", cleared)
+
+	_, _, _, _, err = Invoices.GetInvoiceByPublicToken(ctx, token)
+	assert.Equal(t, errs.ErrInvoiceNotFound, err)
+
+	reloaded, _, err := Invoices.GetInvoice(ctx, uid, invoice.InvoiceId)
+	assert.Nil(t, err)
+	assert.Equal(t, "", reloaded.PublicToken)
+}
+
+func TestInvoicePublicTokenResetInvalidatesOldToken(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	customer := createTestCustomer(t, uid)
+	invoice := createTestInvoice(t, uid, customer.CustomerId, "CA/2026-27/01", 100)
+
+	first, err := Invoices.SetInvoicePublicToken(ctx, uid, invoice.InvoiceId, true)
+	assert.Nil(t, err)
+	second, err := Invoices.SetInvoicePublicToken(ctx, uid, invoice.InvoiceId, true)
+	assert.Nil(t, err)
+	assert.NotEqual(t, first, second)
+
+	_, _, _, _, err = Invoices.GetInvoiceByPublicToken(ctx, first)
+	assert.Equal(t, errs.ErrInvoiceNotFound, err)
+
+	viewed, _, _, _, err := Invoices.GetInvoiceByPublicToken(ctx, second)
+	assert.Nil(t, err)
+	assert.Equal(t, invoice.InvoiceId, viewed.InvoiceId)
+}
+
+func TestInvoicePublicTokenCrossUserUpdateIsRefused(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	_, otherUid := newAlertTestUser(t)
+	customer := createTestCustomer(t, uid)
+	invoice := createTestInvoice(t, uid, customer.CustomerId, "CA/2026-27/01", 100)
+
+	token, err := Invoices.SetInvoicePublicToken(ctx, uid, invoice.InvoiceId, true)
+	assert.Nil(t, err)
+
+	_, err = Invoices.SetInvoicePublicToken(ctx, otherUid, invoice.InvoiceId, true)
+	assert.Equal(t, errs.ErrInvoiceNotFound, err)
+	_, err = Invoices.SetInvoicePublicToken(ctx, otherUid, invoice.InvoiceId, false)
+	assert.Equal(t, errs.ErrInvoiceNotFound, err)
+
+	// the owner's link still works after the refused update
+	viewed, _, _, _, err := Invoices.GetInvoiceByPublicToken(ctx, token)
+	assert.Nil(t, err)
+	assert.Equal(t, invoice.InvoiceId, viewed.InvoiceId)
+}
