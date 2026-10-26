@@ -1,7 +1,7 @@
 # Invoicing extensions: design
 
 Date: 2026-10-26
-Status: approved in chat, awaiting spec review
+Status: approved 2026-10-26
 Builds on: `docs/superpowers/specs/2026-10-25-invoicing-design.md` (deployed 2026-10-26, real invoices exist on books.codeation.io)
 
 ## Goal
@@ -78,6 +78,8 @@ Existing rows read back as `TaxType` empty, treated as `none`; `Subtotal` is bac
 ## Phase 3: Multi-currency
 
 **Model additions.** `InvoiceProfile.DefaultCurrency VARCHAR(3)` (empty means INR). `InvoicePayment.SettledAmount int64` (0 = same currency, read the transaction; otherwise the amount in invoice currency the user entered when linking).
+
+**Existing invoices.** Every deployed invoice already stores `Currency = INR` (set by `CreateInvoice`), so they keep INR for reference and nothing changes for them: amounts, printing, suggestions and linking behave exactly as today.
 
 **Invoice currency.** `Invoice.Currency` becomes a request field on create (`len=3`, must be a known currency code); it is not editable after creation (lines and payments are in it). Default = profile `DefaultCurrency`. Desktop uses `CurrencySelect`; mobile the existing currency selection sheet, as in account edit.
 
