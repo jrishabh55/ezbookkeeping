@@ -86,7 +86,7 @@ type InvoiceLine struct {
 	DisplayOrder int32  `xorm:"NOT NULL"`
 	ItemName     string `xorm:"VARCHAR(128) NOT NULL"`
 	Description  string `xorm:"VARCHAR(512) NOT NULL"`
-	Quantity     int64  `xorm:"NOT NULL"`
+	Quantity     int64  `xorm:"NOT NULL"` // hundredths: 100 = 1, 750 = 7.5
 	Rate         int64  `xorm:"NOT NULL"`
 	Amount       int64  `xorm:"NOT NULL"`
 }
@@ -173,7 +173,7 @@ type CustomerResponse struct {
 type InvoiceLineRequest struct {
 	ItemName    string `json:"itemName" binding:"required,notBlank,max=128"`
 	Description string `json:"description" binding:"max=512"`
-	Quantity    int64  `json:"quantity" binding:"required,min=1,max=10000"`
+	Quantity    int64  `json:"quantity" binding:"required,min=1,max=1000000"` // hundredths: 0.01 to 10,000
 	Rate        int64  `json:"rate" binding:"required,min=1,max=10000000000"`
 }
 

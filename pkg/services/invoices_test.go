@@ -88,7 +88,7 @@ func TestCustomerExtraFieldsPersistAndSnapshotOnInvoice(t *testing.T) {
 	customer.Pan = "ZZZZZ9999Z"
 	assert.Nil(t, Invoices.ModifyCustomer(ctx, customer))
 	invoice.InvoiceDate, invoice.DueDate = "2026-04-23", "2026-04-30"
-	assert.Nil(t, Invoices.ModifyInvoice(ctx, invoice, []*models.InvoiceLine{{ItemName: "Consulting", Quantity: 1, Rate: 37000000}}))
+	assert.Nil(t, Invoices.ModifyInvoice(ctx, invoice, []*models.InvoiceLine{{ItemName: "Consulting", Quantity: 100, Rate: 37000000}}))
 
 	reloaded, _, err := Invoices.GetInvoice(ctx, uid, invoice.InvoiceId)
 	assert.Nil(t, err)
@@ -98,7 +98,7 @@ func TestCustomerExtraFieldsPersistAndSnapshotOnInvoice(t *testing.T) {
 func createTestInvoice(t *testing.T, uid int64, customerId int64, number string, rate int64) *models.Invoice {
 	t.Helper()
 	invoice := &models.Invoice{Uid: uid, Number: number, CustomerId: customerId, InvoiceDate: "2026-04-23", DueDate: "2026-04-30"}
-	lines := []*models.InvoiceLine{{ItemName: "Consulting", Description: "Software Consulting\nQuber Tech", Quantity: 1, Rate: rate}}
+	lines := []*models.InvoiceLine{{ItemName: "Consulting", Description: "Software Consulting\nQuber Tech", Quantity: 100, Rate: rate}}
 	assert.Nil(t, Invoices.CreateInvoice(core.NewNullContext(), invoice, lines))
 	return invoice
 }
@@ -111,9 +111,34 @@ func createTestCustomer(t *testing.T, uid int64) *models.Customer {
 }
 
 func TestComputeInvoiceTotalFillsLineAmounts(t *testing.T) {
-	lines := []*models.InvoiceLine{{Quantity: 1, Rate: 37000000}, {Quantity: 3, Rate: 150000}}
+	lines := []*models.InvoiceLine{{Quantity: 100, Rate: 37000000}, {Quantity: 300, Rate: 150000}}
 	assert.Equal(t, int64(37450000), computeInvoiceTotal(lines))
 	assert.Equal(t, int64(450000), lines[1].Amount)
+}
+
+func TestComputeInvoiceTotalRoundsFractionalQuantityToPaisa(t *testing.T) {
+	// 7.5 h × ₹333.33 = ₹2,499.975 → ₹2,499.98
+	lines := []*models.InvoiceLine{{Quantity: 750, Rate: 33333}}
+	assert.Equal(t, int64(249998), computeInvoiceTotal(lines))
+
+	// 0.01 × ₹0.01 rounds to zero; this is the only way a line amount can be zero
+	lines = []*models.InvoiceLine{{Quantity: 1, Rate: 1}}
+	assert.Equal(t, int64(0), computeInvoiceTotal(lines))
+	assert.Equal(t, int64(0), lines[0].Amount)
+}
+
+func TestInvoiceQuantityIsStoredAsGiven(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	customer := createTestCustomer(t, uid)
+
+	invoice := &models.Invoice{Uid: uid, Number: "CA/2026-27/90", CustomerId: customer.CustomerId, InvoiceDate: "2026-04-23", DueDate: "2026-04-30"}
+	lines := []*models.InvoiceLine{{ItemName: "Consulting", Quantity: 750, Rate: 33333}}
+	assert.Nil(t, Invoices.CreateInvoice(ctx, invoice, lines))
+
+	_, savedLines, err := Invoices.GetInvoice(ctx, uid, invoice.InvoiceId)
+	assert.Nil(t, err)
+	assert.Equal(t, int64(750), savedLines[0].Quantity)
+	assert.Equal(t, int64(249998), savedLines[0].Amount)
 }
 
 func TestInvoiceFinancialYear(t *testing.T) {
@@ -158,7 +183,7 @@ func TestCreateInvoiceSnapshotsCustomerAndRejectsDuplicateNumber(t *testing.T) {
 	assert.Equal(t, int64(37000000), lines[0].Amount)
 
 	duplicate := &models.Invoice{Uid: uid, Number: "CA/2026-27/01", CustomerId: customer.CustomerId, InvoiceDate: "2026-05-01", DueDate: "2026-05-08"}
-	err = Invoices.CreateInvoice(ctx, duplicate, []*models.InvoiceLine{{ItemName: "x", Quantity: 1, Rate: 100}})
+	err = Invoices.CreateInvoice(ctx, duplicate, []*models.InvoiceLine{{ItemName: "x", Quantity: 100, Rate: 100}})
 	assert.Equal(t, errs.ErrInvoiceNumberAlreadyExists, err)
 }
 
@@ -167,7 +192,7 @@ func TestCreateInvoiceValidatesDatesAndCustomer(t *testing.T) {
 	_, otherUid := newAlertTestUser(t)
 	customer := createTestCustomer(t, uid)
 	otherCustomer := createTestCustomer(t, otherUid)
-	lines := []*models.InvoiceLine{{ItemName: "x", Quantity: 1, Rate: 100}}
+	lines := []*models.InvoiceLine{{ItemName: "x", Quantity: 100, Rate: 100}}
 
 	err := Invoices.CreateInvoice(ctx, &models.Invoice{Uid: uid, Number: "A", CustomerId: customer.CustomerId, InvoiceDate: "2026-04-30", DueDate: "2026-04-23"}, lines)
 	assert.Equal(t, errs.ErrInvoiceDueDateBeforeInvoiceDate, err)
@@ -186,7 +211,7 @@ func TestModifyInvoiceReplacesLinesAndKeepsClosedFlag(t *testing.T) {
 	assert.Nil(t, Invoices.SetInvoiceClosed(ctx, uid, invoice.InvoiceId, true))
 
 	modified := &models.Invoice{Uid: uid, InvoiceId: invoice.InvoiceId, Number: "CA/2026-27/01", CustomerId: customer.CustomerId, InvoiceDate: "2026-04-23", DueDate: "2026-05-07"}
-	newLines := []*models.InvoiceLine{{ItemName: "Consulting", Quantity: 1, Rate: 30000000}, {ItemName: "Support", Quantity: 2, Rate: 100000}}
+	newLines := []*models.InvoiceLine{{ItemName: "Consulting", Quantity: 100, Rate: 30000000}, {ItemName: "Support", Quantity: 200, Rate: 100000}}
 	assert.Nil(t, Invoices.ModifyInvoice(ctx, modified, newLines))
 
 	saved, lines, err := Invoices.GetInvoice(ctx, uid, invoice.InvoiceId)

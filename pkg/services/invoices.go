@@ -198,13 +198,13 @@ func (s *InvoiceService) DeleteCustomer(c core.Context, uid int64, customerId in
 
 const invoiceDateLayout = "2006-01-02"
 
-// computeInvoiceTotal fills each line's amount (quantity × rate) and returns the invoice total.
-// This is the single place totals are computed; GST would add tax lines here.
+// computeInvoiceTotal fills each line's amount (quantity × rate, quantity in hundredths, rounded half up to the minor unit)
+// and returns the invoice total. This is the single place totals are computed; GST would add tax lines here.
 func computeInvoiceTotal(lines []*models.InvoiceLine) int64 {
 	total := int64(0)
 
 	for _, line := range lines {
-		line.Amount = line.Quantity * line.Rate
+		line.Amount = (line.Quantity*line.Rate + 50) / 100
 		total += line.Amount
 	}
 
