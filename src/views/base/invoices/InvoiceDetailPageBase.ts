@@ -4,6 +4,8 @@ import { useI18n } from '@/locales/helpers.ts';
 
 import { useAccountsStore } from '@/stores/account.ts';
 
+import services from '@/lib/services.ts';
+
 import type { TextualYearMonthDay } from '@/core/datetime.ts';
 import { type Invoice, type InvoicePayment, type InvoiceProfile, INVOICE_CURRENCY } from '@/models/invoice.ts';
 
@@ -76,6 +78,15 @@ export function useInvoiceDetailPageBase() {
         window.print();
     }
 
+    // the server-rendered PDF; the response is an attachment, so the new tab turns into a download
+    function downloadInvoicePdf(): void {
+        if (!invoice.value) {
+            return;
+        }
+
+        window.open(services.getInvoicePdfUrlWithToken(invoice.value.id), '_blank');
+    }
+
     return {
         // states
         loading,
@@ -93,6 +104,7 @@ export function useInvoiceDetailPageBase() {
         formatAmount,
         formatDate,
         formatPaymentDescription,
-        printInvoice
+        printInvoice,
+        downloadInvoicePdf
     };
 }

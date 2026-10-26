@@ -35,6 +35,11 @@
                     <v-icon :icon="mdiPrinterOutline" />
                     <v-tooltip activator="parent">{{ tt('Print / Save PDF') }}</v-tooltip>
                 </v-btn>
+                <v-btn density="comfortable" color="default" variant="text" class="ms-1" :icon="true"
+                       :aria-label="tt('Download PDF')" :disabled="!invoice || loading" @click="downloadInvoicePdf">
+                    <v-icon :icon="mdiDownloadOutline" />
+                    <v-tooltip activator="parent">{{ tt('Download PDF') }}</v-tooltip>
+                </v-btn>
             </template>
 
             <template #content>
@@ -109,6 +114,7 @@ import {
     mdiLockOpenVariantOutline,
     mdiDeleteOutline,
     mdiPrinterOutline,
+    mdiDownloadOutline,
     mdiLinkOff
 } from '@mdi/js';
 
@@ -149,7 +155,8 @@ const {
     shortfallName,
     formatAmount,
     formatPaymentDescription,
-    printInvoice
+    printInvoice,
+    downloadInvoicePdf
 } = useInvoiceDetailPageBase();
 
 const invoicesStore = useInvoicesStore();

@@ -68,6 +68,7 @@
                 <f7-actions-button @click="f7router.navigate(`/invoice/add?duplicateFrom=${invoiceId}`)">{{ tt('Duplicate') }}</f7-actions-button>
                 <f7-actions-button @click="toggleClosed">{{ invoice?.closedManually ? tt('Reopen') : tt('Mark as Paid') }}</f7-actions-button>
                 <f7-actions-button @click="printInvoice">{{ tt('Print / Save PDF') }}</f7-actions-button>
+                <f7-actions-button @click="downloadInvoicePdf">{{ tt('Download PDF') }}</f7-actions-button>
             </f7-actions-group>
             <f7-actions-group>
                 <f7-actions-button color="red" @click="showDeleteActionSheet = true">{{ tt('Delete') }}</f7-actions-button>
@@ -126,7 +127,8 @@ const {
     formatAmount,
     formatDate,
     formatPaymentDescription,
-    printInvoice
+    printInvoice,
+    downloadInvoicePdf
 } = useInvoiceDetailPageBase();
 
 const invoicesStore = useInvoicesStore();
