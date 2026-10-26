@@ -5,19 +5,30 @@
                 <template #title>
                     <div class="title-and-toolbar d-flex align-center">
                         <span>{{ tt('Budgets') }}</span>
-                        <v-btn density="compact" color="default" variant="text" size="24"
-                               class="ms-2" :icon="true" :loading="loading" @click="reload">
+                        <v-btn class="ms-3" color="default" variant="outlined"
+                               :disabled="loading" @click="add">{{ tt('Add') }}</v-btn>
+                        <v-btn density="compact" color="default" variant="text" class="ms-2"
+                               :aria-label="tt('Refresh')" :icon="true" :loading="loading" @click="reload(true)">
                             <template #loader>
                                 <v-progress-circular indeterminate size="20"/>
                             </template>
                             <v-icon :icon="mdiRefresh" size="24" />
                             <v-tooltip activator="parent">{{ tt('Refresh') }}</v-tooltip>
                         </v-btn>
-                        <v-spacer />
-                        <v-btn color="primary" variant="tonal" size="small"
-                               :disabled="loading" @click="add">
-                            <v-icon :icon="mdiPlus" size="20" start />
-                            {{ tt('Add') }}
+                        <v-spacer/>
+                        <v-btn density="comfortable" color="default" variant="text" class="ms-2"
+                               :aria-label="tt('More')" :disabled="loading" :icon="true">
+                            <v-icon :icon="mdiDotsVertical" />
+                            <v-menu activator="parent">
+                                <v-list>
+                                    <v-list-item :prepend-icon="mdiEyeOutline"
+                                                 :title="tt('Show Hidden Budgets')"
+                                                 v-if="!showHidden" @click="showHidden = true"></v-list-item>
+                                    <v-list-item :prepend-icon="mdiEyeOffOutline"
+                                                 :title="tt('Hide Hidden Budgets')"
+                                                 v-if="showHidden" @click="showHidden = false"></v-list-item>
+                                </v-list>
+                            </v-menu>
                         </v-btn>
                     </div>
                 </template>
@@ -32,32 +43,46 @@
                 </v-card-text>
 
                 <v-card-text>
-                    <v-row v-if="loading && !allBudgets.length">
-                        <v-col cols="12" class="d-flex justify-center">
-                            <v-progress-circular indeterminate />
+                    <v-row v-if="loading && noAvailableBudget">
+                        <v-col v-for="itemIdx in [ 1, 2, 3 ]" :key="itemIdx" cols="12" md="6" lg="4">
+                            <v-card variant="outlined" class="budget-card">
+                                <v-card-title class="d-flex align-center">
+                                    <v-skeleton-loader class="skeleton-no-margin" width="120px" type="text" :loading="true"></v-skeleton-loader>
+                                    <v-spacer />
+                                    <v-skeleton-loader class="skeleton-no-margin" width="60px" type="text" :loading="true"></v-skeleton-loader>
+                                </v-card-title>
+
+                                <v-card-text>
+                                    <div class="d-flex justify-space-between align-center mb-2">
+                                        <span class="text-muted">{{ tt('Budget Amount') }}</span>
+                                        <v-skeleton-loader class="skeleton-no-margin" width="80px" type="text" :loading="true"></v-skeleton-loader>
+                                    </div>
+
+                                    <v-skeleton-loader class="skeleton-no-margin mb-2" height="8" type="image" :loading="true"></v-skeleton-loader>
+
+                                    <div class="d-flex justify-space-between text-caption">
+                                        <v-skeleton-loader class="skeleton-no-margin" width="100px" type="text" :loading="true"></v-skeleton-loader>
+                                        <v-skeleton-loader class="skeleton-no-margin" width="100px" type="text" :loading="true"></v-skeleton-loader>
+                                    </div>
+                                </v-card-text>
+                            </v-card>
                         </v-col>
                     </v-row>
 
-                    <v-row v-else-if="!allBudgets.length">
+                    <v-row v-else-if="!loading && noAvailableBudget">
                         <v-col cols="12">
-                            <div class="text-center text-muted py-8">
-                                <v-icon :icon="mdiWalletOutline" size="48" class="mb-4" />
-                                <p>{{ tt('No budgets') }}</p>
-                                <v-btn color="primary" variant="tonal" size="small" @click="add">
-                                    {{ tt('Add Budget') }}
-                                </v-btn>
-                            </div>
+                            <span class="text-body-medium">{{ tt('No available budget') }}</span>
                         </v-col>
                     </v-row>
 
                     <v-row v-else>
-                        <v-col v-for="budget in allBudgets" :key="budget.id" cols="12" md="6" lg="4">
+                        <v-col v-for="budget in displayBudgets" :key="budget.id" cols="12" md="6" lg="4">
                             <v-card variant="outlined" class="budget-card">
                                 <v-card-title class="d-flex align-center">
                                     <span class="text-truncate">{{ budget.name }}</span>
                                     <v-spacer />
                                     <v-chip size="x-small" :color="budget.hidden ? 'grey' : 'primary'" variant="tonal">
-                                        {{ budget.hidden ? tt('Hidden') : budget.getPeriodTypeName() }}
+                                        {{ budget.hidden ? tt('Hidden') : tt(getPeriodDisplayName(budget)) }}
                                     </v-chip>
                                 </v-card-title>
 
@@ -70,29 +95,26 @@
                                     </div>
 
                                     <v-progress-linear
-                                        :model-value="getProgressPercentage(budget.id)"
-                                        :color="getProgressColor(budget.id)"
+                                        :model-value="getProgressPercentage(budget)"
+                                        :color="getProgressColor(budget)"
                                         height="8"
                                         rounded
                                         class="mb-2"
                                     />
 
                                     <div class="d-flex justify-space-between text-caption">
-                                        <span>{{ tt('Spent') }}: {{ formatAmount(getSpentAmount(budget.id), budget.currency) }}</span>
+                                        <span>{{ tt('Spent') }}: {{ formatAmount(getSpentAmount(budget), budget.currency) }}</span>
                                         <span>{{ tt('Remaining') }}: {{ formatAmount(getRemainingAmount(budget), budget.currency) }}</span>
                                     </div>
                                 </v-card-text>
 
                                 <v-card-actions>
-                                    <v-btn color="primary" variant="text" size="small" @click="viewBudget(budget)">
-                                        {{ tt('View') }}
-                                    </v-btn>
                                     <v-spacer />
-                                    <v-btn variant="text" size="small" :icon="true" @click="editBudget(budget)">
+                                    <v-btn variant="text" size="small" :icon="true" :disabled="loading" @click="edit(budget)">
                                         <v-icon :icon="mdiPencilOutline" size="18" />
                                         <v-tooltip activator="parent">{{ tt('Edit') }}</v-tooltip>
                                     </v-btn>
-                                    <v-btn variant="text" size="small" :icon="true" @click="confirmDeleteBudget(budget)">
+                                    <v-btn variant="text" size="small" :icon="true" :disabled="loading" @click="confirmDeleteBudget(budget)">
                                         <v-icon :icon="mdiDeleteOutline" size="18" />
                                         <v-tooltip activator="parent">{{ tt('Delete') }}</v-tooltip>
                                     </v-btn>
@@ -105,26 +127,26 @@
         </v-col>
     </v-row>
 
-    <budget-edit-dialog v-model:show="showEditDialog"
-                        :budget="editingBudget"
-                        :is-edit="isEditMode"
-                        @saved="onBudgetSaved" />
+    <budget-edit-dialog ref="editDialog" />
 
     <confirm-dialog ref="confirmDialog"/>
     <snack-bar ref="snackbar" />
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, useTemplateRef } from 'vue';
-import { useI18n } from 'vue-i18n';
+import { useTemplateRef } from 'vue';
 
 import {
     mdiRefresh,
-    mdiPlus,
+    mdiDotsVertical,
+    mdiEyeOutline,
+    mdiEyeOffOutline,
     mdiPencilOutline,
-    mdiDeleteOutline,
-    mdiWalletOutline
+    mdiDeleteOutline
 } from '@mdi/js';
+
+import { useI18n } from '@/locales/helpers.ts';
+import { useBudgetListPageBase } from '@/views/base/budgets/BudgetListPageBase.ts';
 
 import { useBudgetsStore } from '@/stores/budget.ts';
 
@@ -136,122 +158,116 @@ import SnackBar from '@/components/desktop/SnackBar.vue';
 
 type ConfirmDialogType = InstanceType<typeof ConfirmDialog>;
 type SnackBarType = InstanceType<typeof SnackBar>;
+type BudgetEditDialogType = InstanceType<typeof BudgetEditDialog>;
 
-const { t: tt } = useI18n();
+const { tt } = useI18n();
+
+const {
+    loading,
+    showHidden,
+    displayBudgets,
+    noAvailableBudget,
+    loadBudgetProgresses,
+    formatAmount,
+    getSpentAmount,
+    getRemainingAmount,
+    getProgressPercentage,
+    getProgressColor,
+    getPeriodDisplayName
+} = useBudgetListPageBase();
+
 const budgetsStore = useBudgetsStore();
 
-const loading = ref(false);
-const showEditDialog = ref(false);
 const confirmDialog = useTemplateRef<ConfirmDialogType>('confirmDialog');
 const snackbar = useTemplateRef<SnackBarType>('snackbar');
-const editingBudget = ref<Budget | null>(null);
-const isEditMode = ref(false);
-const budgetProgress = ref<Record<string, { spentAmount: number, remainingAmount: number, progressPercentage: number, isWarning: boolean, isAlert: boolean, isOverspent: boolean }>>({});
+const editDialog = useTemplateRef<BudgetEditDialogType>('editDialog');
 
-const allBudgets = computed(() => budgetsStore.allBudgets);
-
-function formatAmount(amount: number, currency: string): string {
-    const displayAmount = amount / 100;
-    return new Intl.NumberFormat(undefined, {
-        style: 'currency',
-        currency: currency || 'USD'
-    }).format(displayAmount);
-}
-
-function reload(): void {
-    loading.value = true;
-    budgetsStore.loadAllBudgets({ force: true }).then((budgets) => {
-        loadBudgetProgress(budgets);
-    }).finally(() => {
+function init(): void {
+    budgetsStore.loadAllBudgets({ force: false }).then(() => {
         loading.value = false;
+
+        loadBudgetProgresses(displayBudgets.value);
+    }).catch(error => {
+        loading.value = false;
+
+        if (!error.processed) {
+            snackbar.value?.showError(error);
+        }
     });
 }
 
-function loadBudgetProgress(budgets: Budget[]): void {
-    for (const budget of budgets) {
-        budgetsStore.getBudgetProgress({ budgetId: budget.id }).then((progress) => {
-            budgetProgress.value[budget.id] = {
-                spentAmount: progress.spentAmount,
-                remainingAmount: progress.remainingAmount,
-                progressPercentage: progress.progressPercentage,
-                isWarning: progress.isWarning,
-                isAlert: progress.isAlert,
-                isOverspent: progress.isOverspent
-            };
-        }).catch(() => {
-            budgetProgress.value[budget.id] = {
-                spentAmount: 0,
-                remainingAmount: budget.amount,
-                progressPercentage: 0,
-                isWarning: false,
-                isAlert: false,
-                isOverspent: false
-            };
-        });
-    }
-}
+function reload(force: boolean): void {
+    loading.value = true;
 
-function getProgressColor(budgetId: string): string {
-    const progress = budgetProgress.value[budgetId];
-    if (!progress) return 'primary';
-    if (progress.isOverspent) return 'error';
-    if (progress.isAlert) return 'warning';
-    if (progress.isWarning) return 'orange';
-    return 'primary';
-}
+    budgetsStore.loadAllBudgets({ force: force }).then(() => {
+        loading.value = false;
 
-function getSpentAmount(budgetId: string): number {
-    return budgetProgress.value[budgetId]?.spentAmount || 0;
-}
+        if (force) {
+            snackbar.value?.showMessage('Budget list has been updated');
+        }
 
-function getRemainingAmount(budget: Budget): number {
-    return budgetProgress.value[budget.id]?.remainingAmount ?? budget.amount;
-}
+        loadBudgetProgresses(displayBudgets.value);
+    }).catch(error => {
+        loading.value = false;
 
-function getProgressPercentage(budgetId: string): number {
-    return budgetProgress.value[budgetId]?.progressPercentage || 0;
+        if (error && error.isUpToDate) {
+            loadBudgetProgresses(displayBudgets.value);
+        }
+
+        if (!error.processed) {
+            snackbar.value?.showError(error);
+        }
+    });
 }
 
 function add(): void {
-    editingBudget.value = Budget.createNewBudget();
-    isEditMode.value = false;
-    showEditDialog.value = true;
+    editDialog.value?.open({}).then(result => {
+        if (result && result.message) {
+            snackbar.value?.showMessage(result.message);
+        }
+
+        loadBudgetProgresses(displayBudgets.value);
+    }).catch(error => {
+        if (error) {
+            snackbar.value?.showError(error);
+        }
+    });
 }
 
-function viewBudget(budget: Budget): void {
-    editingBudget.value = budget;
-    isEditMode.value = true;
-    showEditDialog.value = true;
-}
+function edit(budget: Budget): void {
+    editDialog.value?.open({
+        id: budget.id,
+        currentBudget: budget
+    }).then(result => {
+        if (result && result.message) {
+            snackbar.value?.showMessage(result.message);
+        }
 
-function editBudget(budget: Budget): void {
-    editingBudget.value = budget;
-    isEditMode.value = true;
-    showEditDialog.value = true;
+        loadBudgetProgresses(displayBudgets.value);
+    }).catch(error => {
+        if (error) {
+            snackbar.value?.showError(error);
+        }
+    });
 }
 
 function confirmDeleteBudget(budget: Budget): void {
     confirmDialog.value?.open('Are you sure you want to delete this budget?').then(() => {
         loading.value = true;
 
-        budgetsStore.deleteBudget({ budget }).catch(error => {
+        budgetsStore.deleteBudget({ budget }).then(() => {
+            loading.value = false;
+        }).catch(error => {
+            loading.value = false;
+
             if (!error.processed) {
                 snackbar.value?.showError(error);
             }
-        }).finally(() => {
-            loading.value = false;
         });
     });
 }
 
-function onBudgetSaved(): void {
-    showEditDialog.value = false;
-    reload();
-}
-
-onMounted(() => {
-    reload();
-});
+init();
 </script>
 
 <style scoped>
