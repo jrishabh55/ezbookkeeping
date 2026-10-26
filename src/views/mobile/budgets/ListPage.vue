@@ -1,342 +1,227 @@
 <template>
     <f7-page ptr @ptr:refresh="reload" @page:afterin="onPageAfterIn">
         <f7-navbar>
-            <f7-nav-left :back-link="tt('Back')"></f7-nav-left>
+            <f7-nav-left :class="{ 'disabled': loading }" :back-link="tt('Back')"></f7-nav-left>
             <f7-nav-title :title="tt('Budgets')"></f7-nav-title>
-            <f7-nav-right>
-                <f7-link icon-f7="plus" @click="add"></f7-link>
+            <f7-nav-right :class="{ 'navbar-compact-icons': true, 'disabled': loading }">
+                <f7-link icon-f7="ellipsis" :aria-label="tt('More')" @click="showMoreActionSheet = true"></f7-link>
+                <f7-link icon-f7="plus" :aria-label="tt('Add')" href="/budget/add"></f7-link>
             </f7-nav-right>
         </f7-navbar>
 
-        <f7-card class="skeleton-text" v-if="loading">
-            <f7-card-header>
-                <div class="budget-info">
-                    <span class="budget-name">Budget Name</span>
-                    <span class="budget-amount">$0.00</span>
-                </div>
-            </f7-card-header>
-            <f7-card-content>
-                <f7-progressbar :progress="0"></f7-progressbar>
-                <div class="budget-details">
-                    <span>Spent: $0.00</span>
-                    <span>Remaining: $0.00</span>
-                </div>
-            </f7-card-content>
-        </f7-card>
-
-        <f7-list strong inset dividers class="margin-vertical" v-if="!loading && !allBudgets.length">
-            <f7-list-item :title="tt('No budgets')"></f7-list-item>
+        <f7-list strong inset dividers class="margin-top-half skeleton-text" v-if="loading">
+            <f7-list-item title="Budget Name" after="$0.00" :key="itemIdx" v-for="itemIdx in [ 1, 2, 3 ]">
+                <template #footer>
+                    <div>Spent $0.00 · Remaining $0.00 · Monthly</div>
+                    <f7-progressbar :progress="0"></f7-progressbar>
+                </template>
+            </f7-list-item>
         </f7-list>
 
-        <template v-if="!loading && allBudgets.length">
-            <f7-card v-for="budget in allBudgets" :key="budget.id">
-            <f7-card-header>
-                <div class="budget-info">
-                    <span class="budget-name">{{ budget.name }}</span>
-                    <f7-badge :color="budget.hidden ? 'gray' : 'blue'">
-                        {{ budget.hidden ? tt('Hidden') : budget.getPeriodTypeName() }}
-                    </f7-badge>
-                </div>
-            </f7-card-header>
-            <f7-card-content>
-                <div class="budget-amount-row">
-                    <span class="label">{{ tt('Budget Amount') }}</span>
-                    <span class="value">{{ formatAmount(budget.amount, budget.currency) }}</span>
-                </div>
-                <f7-progressbar :progress="getProgressPercentage(budget.id)" :color="getProgressColor(budget.id)"></f7-progressbar>
-                <div class="budget-details">
-                    <span>{{ tt('Spent') }}: {{ formatAmount(getSpentAmount(budget.id), budget.currency) }}</span>
-                    <span>{{ tt('Remaining') }}: {{ formatAmount(getRemainingAmount(budget), budget.currency) }}</span>
-                </div>
-            </f7-card-content>
-            <f7-card-footer>
-                <f7-link @click="editBudget(budget)">{{ tt('Edit') }}</f7-link>
-                <f7-link color="red" @click="confirmDelete(budget)">{{ tt('Delete') }}</f7-link>
-            </f7-card-footer>
-            </f7-card>
-        </template>
+        <f7-list strong inset dividers class="margin-top-half" v-if="!loading && noAvailableBudget">
+            <f7-list-item :title="tt('No available budget')"></f7-list-item>
+        </f7-list>
 
-        <f7-sheet class="budget-edit-sheet" :opened="showEditSheet" @sheet:closed="showEditSheet = false">
-            <f7-toolbar>
-                <div class="left">
-                    <f7-link sheet-close>{{ tt('Cancel') }}</f7-link>
-                </div>
-                <div class="right">
-                    <f7-link @click="saveBudget">{{ tt('Save') }}</f7-link>
-                </div>
-            </f7-toolbar>
-            <f7-page-content>
-                <f7-list strong-ios outline-ios dividers-ios>
-                    <f7-list-input
-                        :label="tt('Name')"
-                        type="text"
-                        :placeholder="tt('Budget name')"
-                        v-model:value="editForm.name"
-                    ></f7-list-input>
-                    <f7-list-input
-                        :label="tt('Budget Amount')"
-                        type="number"
-                        :placeholder="tt('Amount')"
-                        v-model:value="editForm.amount"
-                    ></f7-list-input>
-                    <f7-list-input
-                        :label="tt('Currency')"
-                        type="select"
-                        v-model:value="editForm.currency"
-                    >
-                        <option v-for="currency in allCurrencies" :key="currency.currencyCode" :value="currency.currencyCode">
-                            {{ currency.displayName }}
-                        </option>
-                    </f7-list-input>
-                    <f7-list-input
-                        :label="tt('Period Type')"
-                        type="select"
-                        v-model:value="editForm.periodType"
-                    >
-                        <option :value="1">{{ tt('Custom') }}</option>
-                        <option :value="2">{{ tt('Weekly') }}</option>
-                        <option :value="3">{{ tt('Monthly') }}</option>
-                        <option :value="4">{{ tt('Yearly') }}</option>
-                    </f7-list-input>
-                </f7-list>
-            </f7-page-content>
-        </f7-sheet>
+        <f7-list strong inset dividers class="margin-top-half budget-list" v-if="!loading && !noAvailableBudget">
+            <f7-list-item swipeout
+                          :id="getBudgetDomId(budget)"
+                          :title="budget.name"
+                          :after="formatAmount(budget.amount, budget.currency)"
+                          :key="budget.id"
+                          v-for="budget in displayBudgets">
+                <template #footer>
+                    <div>{{ tt('Spent') }}: {{ formatAmount(getSpentAmount(budget), budget.currency) }} · {{ tt('Remaining') }}: {{ formatAmount(getRemainingAmount(budget), budget.currency) }} · {{ tt(getPeriodDisplayName(budget)) }}</div>
+                    <f7-progressbar :progress="getProgressPercentage(budget)" :color="getF7ProgressColor(budget)"></f7-progressbar>
+                </template>
+                <f7-swipeout-actions :left="textDirection === TextDirection.RTL"
+                                     :right="textDirection === TextDirection.LTR">
+                    <f7-swipeout-button color="orange" close :text="tt('Edit')" @click="edit(budget)"></f7-swipeout-button>
+                    <f7-swipeout-button color="red" class="padding-horizontal" :aria-label="tt('Delete')" @click="remove(budget, false)">
+                        <f7-icon f7="trash"></f7-icon>
+                    </f7-swipeout-button>
+                </f7-swipeout-actions>
+            </f7-list-item>
+        </f7-list>
+
+        <f7-actions close-by-outside-click close-on-escape :opened="showMoreActionSheet" @actions:closed="showMoreActionSheet = false">
+            <f7-actions-group>
+                <f7-actions-button v-if="!showHidden" @click="showHidden = true">{{ tt('Show Hidden Budgets') }}</f7-actions-button>
+                <f7-actions-button v-if="showHidden" @click="showHidden = false">{{ tt('Hide Hidden Budgets') }}</f7-actions-button>
+            </f7-actions-group>
+            <f7-actions-group>
+                <f7-actions-button bold close>{{ tt('Cancel') }}</f7-actions-button>
+            </f7-actions-group>
+        </f7-actions>
+
+        <f7-actions close-by-outside-click close-on-escape :opened="showDeleteActionSheet" @actions:closed="showDeleteActionSheet = false">
+            <f7-actions-group>
+                <f7-actions-label>{{ tt('Are you sure you want to delete this budget?') }}</f7-actions-label>
+                <f7-actions-button color="red" @click="remove(budgetToDelete, true)">{{ tt('Delete') }}</f7-actions-button>
+            </f7-actions-group>
+            <f7-actions-group>
+                <f7-actions-button bold close>{{ tt('Cancel') }}</f7-actions-button>
+            </f7-actions-group>
+        </f7-actions>
     </f7-page>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed } from 'vue';
+import type { Router } from 'framework7/types';
 
 import { useI18n } from '@/locales/helpers.ts';
-import { useI18nUIComponents, showLoading, hideLoading } from '@/lib/ui/mobile.ts';
-import type { LocalizedCurrencyInfo } from '@/core/currency.ts';
+import { useI18nUIComponents, showLoading, hideLoading, onSwipeoutDeleted } from '@/lib/ui/mobile.ts';
+import { useBudgetListPageBase } from '@/views/base/budgets/BudgetListPageBase.ts';
 
 import { useBudgetsStore } from '@/stores/budget.ts';
-import { useUserStore } from '@/stores/user.ts';
 
-import { Budget, BudgetPeriodType } from '@/models/budget.ts';
-import { generateRandomUUID } from '@/lib/misc.ts';
+import { TextDirection } from '@/core/text.ts';
+import { Budget } from '@/models/budget.ts';
 
-const { tt, getAllCurrencies } = useI18n();
-const { showConfirm, showToast } = useI18nUIComponents();
+import type { BudgetProgressColor } from '@/lib/budget.ts';
 
-const allCurrencies = computed<LocalizedCurrencyInfo[]>(() => getAllCurrencies());
+const props = defineProps<{
+    f7route: Router.Route;
+    f7router: Router.Router;
+}>();
+
+const { tt, getCurrentLanguageTextDirection } = useI18n();
+const { showAlert, showToast, routeBackOnError } = useI18nUIComponents();
+const {
+    loading,
+    showHidden,
+    displayBudgets,
+    noAvailableBudget,
+    loadBudgetProgresses,
+    formatAmount,
+    getSpentAmount,
+    getRemainingAmount,
+    getProgressPercentage,
+    getProgressColor,
+    getPeriodDisplayName
+} = useBudgetListPageBase();
+
 const budgetsStore = useBudgetsStore();
-const userStore = useUserStore();
 
-const loading = ref(false);
-const showEditSheet = ref(false);
-const isEditMode = ref(false);
-const editingBudget = ref<Budget | null>(null);
+const loadingError = ref<unknown | null>(null);
+const budgetToDelete = ref<Budget | null>(null);
+const showMoreActionSheet = ref<boolean>(false);
+const showDeleteActionSheet = ref<boolean>(false);
 
-const editForm = ref<{
-    name: string;
-    amount: number;
-    currency: string;
-    periodType: number;
-}>({
-    name: '',
-    amount: 0,
-    currency: 'USD',
-    periodType: BudgetPeriodType.Monthly.type
-});
+const textDirection = computed<TextDirection>(() => getCurrentLanguageTextDirection());
 
-const allBudgets = computed(() => budgetsStore.allBudgets);
-const budgetProgress = ref<Record<string, { spentAmount: number, remainingAmount: number, progressPercentage: number, isWarning: boolean, isAlert: boolean, isOverspent: boolean }>>({});
+// the 4 progress states need to stay visually distinct from each other in Framework7's colour set
+function getF7ProgressColor(budget: Budget): string {
+    const color: BudgetProgressColor = getProgressColor(budget);
 
-function formatAmount(amount: number, currency: string): string {
-    const displayAmount = amount / 100;
-    return new Intl.NumberFormat(undefined, {
-        style: 'currency',
-        currency: currency || 'USD'
-    }).format(displayAmount);
-}
-
-function onPageAfterIn(): void {
-    if (budgetsStore.budgetListStateInvalid) {
-        reload(null);
+    switch (color) {
+        case 'orange':
+            return 'orange';
+        case 'warning':
+            return 'yellow';
+        case 'error':
+            return 'red';
+        default:
+            return 'blue';
     }
 }
 
-function reload(done: (() => void) | null): void {
+function getBudgetDomId(budget: Budget): string {
+    return 'budget_' + budget.id;
+}
+
+function init(): void {
     loading.value = true;
-    budgetsStore.loadAllBudgets({ force: true }).then((budgets) => {
-        loadBudgetProgress(budgets);
-    }).finally(() => {
+
+    budgetsStore.loadAllBudgets({ force: false }).then(() => {
         loading.value = false;
-        if (done) {
-            done();
+        loadBudgetProgresses(displayBudgets.value);
+    }).catch(error => {
+        if (error.processed) {
+            loading.value = false;
+        } else {
+            loadingError.value = error;
+            showToast(error.message || error);
         }
     });
 }
 
-function loadBudgetProgress(budgets: Budget[]): void {
-    for (const budget of budgets) {
-        budgetsStore.getBudgetProgress({ budgetId: budget.id }).then((progress) => {
-            budgetProgress.value[budget.id] = {
-                spentAmount: progress.spentAmount,
-                remainingAmount: progress.remainingAmount,
-                progressPercentage: progress.progressPercentage,
-                isWarning: progress.isWarning,
-                isAlert: progress.isAlert,
-                isOverspent: progress.isOverspent
-            };
-        }).catch(() => {
-            budgetProgress.value[budget.id] = {
-                spentAmount: 0,
-                remainingAmount: budget.amount,
-                progressPercentage: 0,
-                isWarning: false,
-                isAlert: false,
-                isOverspent: false
-            };
-        });
-    }
+function reload(done?: () => void): void {
+    const force = !!done;
+
+    budgetsStore.loadAllBudgets({ force: force }).then(() => {
+        done?.();
+
+        if (force) {
+            showToast('Budget list has been updated');
+        }
+
+        loadBudgetProgresses(displayBudgets.value);
+    }).catch(error => {
+        done?.();
+
+        if (error.isUpToDate) {
+            showToast('Budget list is up to date');
+            loadBudgetProgresses(displayBudgets.value);
+        } else if (!error.processed) {
+            showToast(error.message || error);
+        }
+    });
 }
 
-function getProgressColor(budgetId: string): string {
-    const progress = budgetProgress.value[budgetId];
-    if (!progress) return 'blue';
-    if (progress.isOverspent) return 'red';
-    if (progress.isAlert) return 'orange';
-    if (progress.isWarning) return 'yellow';
-    return 'blue';
+function edit(budget: Budget): void {
+    props.f7router.navigate(`/budget/edit?id=${budget.id}`);
 }
 
-function getSpentAmount(budgetId: string): number {
-    return budgetProgress.value[budgetId]?.spentAmount || 0;
-}
-
-function getRemainingAmount(budget: Budget): number {
-    return budgetProgress.value[budget.id]?.remainingAmount ?? budget.amount;
-}
-
-function getProgressPercentage(budgetId: string): number {
-    return budgetProgress.value[budgetId]?.progressPercentage || 0;
-}
-
-function add(): void {
-    editingBudget.value = null;
-    isEditMode.value = false;
-    editForm.value = {
-        name: '',
-        amount: 0,
-        currency: userStore.currentUserDefaultCurrency || 'USD',
-        periodType: BudgetPeriodType.Monthly.type
-    };
-    showEditSheet.value = true;
-}
-
-function editBudget(budget: Budget): void {
-    editingBudget.value = budget;
-    isEditMode.value = true;
-    editForm.value = {
-        name: budget.name,
-        amount: budget.amount / 100,
-        currency: budget.currency,
-        periodType: budget.periodType
-    };
-    showEditSheet.value = true;
-}
-
-function saveBudget(): void {
-    if (!editForm.value.name) {
-        showToast('Name is required');
+function remove(budget: Budget | null, confirm: boolean): void {
+    if (!budget) {
+        showAlert('An error occurred');
         return;
     }
 
-    const now = Date.now();
-    const startTime = Math.floor(now / 1000);
-    const endTime = startTime + 30 * 24 * 60 * 60;
+    if (!confirm) {
+        budgetToDelete.value = budget;
+        showDeleteActionSheet.value = true;
+        return;
+    }
 
-    // the mobile form only edits a few fields, keep the rest from the existing budget
-    const existing = isEditMode.value ? editingBudget.value : null;
-
-    const request = {
-        id: existing ? existing.id : undefined,
-        name: editForm.value.name,
-        amount: Math.round(editForm.value.amount * 100),
-        currency: editForm.value.currency,
-        periodType: editForm.value.periodType,
-        startTime: existing ? existing.startTime : startTime,
-        endTime: existing ? existing.endTime : endTime,
-        rolloverType: existing ? existing.rolloverType : 1,
-        autoCreateNextCycle: existing ? existing.autoCreateNextCycle : true,
-        warningThreshold: existing ? existing.warningThreshold : 75,
-        alertThreshold: existing ? existing.alertThreshold : 90,
-        overspentThreshold: existing ? existing.overspentThreshold : 100,
-        visible: existing ? !existing.hidden : true,
-        clientSessionId: generateRandomUUID()
-    };
-
+    showDeleteActionSheet.value = false;
+    budgetToDelete.value = null;
     showLoading();
-    budgetsStore.saveBudget({ budget: request, isEdit: isEditMode.value })
-        .then(() => {
-            showEditSheet.value = false;
-            showToast('Budget saved');
-        })
-        .catch(error => {
-            showToast(error.message || 'Unable to save budget');
-        })
-        .finally(() => {
-            hideLoading();
-        });
+
+    budgetsStore.deleteBudget({
+        budget: budget,
+        beforeResolve: (done) => {
+            onSwipeoutDeleted(getBudgetDomId(budget), done);
+        }
+    }).then(() => {
+        hideLoading();
+    }).catch(error => {
+        hideLoading();
+
+        if (!error.processed) {
+            showToast(error.message || error);
+        }
+    });
 }
 
-function confirmDelete(budget: Budget): void {
-    showConfirm('Are you sure you want to delete this budget?', () => deleteBudget(budget));
+function onPageAfterIn(): void {
+    if (!loading.value) {
+        reload();
+    }
+
+    routeBackOnError(props.f7router, loadingError);
 }
 
-function deleteBudget(budget: Budget): void {
-    showLoading();
-    budgetsStore.deleteBudget({ budget })
-        .then(() => {
-            showToast('Budget deleted');
-        })
-        .catch(error => {
-            showToast(error.message || 'Unable to delete budget');
-        })
-        .finally(() => {
-            hideLoading();
-        });
-}
-
-onMounted(() => {
-    reload(null);
-});
+init();
 </script>
 
-<style scoped>
-.budget-info {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    width: 100%;
+<style>
+.budget-list {
+    --f7-list-item-footer-font-size: var(--ebk-large-footer-font-size);
 }
 
-.budget-name {
-    font-weight: 600;
-}
-
-.budget-amount-row {
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 8px;
-}
-
-.budget-amount-row .label {
-    color: var(--f7-list-item-footer-text-color);
-}
-
-.budget-amount-row .value {
-    font-weight: 600;
-}
-
-.budget-details {
-    display: flex;
-    justify-content: space-between;
-    margin-top: 8px;
-    font-size: 12px;
-    color: var(--f7-list-item-footer-text-color);
+.budget-list .item-footer {
+    padding-top: 4px;
 }
 </style>

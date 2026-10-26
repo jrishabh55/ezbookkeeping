@@ -106,7 +106,6 @@ import { useUserStore } from '@/stores/user.ts';
 
 import { Bucket } from '@/models/bucket.ts';
 
-import type { ColorValue } from '@/core/color.ts';
 import { ALL_ACCOUNT_COLORS } from '@/consts/color.ts';
 
 import { isEquals } from '@/lib/common.ts';
@@ -115,10 +114,6 @@ import { generateRandomUUID } from '@/lib/misc.ts';
 interface BucketEditResponse {
     message: string;
 }
-
-// matches the color a new bucket has always defaulted to in this dialog
-// (not the model's own createNewBucket() default, which other code may still rely on)
-const DEFAULT_NEW_BUCKET_COLOR: ColorValue = '4CAF50';
 
 type SnackBarType = InstanceType<typeof SnackBar>;
 
@@ -134,6 +129,7 @@ const {
     inputEmptyProblemMessage,
     inputIsEmpty,
     allStatuses,
+    prepareNewBucket,
     setBucket
 } = useBucketEditPageBase();
 
@@ -171,11 +167,11 @@ function open(options: { id?: string; currentBucket?: Bucket }): Promise<BucketE
     submitting.value = false;
     editBucketId.value = options.id ?? null;
 
-    initBucket.value = Bucket.createNewBucket(userStore.currentUserDefaultCurrency);
-    initBucket.value.color = DEFAULT_NEW_BUCKET_COLOR;
-    setBucket(initBucket.value);
-
     if (options.id) {
+        // always a fresh bucket (default colour) before the real one loads, never a stale one from a previous open
+        prepareNewBucket(userStore.currentUserDefaultCurrency);
+        initBucket.value = bucket.value.clone();
+
         if (options.currentBucket) {
             setBucket(options.currentBucket);
         }
@@ -195,6 +191,8 @@ function open(options: { id?: string; currentBucket?: Bucket }): Promise<BucketE
             }
         });
     } else {
+        prepareNewBucket(userStore.currentUserDefaultCurrency);
+        initBucket.value = bucket.value.clone();
         clientSessionId.value = generateRandomUUID();
         loading.value = false;
     }

@@ -53,7 +53,10 @@ import TagGroupListPage from '@/views/mobile/tags/GroupListPage.vue';
 import TemplateListPage from '@/views/mobile/templates/ListPage.vue';
 
 import BudgetListPage from '@/views/mobile/budgets/ListPage.vue';
+import BudgetEditPage from '@/views/mobile/budgets/EditPage.vue';
 import BucketListPage from '@/views/mobile/buckets/ListPage.vue';
+import BucketEditPage from '@/views/mobile/buckets/EditPage.vue';
+import BucketTransactionPage from '@/views/mobile/buckets/TransactionPage.vue';
 
 import InvoiceListPage from '@/views/mobile/invoices/ListPage.vue';
 import InvoiceEditPage from '@/views/mobile/invoices/EditPage.vue';
@@ -390,8 +393,33 @@ const routes: Router.RouteParameters[] = [
         beforeEnter: [checkLogin]
     },
     {
+        path: '/budget/add',
+        async: asyncResolve(BudgetEditPage),
+        beforeEnter: [checkLogin]
+    },
+    {
+        path: '/budget/edit',
+        async: asyncResolve(BudgetEditPage),
+        beforeEnter: [checkLogin]
+    },
+    {
         path: '/bucket/list',
         async: asyncResolve(BucketListPage),
+        beforeEnter: [checkLogin]
+    },
+    {
+        path: '/bucket/add',
+        async: asyncResolve(BucketEditPage),
+        beforeEnter: [checkLogin]
+    },
+    {
+        path: '/bucket/edit',
+        async: asyncResolve(BucketEditPage),
+        beforeEnter: [checkLogin]
+    },
+    {
+        path: '/bucket/transaction',
+        async: asyncResolve(BucketTransactionPage),
         beforeEnter: [checkLogin]
     },
     {

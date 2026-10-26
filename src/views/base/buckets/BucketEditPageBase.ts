@@ -27,6 +27,11 @@ export function useBucketEditPageBase() {
     const submitting = ref<boolean>(false);
     const bucket = ref<Bucket>(createNewBucket(userStore.currentUserDefaultCurrency));
 
+    // resets to a brand new bucket (add mode); always gives it the default colour, never a stale one from a previous open
+    function prepareNewBucket(currency: string): void {
+        bucket.value = createNewBucket(currency);
+    }
+
     const title = computed<string>(() => editBucketId.value ? 'Edit Bucket' : 'Add Bucket');
     const saveButtonTitle = computed<string>(() => editBucketId.value ? 'Save' : 'Add');
 
@@ -70,6 +75,7 @@ export function useBucketEditPageBase() {
         // constants
         allStatuses,
         // functions
+        prepareNewBucket,
         setBucket
     };
 }
