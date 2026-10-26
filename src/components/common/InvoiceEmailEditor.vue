@@ -308,7 +308,7 @@ watch(() => props.modelValue, value => {
 });
 
 watch(() => props.disabled, disabled => {
-    editor.value?.setEditable(!disabled);
+    editor.value?.setEditable(!disabled, false);
     if (disabled) {
         closeMenu();
         linkEditorOpen.value = false;
@@ -333,7 +333,7 @@ watch(() => props.ariaLabel, label => {
     line-height: 1.5;
     min-width: 0;
     color: inherit;
-    background: var(--f7-list-bg-color, rgb(var(--v-theme-surface, 255, 255, 255)));
+    background: var(--f7-block-strong-bg-color, rgb(var(--v-theme-surface, 255, 255, 255)));
 }
 .invoice-email-toolbar, .invoice-email-formatting, .invoice-email-edit-controls {
     display: flex;
@@ -357,7 +357,8 @@ watch(() => props.ariaLabel, label => {
     max-width: 100%;
     box-sizing: border-box;
 }
-.invoice-email-editor button { cursor: pointer; }
+.invoice-email-editor button, .invoice-email-editor select { width: auto; }
+.invoice-email-editor button { display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
 .invoice-email-editor button:hover:not(:disabled), .invoice-email-editor button[aria-pressed="true"], .invoice-email-editor button.invoice-email-active-option { background: rgba(61, 134, 245, 0.15); }
 .invoice-email-editor :disabled { opacity: 0.5; cursor: default; }
 .invoice-email-disabled :deep(.tiptap) { opacity: 0.6; }
@@ -392,7 +393,7 @@ watch(() => props.ariaLabel, label => {
     padding: 6px;
     border: 1px solid rgba(128, 128, 128, 0.4);
     border-radius: 6px;
-    background: var(--f7-list-bg-color, rgb(var(--v-theme-surface, 255, 255, 255)));
+    background: var(--f7-block-strong-bg-color, rgb(var(--v-theme-surface, 255, 255, 255)));
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
 }
 .invoice-email-variables input { width: 100%; margin-bottom: 4px; }

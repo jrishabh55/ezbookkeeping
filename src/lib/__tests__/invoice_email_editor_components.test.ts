@@ -18,6 +18,7 @@ beforeAll(() => {
 
 async function mountEditor(subject = false, disabled = false) {
     const state = reactive({ value: '', disabled });
+    const updates: string[] = [];
     const root = document.createElement('div');
     document.body.append(root);
     const app = createApp({
@@ -25,7 +26,10 @@ async function mountEditor(subject = false, disabled = false) {
             modelValue: state.value,
             disabled: state.disabled,
             variables: [{ key: 'customer_name', label: 'Customer Name' }, { key: 'invoice_total', label: 'Invoice Total' }],
-            'onUpdate:modelValue': (value: string) => state.value = value
+            'onUpdate:modelValue': (value: string) => {
+                updates.push(value);
+                state.value = value;
+            }
         })
     });
     app.use(createI18n({ legacy: false, locale: 'en', messages: { en: {} }, missingWarn: false, fallbackWarn: false }));
@@ -34,7 +38,7 @@ async function mountEditor(subject = false, disabled = false) {
     apps.push(app);
     await nextTick();
     await nextTick();
-    return { root, state };
+    return { root, state, updates };
 }
 
 function button(root: HTMLElement, text: string): HTMLButtonElement {
@@ -197,5 +201,28 @@ describe('invoice email editor controls', () => {
         expect(root.querySelector('[contenteditable="false"]')).not.toBeNull();
         expect(Array.from(root.querySelectorAll('button')).every(item => item.disabled)).toBe(true);
         expect(state.value).toBe('');
+    });
+
+    test.each([
+        { name: 'server HTML', subject: false, value: '<p>Hello<br/>World</p>' },
+        { name: 'empty body', subject: false, value: '' },
+        { name: 'subject variables', subject: true, value: 'Invoice for {{customer_name}}' },
+        { name: 'empty subject', subject: true, value: '' }
+    ])('toggling disabled preserves $name without emitting a content change', async ({ subject, value }) => {
+        const { root, state, updates } = await mountEditor(subject);
+        state.value = value;
+        await nextTick();
+        expect(updates).toEqual([]);
+
+        state.disabled = true;
+        await nextTick();
+        expect(root.querySelector('.tiptap')?.getAttribute('contenteditable')).toBe('false');
+        expect(updates).toEqual([]);
+        state.disabled = false;
+        await nextTick();
+
+        expect(root.querySelector('.tiptap')?.getAttribute('contenteditable')).toBe('true');
+        expect(state.value).toBe(value);
+        expect(updates).toEqual([]);
     });
 });

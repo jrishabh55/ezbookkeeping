@@ -22,6 +22,9 @@ func invoiceEmailTemplateError(err error) error {
 
 // SaveProfileWithEmailTemplates preserves fields omitted by older clients and permits an empty rich body.
 func (s *InvoiceService) SaveProfileWithEmailTemplates(c core.Context, profile *models.InvoiceProfile, subject, body *string) error {
+	if subject == nil && body == nil {
+		return s.saveProfile(c, profile, true)
+	}
 	previous, err := s.GetProfile(c, profile.Uid)
 	if err != nil {
 		return err
@@ -193,4 +196,41 @@ func (s *InvoiceService) SendInvoiceWithContent(c core.Context, uid, invoiceID i
 		_, err := sess.Cols("sent_unix_time", "updated_unix_time").Where("uid=? AND deleted=? AND invoice_id=?", uid, false, invoiceID).Update(&models.Invoice{SentUnixTime: now, UpdatedUnixTime: now})
 		return err
 	})
+}
+
+// SaveInvoiceEmailTemplate saves only the authenticated user's email template.
+func (s *InvoiceService) SaveInvoiceEmailTemplate(c core.Context, uid int64, subject, body string) (*models.InvoiceProfile, error) {
+	if uid <= 0 {
+		return nil, errs.ErrUserIdInvalid
+	}
+	if err := invoiceemail.ValidateSubject(subject); err != nil {
+		return nil, invoiceEmailTemplateError(err)
+	}
+	sanitizedBody, err := invoiceemail.SanitizeTemplate(body)
+	if err != nil {
+		return nil, invoiceEmailTemplateError(err)
+	}
+	profile := &models.InvoiceProfile{}
+	err = s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+		exists, err := sess.Where("uid=?", uid).Get(profile)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			now := time.Now().Unix()
+			profile = &models.InvoiceProfile{Uid: uid, NumberPrefix: "INV", DefaultTermsDays: 7, CreatedUnixTime: now, UpdatedUnixTime: now}
+		}
+		profile.EmailSubjectTemplate = subject
+		profile.EmailBodyTemplate = sanitizedBody
+		if exists {
+			_, err = sess.Cols("email_subject_template", "email_body_template").Where("uid=?", uid).Update(profile)
+		} else {
+			_, err = sess.Insert(profile)
+		}
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return profile, nil
 }

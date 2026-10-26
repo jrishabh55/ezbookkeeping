@@ -3,8 +3,12 @@
         <v-col cols="12">
             <v-card class="setting-items" :class="{ 'disabled': loading || saving }">
                 <template #title>
-                    <span>{{ tt('Invoice Profile') }}</span>
-                    <v-progress-circular indeterminate size="20" class="ms-3" v-if="loading"></v-progress-circular>
+                    <div class="d-flex flex-wrap align-center ga-3">
+                        <span>{{ tt('Invoice Profile') }}</span>
+                        <v-progress-circular indeterminate size="20" v-if="loading"></v-progress-circular>
+                        <v-spacer />
+                        <v-btn size="small" color="default" variant="tonal" :disabled="saving" to="/settings/invoice_email_template">{{ tt('Edit Email Template') }}</v-btn>
+                    </div>
                 </template>
 
                 <v-card-text class="d-flex mt-2">
@@ -109,14 +113,6 @@
                         </div>
                     </v-card-text>
 
-                    <v-card-text v-if="!loading">
-                        <h3 class="text-title-medium mb-4">{{ tt('Invoice Email Template') }}</h3>
-                        <invoice-email-template-form v-model:subject="newProfile.emailSubjectTemplate"
-                                                     v-model:body="newProfile.emailBodyTemplate"
-                                                     :disabled="saving" allow-restore
-                                                     @validity-change="emailTemplateValid = $event" />
-                    </v-card-text>
-
                     <v-card-text class="d-flex flex-wrap gap-4">
                         <v-tooltip :disabled="!inputIsInvalid" :text="inputInvalidProblemMessage ? tt(inputInvalidProblemMessage) : ''">
                             <template v-slot:activator="{ props }">
@@ -145,7 +141,6 @@ import { useTemplateRef } from 'vue';
 import { mdiImageOutline } from '@mdi/js';
 
 import SnackBar from '@/components/desktop/SnackBar.vue';
-import InvoiceEmailTemplateForm from '@/components/common/InvoiceEmailTemplateForm.vue';
 
 import { useI18n } from '@/locales/helpers.ts';
 import { useInvoiceProfilePageBase } from '@/views/base/invoices/InvoiceProfilePageBase.ts';
@@ -158,7 +153,6 @@ const { tt } = useI18n();
 const {
     loading,
     saving,
-    emailTemplateValid,
     newProfile,
     inputIsNotChanged,
     inputInvalidProblemMessage,

@@ -91,3 +91,9 @@ Choose the small component boundaries, extension versions compatible with the in
 Implemented on `codex/invoice-email-templates`. Verified a clean locked npm install, 26 frontend test files / 38,785 tests, the full Go suite with `BUILD_PIPELINE=1`, Go vet, Vue type checking, changed-file ESLint, and the production build. Independent source review and scoped fix reviews are approved.
 
 A local isolated account was used to inspect desktop/mobile settings and compose, insert variables by menu and `@`, save/reload without losing keys, restore defaults/reset, preview actual customer/amount/date/link values, and confirm edits for one send leave the saved template unchanged. Native keyboard checks confirm repeated button-label replacement retains all characters. No live email, deployment, or production template change was performed.
+
+## User interface clarification — 2026-10-26
+
+The user clarified that editing must open as its own feature in a modal or separate page, rather than remain embedded at the bottom of Invoice Profile. Use dedicated desktop/mobile template editor pages, reachable from Settings, the Invoices menu, and a compact Edit Email Template action. Give templates their own save/reset/preview state and template-only persistence; unrelated business details must save independently. This supersedes the original inline Email Template section arrangement.
+
+The dedicated-page revision includes template-only persistence and business-profile SQL updates that omit template columns when omitted by the caller. Full checks pass: 38,790 frontend tests, all Go packages, Vue type checking, Go vet, lint and production build. Browser checks verify navigation, side-by-side desktop preview, independent save/reload/default restoration and clean state after saving. Shared editor editability changes do not emit content updates, and mobile editor surfaces/toolbar controls follow Framework7 styling.

@@ -29,7 +29,12 @@ export interface InvoiceProfileInfoResponse {
     readonly emailBodyTemplate: string;
 }
 
-export type InvoiceProfileUpdateRequest = InvoiceProfileInfoResponse;
+export type InvoiceProfileUpdateRequest = Omit<InvoiceProfileInfoResponse, 'emailSubjectTemplate' | 'emailBodyTemplate'> & Partial<Pick<InvoiceProfileInfoResponse, 'emailSubjectTemplate' | 'emailBodyTemplate'>>;
+
+export interface InvoiceEmailTemplateUpdateRequest {
+    subject: string;
+    bodyHtml: string;
+}
 
 export interface CustomerInfoResponse {
     readonly id: string;
@@ -245,7 +250,7 @@ export class InvoiceProfile implements InvoiceProfileInfoResponse {
         this.emailBodyTemplate = other.emailBodyTemplate ?? '';
     }
 
-    public toUpdateRequest(): InvoiceProfileUpdateRequest {
+    public toUpdateRequest(): InvoiceProfileInfoResponse {
         return {
             businessName: this.businessName,
             addressLines: this.addressLines,
@@ -266,6 +271,11 @@ export class InvoiceProfile implements InvoiceProfileInfoResponse {
 
     public clone(): InvoiceProfile {
         return InvoiceProfile.of(this);
+    }
+
+    public toBusinessProfileUpdateRequest(): InvoiceProfileUpdateRequest {
+        // JSON omits undefined fields, preserving templates saved in their dedicated editor.
+        return { ...this.toUpdateRequest(), emailSubjectTemplate: undefined, emailBodyTemplate: undefined };
     }
 
     public static of(response: InvoiceProfileInfoResponse): InvoiceProfile {

@@ -64,6 +64,7 @@ import InvoiceDetailPage from '@/views/mobile/invoices/DetailPage.vue';
 import InvoiceCustomerListPage from '@/views/mobile/invoices/CustomerListPage.vue';
 import InvoiceCustomerEditPage from '@/views/mobile/invoices/CustomerEditPage.vue';
 import InvoiceProfilePage from '@/views/mobile/invoices/ProfilePage.vue';
+import InvoiceEmailTemplatePage from '@/views/mobile/invoices/EmailTemplatePage.vue';
 import InvoiceRecurringListPage from '@/views/mobile/invoices/RecurringListPage.vue';
 import InvoiceSendPage from '@/views/mobile/invoices/SendPage.vue';
 
@@ -462,6 +463,11 @@ const routes: Router.RouteParameters[] = [
     {
         path: '/invoice/profile',
         async: asyncResolve(InvoiceProfilePage),
+        beforeEnter: [checkLogin]
+    },
+    {
+        path: '/invoice/email_template',
+        async: asyncResolve(InvoiceEmailTemplatePage),
         beforeEnter: [checkLogin]
     },
     {

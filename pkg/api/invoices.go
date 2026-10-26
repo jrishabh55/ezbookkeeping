@@ -649,3 +649,16 @@ func (a *InvoicesApi) InvoiceEmailPreviewHandler(c *core.WebContext) (any, *errs
 	}
 	return preview, nil
 }
+
+// InvoiceEmailTemplateUpdateHandler saves the standalone template editor's draft.
+func (a *InvoicesApi) InvoiceEmailTemplateUpdateHandler(c *core.WebContext) (any, *errs.Error) {
+	var req models.InvoiceEmailTemplateUpdateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		return nil, errs.NewIncompleteOrIncorrectSubmissionError(err)
+	}
+	profile, err := a.invoices.SaveInvoiceEmailTemplate(c, c.GetCurrentUid(), req.Subject, *req.BodyHtml)
+	if err != nil {
+		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+	return profile.ToInvoiceProfileResponse(), nil
+}

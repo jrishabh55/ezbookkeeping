@@ -43,6 +43,7 @@ import ApplicationCloudSyncSettingsPage from '@/views/desktop/settings/Applicati
 import BrowserCacheSettingPage from '@/views/desktop/settings/BrowserCacheSettingPage.vue';
 import SmsCapturePage from '@/views/desktop/settings/SmsCapturePage.vue';
 import InvoiceProfileSettingPage from '@/views/desktop/settings/InvoiceProfileSettingPage.vue';
+import InvoiceEmailTemplateSettingPage from '@/views/desktop/settings/InvoiceEmailTemplateSettingPage.vue';
 import DeveloperToolsPage from '@/views/desktop/settings/DeveloperToolsPage.vue';
 
 import ExchangeRatesListPage from '@/views/desktop/exchangerates/ListPage.vue';
@@ -274,6 +275,11 @@ const router = createRouter({
                 {
                     path: '/settings/invoice_profile',
                     component: InvoiceProfileSettingPage,
+                    beforeEnter: checkLogin
+                },
+                {
+                    path: '/settings/invoice_email_template',
+                    component: InvoiceEmailTemplateSettingPage,
                     beforeEnter: checkLogin
                 },
                 {

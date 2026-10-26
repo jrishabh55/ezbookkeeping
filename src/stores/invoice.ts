@@ -6,6 +6,7 @@ import {
     type InvoiceSendRequest,
     type InvoiceEmailPreviewRequest,
     type InvoiceEmailPreviewResponse,
+    type InvoiceEmailTemplateUpdateRequest,
     InvoiceProfile,
     Customer,
     Invoice,
@@ -221,7 +222,14 @@ export const useInvoicesStore = defineStore('invoices', () => {
     }
 
     function updateInvoiceProfile({ profile }: { profile: InvoiceProfile }): Promise<InvoiceProfile> {
-        return request(services.updateInvoiceProfile(profile.toUpdateRequest()), 'Unable to save invoice profile').then(result => {
+        return request(services.updateInvoiceProfile(profile.toBusinessProfileUpdateRequest()), 'Unable to save invoice profile').then(result => {
+            invoiceProfile.value = InvoiceProfile.of(result);
+            return invoiceProfile.value;
+        });
+    }
+
+    function updateInvoiceEmailTemplate(req: InvoiceEmailTemplateUpdateRequest): Promise<InvoiceProfile> {
+        return request(services.updateInvoiceEmailTemplate(req), 'Unable to save invoice email template').then(result => {
             invoiceProfile.value = InvoiceProfile.of(result);
             return invoiceProfile.value;
         });
@@ -312,6 +320,7 @@ export const useInvoicesStore = defineStore('invoices', () => {
         getInvoicePdf,
         loadInvoiceProfile,
         updateInvoiceProfile,
+        updateInvoiceEmailTemplate,
         loadAllRecurringInvoices,
         addRecurringInvoice,
         modifyRecurringInvoice,

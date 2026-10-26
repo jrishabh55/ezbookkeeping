@@ -1,13 +1,15 @@
 <template>
-    <section class="invoice-email-template-form" :aria-label="tt('Invoice Email Template')">
-        <label>{{ tt('Subject') }}</label>
-        <invoice-email-subject-editor :model-value="subject" :variables="variables" :disabled="disabled"
-                                      :aria-label="tt('Subject')" @update:model-value="updateSubject" />
-        <label class="invoice-email-body-label">{{ tt('Message') }}</label>
-        <invoice-email-body-editor :model-value="body" :variables="variables" :disabled="disabled"
-                                   :aria-label="tt('Message')" @update:model-value="updateBody" />
-        <button type="button" class="invoice-email-template-button" :disabled="disabled || !preview"
-                @click="restoreDefaults" v-if="allowRestore">{{ tt('Restore Default Template') }}</button>
+    <section class="invoice-email-template-form" :class="{ 'invoice-email-template-split': split }" :aria-label="tt('Invoice Email Template')">
+        <div class="invoice-email-draft">
+            <label>{{ tt('Subject') }}</label>
+            <invoice-email-subject-editor :model-value="subject" :variables="variables" :disabled="disabled"
+                                          :aria-label="tt('Subject')" @update:model-value="updateSubject" />
+            <label class="invoice-email-body-label">{{ tt('Message') }}</label>
+            <invoice-email-body-editor :model-value="body" :variables="variables" :disabled="disabled"
+                                       :aria-label="tt('Message')" @update:model-value="updateBody" />
+            <button type="button" class="invoice-email-template-button" :disabled="disabled || !preview"
+                    @click="restoreDefaults" v-if="allowRestore">{{ tt('Restore Default Template') }}</button>
+        </div>
         <div class="invoice-email-preview" aria-live="polite" :aria-busy="pending">
             <h3>{{ tt('Email Preview') }}</h3>
             <p v-if="pending">{{ tt('Preparing email preview…') }}</p>
@@ -41,6 +43,7 @@ const props = defineProps<{
     invoiceId?: string;
     disabled?: boolean;
     allowRestore?: boolean;
+    split?: boolean;
 }>();
 const subject = defineModel<string>('subject', { required: true });
 const body = defineModel<string>('body', { required: true });
@@ -83,7 +86,10 @@ function restoreDefaults(): void {
     min-width: 0;
     width: 100%;
 }
-.invoice-email-template-form > label {
+.invoice-email-draft {
+    min-width: 0;
+}
+.invoice-email-draft > label {
     display: block;
     font-weight: 600;
     margin-bottom: 0.5rem;
@@ -122,5 +128,23 @@ function restoreDefaults(): void {
     border: 1px solid #d0d0d0;
     border-radius: 0.35rem;
     background: white;
+}
+@media (min-width: 1100px) {
+    .invoice-email-template-split {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 1.5rem;
+        align-items: start;
+    }
+    .invoice-email-template-split .invoice-email-preview {
+        min-width: 0;
+        margin-top: 0;
+    }
+    .invoice-email-template-split .invoice-email-preview h3 {
+        margin-bottom: 0.5rem;
+    }
+    .invoice-email-template-split .invoice-email-preview-frame {
+        height: max(520px, calc(100vh - 280px));
+    }
 }
 </style>

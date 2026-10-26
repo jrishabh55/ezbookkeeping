@@ -332,6 +332,12 @@ type InvoiceSendRequest struct {
 	BodyHtml *string `json:"bodyHtml" binding:"omitempty,max=32000"`
 }
 
+// InvoiceEmailTemplateUpdateRequest saves a standalone template draft; an empty body must be explicit.
+type InvoiceEmailTemplateUpdateRequest struct {
+	Subject  string  `json:"subject" binding:"required,max=256"`
+	BodyHtml *string `json:"bodyHtml" binding:"required,max=32000"`
+}
+
 // InvoiceEmailPreviewRequest accepts unsaved overrides; absence and an empty body are distinct.
 type InvoiceEmailPreviewRequest struct {
 	InvoiceId int64   `json:"invoiceId,string" binding:"min=0"`

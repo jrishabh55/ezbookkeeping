@@ -562,6 +562,7 @@ func startWebServer(c *core.CliContext) error {
 			apiV1Route.GET("/invoice_profile/get.json", bindApi(api.Invoices.InvoiceProfileGetHandler, config))
 			apiV1Route.POST("/invoice_profile/update.json", bindApi(api.Invoices.InvoiceProfileUpdateHandler, config))
 			apiV1Route.POST("/invoice_profile/preview_email.json", bindApi(api.Invoices.InvoiceEmailPreviewHandler, config))
+			apiV1Route.POST("/invoice_profile/email_template/update.json", bindApi(api.Invoices.InvoiceEmailTemplateUpdateHandler, config))
 			apiV1Route.GET("/customers/list.json", bindApi(api.Invoices.CustomerListHandler, config))
 			apiV1Route.POST("/customers/add.json", bindApi(api.Invoices.CustomerCreateHandler, config))
 			apiV1Route.POST("/customers/modify.json", bindApi(api.Invoices.CustomerModifyHandler, config))

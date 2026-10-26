@@ -3,6 +3,18 @@ import { describe, expect, test } from 'vitest';
 import { Invoice, InvoiceProfile } from '@/models/invoice.ts';
 
 describe('InvoiceProfile email templates', () => {
+    test('business-profile updates omit cached template fields so a later template save survives', () => {
+        const profile = InvoiceProfile.createNewProfile();
+        profile.emailSubjectTemplate = 'Stale {{invoice_number}}';
+        profile.emailBodyTemplate = '<p>Stale body</p>';
+        profile.businessName = 'Updated business';
+        const payload = JSON.parse(JSON.stringify(profile.toBusinessProfileUpdateRequest()));
+        expect(payload.businessName).toBe('Updated business');
+        expect(payload).not.toHaveProperty('emailSubjectTemplate');
+        expect(payload).not.toHaveProperty('emailBodyTemplate');
+        expect(profile.emailSubjectTemplate).toBe('Stale {{invoice_number}}');
+    });
+
     test('cloning and saving preserves template variables rather than sample values', () => {
         const profile = InvoiceProfile.of({
             ...InvoiceProfile.createNewProfile().toUpdateRequest(),

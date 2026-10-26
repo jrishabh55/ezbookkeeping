@@ -76,6 +76,8 @@
                                                          v-if="activeView === 'invoices' && showPaid" @click="showPaid = false"></v-list-item>
                                             <v-list-item :prepend-icon="mdiFileDocumentEditOutline" :title="tt('Invoice Profile')"
                                                          to="/settings/invoice_profile"></v-list-item>
+                                            <v-list-item :prepend-icon="mdiEmailEditOutline" :title="tt('Invoice Email Template')"
+                                                         to="/settings/invoice_email_template"></v-list-item>
                                         </v-list>
                                     </v-menu>
                                 </v-btn>
@@ -223,6 +225,7 @@ import {
     mdiDeleteOutline,
     mdiFileDocumentOutline,
     mdiFileDocumentEditOutline,
+    mdiEmailEditOutline,
     mdiAccountMultipleOutline,
     mdiRepeat
 } from '@mdi/js';

@@ -95,11 +95,16 @@ func (s *InvoiceService) GetProfile(c core.Context, uid int64) (*models.InvoiceP
 
 // SaveProfile creates or updates the invoice profile of user
 func (s *InvoiceService) SaveProfile(c core.Context, profile *models.InvoiceProfile) error {
+	return s.saveProfile(c, profile, false)
+}
+
+// saveProfile can omit template columns at the write boundary, avoiding stale business-form overwrites.
+func (s *InvoiceService) saveProfile(c core.Context, profile *models.InvoiceProfile, preserveEmailTemplates bool) error {
 	if profile.Uid <= 0 {
 		return errs.ErrUserIdInvalid
 	}
 
-	if profile.EmailSubjectTemplate != "" {
+	if !preserveEmailTemplates && profile.EmailSubjectTemplate != "" {
 		if err := invoiceemail.ValidateSubject(profile.EmailSubjectTemplate); err != nil {
 			return invoiceEmailTemplateError(err)
 		}
@@ -121,10 +126,33 @@ func (s *InvoiceService) SaveProfile(c core.Context, profile *models.InvoiceProf
 		}
 
 		if exists {
-			_, err = sess.Where("uid=?", profile.Uid).AllCols().Omit("created_unix_time").Update(profile)
-			return err
+			omittedColumns := []string{"created_unix_time"}
+			if preserveEmailTemplates {
+				omittedColumns = append(omittedColumns, "email_subject_template", "email_body_template")
+			}
+			_, err = sess.Where("uid=?", profile.Uid).AllCols().Omit(omittedColumns...).Update(profile)
+			if err != nil {
+				return err
+			}
+			if preserveEmailTemplates {
+				// Return the template preserved by SQL, not the caller's earlier snapshot.
+				saved := &models.InvoiceProfile{}
+				has, err := sess.Where("uid=?", profile.Uid).Get(saved)
+				if err != nil {
+					return err
+				}
+				if !has {
+					return errs.ErrOperationFailed
+				}
+				*profile = *saved
+			}
+			return nil
 		}
 
+		if preserveEmailTemplates {
+			profile.EmailSubjectTemplate = ""
+			profile.EmailBodyTemplate = ""
+		}
 		profile.CreatedUnixTime = now
 		_, err = sess.Insert(profile)
 		return err

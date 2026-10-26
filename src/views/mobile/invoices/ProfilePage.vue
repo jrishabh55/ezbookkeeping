@@ -8,6 +8,10 @@
             </f7-nav-right>
         </f7-navbar>
 
+        <f7-block class="margin-vertical-half">
+            <f7-link href="/invoice/email_template" :class="{ 'disabled': loading || saving }">{{ tt('Edit Email Template') }}</f7-link>
+        </f7-block>
+
         <f7-list strong inset dividers class="margin-vertical skeleton-text" v-if="loading">
             <f7-list-item class="list-item-with-header-and-title" header="Business Name" title="Business Name"></f7-list-item>
             <f7-list-item class="list-item-with-header-and-title" header="Address" title="Address"></f7-list-item>
@@ -83,22 +87,12 @@
             </template>
         </f7-list>
 
-        <f7-block strong inset v-if="!loading">
-            <h3>{{ tt('Invoice Email Template') }}</h3>
-            <invoice-email-template-form v-model:subject="newProfile.emailSubjectTemplate"
-                                         v-model:body="newProfile.emailBodyTemplate"
-                                         :disabled="saving" allow-restore
-                                         @validity-change="emailTemplateValid = $event" />
-            <f7-button class="margin-top" :disabled="saving || inputIsNotChanged" @click="reset">{{ tt('Reset') }}</f7-button>
-        </f7-block>
-
         <input ref="logoInput" type="file" style="display: none" accept="image/png,image/jpeg" @change="onLogoChosen($event)" />
     </f7-page>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, useTemplateRef } from 'vue';
-import InvoiceEmailTemplateForm from '@/components/common/InvoiceEmailTemplateForm.vue';
 import type { Router } from 'framework7/types';
 
 import { useI18n } from '@/locales/helpers.ts';
@@ -119,13 +113,11 @@ const { showAlert, showToast, routeBackOnError } = useI18nUIComponents();
 const {
     loading,
     saving,
-    emailTemplateValid,
     newProfile,
     inputIsNotChanged,
     inputInvalidProblemMessage,
     inputIsInvalid,
     setProfile,
-    reset,
     readLogoFile
 } = useInvoiceProfilePageBase();
 
