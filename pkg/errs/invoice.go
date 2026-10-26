@@ -17,4 +17,6 @@ var (
 	ErrInvoicePaymentExceedsBalanceDue  = NewNormalError(NormalSubcategoryInvoice, 10, http.StatusBadRequest, "payment exceeds the invoice balance due")
 	ErrInvoicePaymentNotFound           = NewNormalError(NormalSubcategoryInvoice, 11, http.StatusBadRequest, "invoice payment not found")
 	ErrInvoiceLogoInvalid               = NewNormalError(NormalSubcategoryInvoice, 12, http.StatusBadRequest, "invoice logo must be a png or jpeg image")
+	ErrInvoiceTaxTypeInvalid            = NewNormalError(NormalSubcategoryInvoice, 13, http.StatusBadRequest, "invoice tax type is invalid")
+	ErrInvoiceTaxRateInvalid            = NewNormalError(NormalSubcategoryInvoice, 14, http.StatusBadRequest, "invoice tax rate is invalid")
 )
