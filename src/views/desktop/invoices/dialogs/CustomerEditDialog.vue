@@ -30,6 +30,42 @@
                                           :label="tt('Email')" :placeholder="tt('Email (optional)')"
                                           v-model="customer.email" />
                         </v-col>
+                        <v-col cols="12" md="6">
+                            <v-text-field type="text" autocomplete="off" persistent-placeholder
+                                          :disabled="loading || submitting"
+                                          :label="tt('Phone')" :placeholder="tt('Phone')"
+                                          v-model="customer.phone" />
+                        </v-col>
+                        <v-col cols="12" md="6">
+                            <v-text-field type="text" autocomplete="off" persistent-placeholder
+                                          :disabled="loading || submitting"
+                                          :label="tt('Website')" :placeholder="tt('Website')"
+                                          v-model="customer.website" />
+                        </v-col>
+                        <v-col cols="12" md="6">
+                            <v-text-field type="text" autocomplete="off" persistent-placeholder
+                                          :disabled="loading || submitting"
+                                          :label="tt('PAN')" :placeholder="tt('PAN')"
+                                          v-model="customer.pan" />
+                        </v-col>
+                        <v-col cols="12" md="6">
+                            <v-text-field type="text" autocomplete="off" persistent-placeholder
+                                          :disabled="loading || submitting"
+                                          :label="tt('Account Number')" :placeholder="tt('Account Number')"
+                                          v-model="customer.accountNumber" />
+                        </v-col>
+                        <v-col cols="12" md="6">
+                            <number-input :disabled="loading || submitting" persistent-placeholder
+                                          :label="tt('Payment Terms (days, 0 = default)')" :placeholder="tt('Payment Terms (days, 0 = default)')"
+                                          :min-value="0" :max-value="365" :max-decimal-count="0"
+                                          v-model="customer.termsDays" />
+                        </v-col>
+                        <v-col cols="12" md="12">
+                            <v-textarea type="text" autocomplete="off" persistent-placeholder rows="2"
+                                        :disabled="loading || submitting"
+                                        :label="tt('Internal Notes')" :placeholder="tt('Not printed on invoices')"
+                                        v-model="customer.notes" />
+                        </v-col>
                     </v-row>
                 </v-form>
             </template>

@@ -9,18 +9,39 @@
         </f7-navbar>
 
         <f7-list form strong inset dividers class="margin-vertical">
-            <f7-list-input type="text" autocomplete="off" clear-button
-                           :label="tt('Customer Name')" :placeholder="tt('Customer Name')"
-                           v-model:value="customer.name"></f7-list-input>
-            <f7-list-input type="text" autocomplete="off" clear-button
-                           :label="tt('Contact Person')" :placeholder="tt('Contact Person (optional)')"
-                           v-model:value="customer.contactName"></f7-list-input>
-            <f7-list-input type="textarea" style="height: auto" autocomplete="off"
-                           :label="tt('Address')" :placeholder="tt('Address')"
-                           v-textarea-auto-size v-model:value="customer.addressLines"></f7-list-input>
-            <f7-list-input type="email" autocomplete="off" clear-button
-                           :label="tt('Email')" :placeholder="tt('Email (optional)')"
-                           v-model:value="customer.email"></f7-list-input>
+            <!-- list-number-input must go in #list (f7-list cannot scan it in the default slot), so every item goes there to keep the order -->
+            <template #list>
+                <f7-list-input type="text" autocomplete="off" clear-button
+                               :label="tt('Customer Name')" :placeholder="tt('Customer Name')"
+                               v-model:value="customer.name"></f7-list-input>
+                <f7-list-input type="text" autocomplete="off" clear-button
+                               :label="tt('Contact Person')" :placeholder="tt('Contact Person (optional)')"
+                               v-model:value="customer.contactName"></f7-list-input>
+                <f7-list-input type="textarea" style="height: auto" autocomplete="off"
+                               :label="tt('Address')" :placeholder="tt('Address')"
+                               v-textarea-auto-size v-model:value="customer.addressLines"></f7-list-input>
+                <f7-list-input type="email" autocomplete="off" clear-button
+                               :label="tt('Email')" :placeholder="tt('Email (optional)')"
+                               v-model:value="customer.email"></f7-list-input>
+                <f7-list-input type="tel" autocomplete="off" clear-button
+                               :label="tt('Phone')" :placeholder="tt('Phone')"
+                               v-model:value="customer.phone"></f7-list-input>
+                <f7-list-input type="url" autocomplete="off" clear-button
+                               :label="tt('Website')" :placeholder="tt('Website')"
+                               v-model:value="customer.website"></f7-list-input>
+                <f7-list-input type="text" autocomplete="off" clear-button
+                               :label="tt('PAN')" :placeholder="tt('PAN')"
+                               v-model:value="customer.pan"></f7-list-input>
+                <f7-list-input type="text" autocomplete="off" clear-button
+                               :label="tt('Account Number')" :placeholder="tt('Account Number')"
+                               v-model:value="customer.accountNumber"></f7-list-input>
+                <list-number-input :label="tt('Payment Terms (days, 0 = default)')" :placeholder="tt('Payment Terms (days, 0 = default)')"
+                                   :min-value="0" :max-value="365" :max-decimal-count="0"
+                                   v-model="customer.termsDays"></list-number-input>
+                <f7-list-input type="textarea" style="height: auto" autocomplete="off"
+                               :label="tt('Internal Notes')" :placeholder="tt('Not printed on invoices')"
+                               v-textarea-auto-size v-model:value="customer.notes"></f7-list-input>
+            </template>
         </f7-list>
     </f7-page>
 </template>

@@ -21,6 +21,12 @@ export interface CustomerInfoResponse {
     readonly contactName: string;
     readonly addressLines: string;
     readonly email: string;
+    readonly phone: string;
+    readonly website: string;
+    readonly accountNumber: string;
+    readonly pan: string;
+    readonly termsDays: number;
+    readonly notes: string;
 }
 
 export interface CustomerCreateRequest {
@@ -28,6 +34,12 @@ export interface CustomerCreateRequest {
     readonly contactName: string;
     readonly addressLines: string;
     readonly email: string;
+    readonly phone: string;
+    readonly website: string;
+    readonly accountNumber: string;
+    readonly pan: string;
+    readonly termsDays: number;
+    readonly notes: string;
 }
 
 export interface CustomerModifyRequest extends CustomerCreateRequest {
@@ -59,6 +71,8 @@ export interface InvoiceInfoResponse {
     readonly billToContactName: string;
     readonly billToAddressLines: string;
     readonly billToEmail: string;
+    readonly billToPhone: string;
+    readonly billToPan: string;
     readonly currency: string;
     readonly invoiceDate: TextualYearMonthDay;
     readonly dueDate: TextualYearMonthDay;
@@ -145,6 +159,12 @@ export class Customer implements CustomerInfoResponse {
     public contactName: string = '';
     public addressLines: string = '';
     public email: string = '';
+    public phone: string = '';
+    public website: string = '';
+    public accountNumber: string = '';
+    public pan: string = '';
+    public termsDays: number = 0; // 0 = the profile's default terms
+    public notes: string = '';
 
     public fillFrom(other: CustomerInfoResponse): void {
         this.id = other.id;
@@ -152,6 +172,12 @@ export class Customer implements CustomerInfoResponse {
         this.contactName = other.contactName;
         this.addressLines = other.addressLines;
         this.email = other.email;
+        this.phone = other.phone;
+        this.website = other.website;
+        this.accountNumber = other.accountNumber;
+        this.pan = other.pan;
+        this.termsDays = other.termsDays;
+        this.notes = other.notes;
     }
 
     public toCreateRequest(): CustomerCreateRequest {
@@ -159,7 +185,13 @@ export class Customer implements CustomerInfoResponse {
             name: this.name.trim(),
             contactName: this.contactName,
             addressLines: this.addressLines,
-            email: this.email
+            email: this.email,
+            phone: this.phone,
+            website: this.website,
+            accountNumber: this.accountNumber,
+            pan: this.pan.trim().toUpperCase(),
+            termsDays: this.termsDays,
+            notes: this.notes
         };
     }
 
@@ -198,6 +230,8 @@ export class Invoice implements InvoiceInfoResponse {
     public billToContactName: string = '';
     public billToAddressLines: string = '';
     public billToEmail: string = '';
+    public billToPhone: string = '';
+    public billToPan: string = '';
     public currency: string = INVOICE_CURRENCY;
     public invoiceDate: TextualYearMonthDay = '0-0-0';
     public dueDate: TextualYearMonthDay = '0-0-0';
@@ -217,6 +251,8 @@ export class Invoice implements InvoiceInfoResponse {
         this.billToContactName = other.billToContactName;
         this.billToAddressLines = other.billToAddressLines;
         this.billToEmail = other.billToEmail;
+        this.billToPhone = other.billToPhone;
+        this.billToPan = other.billToPan;
         this.currency = other.currency;
         this.invoiceDate = other.invoiceDate;
         this.dueDate = other.dueDate;

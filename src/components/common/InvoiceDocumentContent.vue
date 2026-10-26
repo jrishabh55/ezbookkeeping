@@ -24,8 +24,10 @@
                 <div class="invoice-strong">{{ invoice.billToName }}</div>
                 <div v-if="invoice.billToContactName">{{ invoice.billToContactName }}</div>
                 <div class="invoice-pre">{{ invoice.billToAddressLines }}</div>
-                <div class="invoice-gap" v-if="invoice.billToEmail"></div>
+                <div class="invoice-gap" v-if="invoice.billToEmail || invoice.billToPhone"></div>
+                <div v-if="invoice.billToPhone">{{ invoice.billToPhone }}</div>
                 <div v-if="invoice.billToEmail">{{ invoice.billToEmail }}</div>
+                <div v-if="invoice.billToPan">PAN: {{ invoice.billToPan }}</div>
             </div>
             <table class="invoice-meta">
                 <tbody>

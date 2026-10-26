@@ -42,6 +42,12 @@ type Customer struct {
 	ContactName     string `xorm:"VARCHAR(128) NOT NULL"`
 	AddressLines    string `xorm:"VARCHAR(512) NOT NULL"`
 	Email           string `xorm:"VARCHAR(128) NOT NULL"`
+	Phone           string `xorm:"VARCHAR(32) NOT NULL DEFAULT ''"`
+	Website         string `xorm:"VARCHAR(128) NOT NULL DEFAULT ''"`
+	AccountNumber   string `xorm:"VARCHAR(64) NOT NULL DEFAULT ''"`
+	Pan             string `xorm:"VARCHAR(10) NOT NULL DEFAULT ''"`
+	TermsDays       int32  `xorm:"NOT NULL DEFAULT 0"`
+	Notes           string `xorm:"VARCHAR(2048) NOT NULL DEFAULT ''"`
 	CreatedUnixTime int64
 	UpdatedUnixTime int64
 	DeletedUnixTime int64
@@ -59,6 +65,8 @@ type Invoice struct {
 	BillToContactName  string `xorm:"VARCHAR(128) NOT NULL"`
 	BillToAddressLines string `xorm:"VARCHAR(512) NOT NULL"`
 	BillToEmail        string `xorm:"VARCHAR(128) NOT NULL"`
+	BillToPhone        string `xorm:"VARCHAR(32) NOT NULL DEFAULT ''"`
+	BillToPan          string `xorm:"VARCHAR(10) NOT NULL DEFAULT ''"`
 	Currency           string `xorm:"VARCHAR(3) NOT NULL"`
 	InvoiceDate        string `xorm:"VARCHAR(10) NOT NULL"`
 	DueDate            string `xorm:"VARCHAR(10) NOT NULL"`
@@ -119,28 +127,46 @@ type InvoiceProfileResponse struct {
 
 // CustomerCreateRequest represents all parameters of customer creation request
 type CustomerCreateRequest struct {
-	Name         string `json:"name" binding:"required,notBlank,max=128"`
-	ContactName  string `json:"contactName" binding:"max=128"`
-	AddressLines string `json:"addressLines" binding:"max=512"`
-	Email        string `json:"email" binding:"max=128"`
+	Name          string `json:"name" binding:"required,notBlank,max=128"`
+	ContactName   string `json:"contactName" binding:"max=128"`
+	AddressLines  string `json:"addressLines" binding:"max=512"`
+	Email         string `json:"email" binding:"max=128"`
+	Phone         string `json:"phone" binding:"max=32"`
+	Website       string `json:"website" binding:"max=128"`
+	AccountNumber string `json:"accountNumber" binding:"max=64"`
+	Pan           string `json:"pan" binding:"max=10"`
+	TermsDays     int32  `json:"termsDays" binding:"min=0,max=365"`
+	Notes         string `json:"notes" binding:"max=2048"`
 }
 
 // CustomerModifyRequest represents all parameters of customer modification request
 type CustomerModifyRequest struct {
-	Id           int64  `json:"id,string" binding:"required,min=1"`
-	Name         string `json:"name" binding:"required,notBlank,max=128"`
-	ContactName  string `json:"contactName" binding:"max=128"`
-	AddressLines string `json:"addressLines" binding:"max=512"`
-	Email        string `json:"email" binding:"max=128"`
+	Id            int64  `json:"id,string" binding:"required,min=1"`
+	Name          string `json:"name" binding:"required,notBlank,max=128"`
+	ContactName   string `json:"contactName" binding:"max=128"`
+	AddressLines  string `json:"addressLines" binding:"max=512"`
+	Email         string `json:"email" binding:"max=128"`
+	Phone         string `json:"phone" binding:"max=32"`
+	Website       string `json:"website" binding:"max=128"`
+	AccountNumber string `json:"accountNumber" binding:"max=64"`
+	Pan           string `json:"pan" binding:"max=10"`
+	TermsDays     int32  `json:"termsDays" binding:"min=0,max=365"`
+	Notes         string `json:"notes" binding:"max=2048"`
 }
 
 // CustomerResponse represents a view-object of customer
 type CustomerResponse struct {
-	Id           string `json:"id"`
-	Name         string `json:"name"`
-	ContactName  string `json:"contactName"`
-	AddressLines string `json:"addressLines"`
-	Email        string `json:"email"`
+	Id            string `json:"id"`
+	Name          string `json:"name"`
+	ContactName   string `json:"contactName"`
+	AddressLines  string `json:"addressLines"`
+	Email         string `json:"email"`
+	Phone         string `json:"phone"`
+	Website       string `json:"website"`
+	AccountNumber string `json:"accountNumber"`
+	Pan           string `json:"pan"`
+	TermsDays     int32  `json:"termsDays"`
+	Notes         string `json:"notes"`
 }
 
 // InvoiceLineRequest represents one line of invoice creation / modification request
@@ -216,6 +242,8 @@ type InvoiceInfoResponse struct {
 	BillToContactName  string                    `json:"billToContactName"`
 	BillToAddressLines string                    `json:"billToAddressLines"`
 	BillToEmail        string                    `json:"billToEmail"`
+	BillToPhone        string                    `json:"billToPhone"`
+	BillToPan          string                    `json:"billToPan"`
 	Currency           string                    `json:"currency"`
 	InvoiceDate        string                    `json:"invoiceDate"`
 	DueDate            string                    `json:"dueDate"`
@@ -244,11 +272,17 @@ func (p *InvoiceProfile) ToInvoiceProfileResponse() *InvoiceProfileResponse {
 // ToCustomerResponse returns a view-object according to database model
 func (c *Customer) ToCustomerResponse() *CustomerResponse {
 	return &CustomerResponse{
-		Id:           utils.Int64ToString(c.CustomerId),
-		Name:         c.Name,
-		ContactName:  c.ContactName,
-		AddressLines: c.AddressLines,
-		Email:        c.Email,
+		Id:            utils.Int64ToString(c.CustomerId),
+		Name:          c.Name,
+		ContactName:   c.ContactName,
+		AddressLines:  c.AddressLines,
+		Email:         c.Email,
+		Phone:         c.Phone,
+		Website:       c.Website,
+		AccountNumber: c.AccountNumber,
+		Pan:           c.Pan,
+		TermsDays:     c.TermsDays,
+		Notes:         c.Notes,
 	}
 }
 
@@ -274,6 +308,8 @@ func (i *Invoice) ToInvoiceInfoResponse(lines []*InvoiceLine, payments []*Transa
 		BillToContactName:  i.BillToContactName,
 		BillToAddressLines: i.BillToAddressLines,
 		BillToEmail:        i.BillToEmail,
+		BillToPhone:        i.BillToPhone,
+		BillToPan:          i.BillToPan,
 		Currency:           i.Currency,
 		InvoiceDate:        i.InvoiceDate,
 		DueDate:            i.DueDate,

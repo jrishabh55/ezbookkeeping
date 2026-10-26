@@ -60,6 +60,41 @@ func TestCustomerCrudIsScopedToUser(t *testing.T) {
 	assert.Equal(t, 0, len(all))
 }
 
+func TestCustomerExtraFieldsPersistAndSnapshotOnInvoice(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	customer := createTestCustomer(t, uid)
+
+	customer.Phone = "+91 98765 43210"
+	customer.Website = "https://qubertech.com"
+	customer.AccountNumber = "QT-001"
+	customer.Pan = "ABCDE1234F"
+	customer.TermsDays = 15
+	customer.Notes = "pays by RTGS"
+	assert.Nil(t, Invoices.ModifyCustomer(ctx, customer))
+
+	saved, err := Invoices.GetCustomer(ctx, uid, customer.CustomerId)
+	assert.Nil(t, err)
+	assert.Equal(t, "+91 98765 43210", saved.Phone)
+	assert.Equal(t, "https://qubertech.com", saved.Website)
+	assert.Equal(t, "QT-001", saved.AccountNumber)
+	assert.Equal(t, "ABCDE1234F", saved.Pan)
+	assert.Equal(t, int32(15), saved.TermsDays)
+	assert.Equal(t, "pays by RTGS", saved.Notes)
+
+	invoice := createTestInvoice(t, uid, customer.CustomerId, "CA/2026-27/01", 37000000)
+	assert.Equal(t, "+91 98765 43210", invoice.BillToPhone)
+	assert.Equal(t, "ABCDE1234F", invoice.BillToPan)
+
+	customer.Pan = "ZZZZZ9999Z"
+	assert.Nil(t, Invoices.ModifyCustomer(ctx, customer))
+	invoice.InvoiceDate, invoice.DueDate = "2026-04-23", "2026-04-30"
+	assert.Nil(t, Invoices.ModifyInvoice(ctx, invoice, []*models.InvoiceLine{{ItemName: "Consulting", Quantity: 1, Rate: 37000000}}))
+
+	reloaded, _, err := Invoices.GetInvoice(ctx, uid, invoice.InvoiceId)
+	assert.Nil(t, err)
+	assert.Equal(t, "ZZZZZ9999Z", reloaded.BillToPan)
+}
+
 func createTestInvoice(t *testing.T, uid int64, customerId int64, number string, rate int64) *models.Invoice {
 	t.Helper()
 	invoice := &models.Invoice{Uid: uid, Number: number, CustomerId: customerId, InvoiceDate: "2026-04-23", DueDate: "2026-04-30"}

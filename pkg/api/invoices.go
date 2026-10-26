@@ -120,7 +120,8 @@ func (a *InvoicesApi) CustomerCreateHandler(c *core.WebContext) (any, *errs.Erro
 	}
 
 	uid := c.GetCurrentUid()
-	customer := &models.Customer{Uid: uid, Name: strings.TrimSpace(req.Name), ContactName: req.ContactName, AddressLines: req.AddressLines, Email: req.Email}
+	customer := &models.Customer{Uid: uid, Name: strings.TrimSpace(req.Name), ContactName: req.ContactName, AddressLines: req.AddressLines, Email: req.Email,
+		Phone: req.Phone, Website: req.Website, AccountNumber: req.AccountNumber, Pan: strings.ToUpper(strings.TrimSpace(req.Pan)), TermsDays: req.TermsDays, Notes: req.Notes}
 
 	if err := a.invoices.CreateCustomer(c, customer); err != nil {
 		log.Errorf(c, "[invoices.CustomerCreateHandler] failed to create customer for user \"uid:%d\", because %s", uid, err.Error())
@@ -140,7 +141,8 @@ func (a *InvoicesApi) CustomerModifyHandler(c *core.WebContext) (any, *errs.Erro
 	}
 
 	uid := c.GetCurrentUid()
-	customer := &models.Customer{CustomerId: req.Id, Uid: uid, Name: strings.TrimSpace(req.Name), ContactName: req.ContactName, AddressLines: req.AddressLines, Email: req.Email}
+	customer := &models.Customer{CustomerId: req.Id, Uid: uid, Name: strings.TrimSpace(req.Name), ContactName: req.ContactName, AddressLines: req.AddressLines, Email: req.Email,
+		Phone: req.Phone, Website: req.Website, AccountNumber: req.AccountNumber, Pan: strings.ToUpper(strings.TrimSpace(req.Pan)), TermsDays: req.TermsDays, Notes: req.Notes}
 
 	if err := a.invoices.ModifyCustomer(c, customer); err != nil {
 		log.Errorf(c, "[invoices.CustomerModifyHandler] failed to modify customer \"id:%d\" for user \"uid:%d\", because %s", req.Id, uid, err.Error())

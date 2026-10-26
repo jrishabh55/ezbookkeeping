@@ -149,7 +149,7 @@ func (s *InvoiceService) ModifyCustomer(c core.Context, customer *models.Custome
 	customer.UpdatedUnixTime = time.Now().Unix()
 
 	return s.UserDataDB(customer.Uid).DoTransaction(c, func(sess *xorm.Session) error {
-		updatedRows, err := sess.Cols("name", "contact_name", "address_lines", "email", "updated_unix_time").
+		updatedRows, err := sess.Cols("name", "contact_name", "address_lines", "email", "phone", "website", "account_number", "pan", "terms_days", "notes", "updated_unix_time").
 			Where("uid=? AND deleted=? AND customer_id=?", customer.Uid, false, customer.CustomerId).Update(customer)
 
 		if err != nil {
@@ -321,6 +321,8 @@ func (s *InvoiceService) prepareInvoice(c core.Context, invoice *models.Invoice,
 	invoice.BillToContactName = customer.ContactName
 	invoice.BillToAddressLines = customer.AddressLines
 	invoice.BillToEmail = customer.Email
+	invoice.BillToPhone = customer.Phone
+	invoice.BillToPan = customer.Pan
 	invoice.Total = computeInvoiceTotal(lines)
 
 	for idx, line := range lines {
@@ -410,7 +412,7 @@ func (s *InvoiceService) ModifyInvoice(c core.Context, invoice *models.Invoice, 
 			return err
 		}
 
-		updatedRows, err := sess.Cols("number", "customer_id", "bill_to_name", "bill_to_contact_name", "bill_to_address_lines", "bill_to_email",
+		updatedRows, err := sess.Cols("number", "customer_id", "bill_to_name", "bill_to_contact_name", "bill_to_address_lines", "bill_to_email", "bill_to_phone", "bill_to_pan",
 			"invoice_date", "due_date", "notes", "total", "updated_unix_time").
 			Where("uid=? AND deleted=? AND invoice_id=?", invoice.Uid, false, invoice.InvoiceId).Update(invoice)
 

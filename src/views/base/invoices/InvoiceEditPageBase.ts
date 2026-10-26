@@ -1,4 +1,4 @@
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 
 import { useI18n } from '@/locales/helpers.ts';
 
@@ -20,6 +20,7 @@ export function useInvoiceEditPageBase() {
     const submitting = ref<boolean>(false);
     const invoice = ref<Invoice>(Invoice.createNewInvoice());
     const lastSuggestedNumber = ref<string>('');
+    const profileTermsDays = ref<number>(7);
 
     const allCustomers = computed<Customer[]>(() => invoicesStore.allCustomers);
 
@@ -72,8 +73,9 @@ export function useInvoiceEditPageBase() {
         const newInvoice = duplicateFrom ? duplicateFrom.duplicate() : Invoice.createNewInvoice();
         const today = getTodayTextualDate();
 
+        profileTermsDays.value = profile.defaultTermsDays;
         newInvoice.invoiceDate = today;
-        newInvoice.dueDate = addDaysToDate(today, profile.defaultTermsDays);
+        newInvoice.dueDate = addDaysToDate(today, getTermsDays(newInvoice.customerId, profile.defaultTermsDays));
 
         if (!duplicateFrom) {
             newInvoice.notes = profile.defaultNotes;
@@ -83,15 +85,27 @@ export function useInvoiceEditPageBase() {
         lastSuggestedNumber.value = '';
     }
 
-    // a new invoice applies the profile's terms; an existing one keeps its invoice-to-due gap
+    // the customer's own terms when set (above 0), otherwise the profile's
+    function getTermsDays(customerId: string, defaultTermsDays: number): number {
+        return invoicesStore.allCustomersMap[customerId]?.termsDays || defaultTermsDays;
+    }
+
+    // a new invoice applies the customer's or profile's terms; an existing one keeps its invoice-to-due gap
     function setInvoiceDate(date: TextualYearMonthDay, termsDays: number): void {
         const days = editInvoiceId.value && invoice.value.invoiceDate && invoice.value.dueDate
             ? getDaysBetweenDates(invoice.value.invoiceDate, invoice.value.dueDate)
-            : termsDays;
+            : getTermsDays(invoice.value.customerId, termsDays);
 
         invoice.value.invoiceDate = date;
         invoice.value.dueDate = addDaysToDate(date, Math.max(days, 0));
     }
+
+    // choosing a customer on a new invoice re-applies the due date from its terms; an existing invoice is never changed silently
+    watch(() => invoice.value.customerId, customerId => {
+        if (!editInvoiceId.value && invoice.value.invoiceDate) {
+            invoice.value.dueDate = addDaysToDate(invoice.value.invoiceDate, getTermsDays(customerId, profileTermsDays.value));
+        }
+    });
 
     // the suggested number replaces the number only while it is blank or still the last suggestion; resolves whether it was applied
     function suggestNumber(): Promise<boolean> {
