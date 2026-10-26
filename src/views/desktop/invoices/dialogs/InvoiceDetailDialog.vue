@@ -84,7 +84,7 @@
                         <div class="text-title-small px-4 py-2">{{ tt('Payments') }}</div>
                         <v-list density="compact" v-if="invoice.payments.length">
                             <v-list-item :key="payment.transactionId" v-for="payment in invoice.payments"
-                                         :title="formatAmount(payment.amount)" :subtitle="formatPaymentDescription(payment)">
+                                         :title="formatPaymentAmount(payment)" :subtitle="formatPaymentDescription(payment)">
                                 <template #append>
                                     <v-btn density="comfortable" color="default" variant="text" :icon="true"
                                            :aria-label="tt('Unlink')" :disabled="updating" @click="unlink(payment)">
@@ -101,7 +101,7 @@
                             <div class="text-title-small px-4 py-2">{{ tt('Suggested Matches') }}</div>
                             <v-list density="compact" v-if="suggestions.length">
                                 <v-list-item :key="suggestion.transactionId" v-for="suggestion in suggestions"
-                                             :title="formatAmount(suggestion.amount)" :subtitle="formatPaymentDescription(suggestion)">
+                                             :title="formatPaymentAmount(suggestion)" :subtitle="formatPaymentDescription(suggestion)">
                                     <template #append>
                                         <v-btn color="primary" variant="tonal" size="small" :disabled="updating" @click="link(suggestion)">{{ tt('Link') }}</v-btn>
                                     </template>
@@ -118,6 +118,7 @@
     <invoice-edit-dialog ref="invoiceEditDialog" />
     <recurring-invoice-edit-dialog ref="recurringInvoiceEditDialog" />
     <confirm-dialog ref="confirmDialog"/>
+    <amount-input-dialog ref="amountInputDialog" />
     <snack-bar ref="snackbar" />
 
     <v-dialog width="640" v-model="showShareDialog">
@@ -188,6 +189,7 @@ import {
 } from '@mdi/js';
 
 import ConfirmDialog from '@/components/desktop/ConfirmDialog.vue';
+import AmountInputDialog from '@/components/desktop/AmountInputDialog.vue';
 import SnackBar from '@/components/desktop/SnackBar.vue';
 import InvoiceDocument from '@/components/common/InvoiceDocument.vue';
 import InvoiceEditDialog from './InvoiceEditDialog.vue';
@@ -204,6 +206,7 @@ import type { InvoicePayment, InvoiceSendForm } from '@/models/invoice.ts';
 import type { InvoiceDisplayStatus } from '@/lib/invoice.ts';
 
 type ConfirmDialogType = InstanceType<typeof ConfirmDialog>;
+type AmountInputDialogType = InstanceType<typeof AmountInputDialog>;
 type SnackBarType = InstanceType<typeof SnackBar>;
 type InvoiceEditDialogType = InstanceType<typeof InvoiceEditDialog>;
 type RecurringInvoiceEditDialogType = InstanceType<typeof RecurringInvoiceEditDialog>;
@@ -227,6 +230,8 @@ const {
     publicLinkUrl,
     sentOnText,
     formatAmount,
+    needsSettledAmount,
+    formatPaymentAmount,
     formatPaymentDescription,
     printInvoice,
     setPublicLink,
@@ -241,6 +246,7 @@ const invoicesStore = useInvoicesStore();
 const accountsStore = useAccountsStore();
 
 const confirmDialog = useTemplateRef<ConfirmDialogType>('confirmDialog');
+const amountInputDialog = useTemplateRef<AmountInputDialogType>('amountInputDialog');
 const snackbar = useTemplateRef<SnackBarType>('snackbar');
 const invoiceEditDialog = useTemplateRef<InvoiceEditDialogType>('invoiceEditDialog');
 const recurringInvoiceEditDialog = useTemplateRef<RecurringInvoiceEditDialogType>('recurringInvoiceEditDialog');
@@ -330,8 +336,27 @@ function runAndReload(action: () => Promise<unknown>): void {
     });
 }
 
+// a suggestion in another currency first asks what it settled in the invoice currency; same-currency links stay one click
 function link(suggestion: InvoicePayment): void {
-    runAndReload(() => invoicesStore.linkInvoicePayment({ invoiceId: invoiceId.value, transactionId: suggestion.transactionId }));
+    if (!needsSettledAmount(suggestion)) {
+        runAndReload(() => invoicesStore.linkInvoicePayment({ invoiceId: invoiceId.value, transactionId: suggestion.transactionId }));
+        return;
+    }
+
+    amountInputDialog.value?.open({
+        title: 'Settled Amount',
+        text: 'Please enter the amount this payment settles in the invoice currency',
+        inputLabel: 'Settled Amount',
+        inputPlaceholder: 'Settled Amount',
+        currency: invoice.value?.currency,
+        initAmount: balanceDue.value
+    }).then(settledAmount => {
+        if (settledAmount > 0) {
+            runAndReload(() => invoicesStore.linkInvoicePayment({ invoiceId: invoiceId.value, transactionId: suggestion.transactionId, settledAmount }));
+        }
+    }).catch(() => {
+        // cancelled
+    });
 }
 
 function unlink(payment: InvoicePayment): void {

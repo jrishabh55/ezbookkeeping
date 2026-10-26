@@ -10,8 +10,10 @@
         </f7-navbar>
 
         <f7-list strong inset dividers class="margin-top-half" :class="{ 'skeleton-text': loading }">
-            <f7-list-item :title="tt('Outstanding')" :after="loading ? '₹0.00' : formatAmount(outstandingTotal)"></f7-list-item>
-            <f7-list-item :title="tt('Overdue')" :after="loading ? '₹0.00' : formatAmount(overdueTotal)"></f7-list-item>
+            <f7-list-item :title="index === 0 ? tt('Outstanding') : ''" :after="loading ? '₹0.00' : formatAmount(total.amount, total.currency)"
+                          :key="total.currency" v-for="(total, index) in outstandingTotals"></f7-list-item>
+            <f7-list-item :title="index === 0 ? tt('Overdue') : ''" :after="loading ? '₹0.00' : formatAmount(total.amount, total.currency)"
+                          :key="total.currency" v-for="(total, index) in overdueTotals"></f7-list-item>
         </f7-list>
 
         <f7-list strong inset dividers class="margin-top-half skeleton-text" v-if="loading">
@@ -26,7 +28,7 @@
             <f7-list-item swipeout
                           :id="getInvoiceDomId(invoice)"
                           :title="invoice.number"
-                          :after="formatAmount(getInvoiceDisplayBalanceDue(invoice))"
+                          :after="formatAmount(getInvoiceDisplayBalanceDue(invoice), invoice.currency)"
                           :link="'/invoice/detail?id=' + invoice.id"
                           :key="invoice.id"
                           v-for="invoice in displayInvoices">
@@ -95,8 +97,8 @@ const {
     showPaid,
     displayInvoices,
     noAvailableInvoice,
-    outstandingTotal,
-    overdueTotal,
+    outstandingTotals,
+    overdueTotals,
     formatAmount,
     formatDate,
     getDisplayStatusName

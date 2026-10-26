@@ -1,6 +1,6 @@
 import type { TextualYearMonthDay } from '@/core/datetime.ts';
 
-export const INVOICE_CURRENCY: string = 'INR';
+import { INVOICE_DEFAULT_CURRENCY } from '@/lib/invoice.ts';
 
 // mirrors models.INVOICE_TAX_TYPE_* in pkg/models/invoice.go
 export type InvoiceTaxType = 'none' | 'igst' | 'cgst_sgst';
@@ -23,6 +23,7 @@ export interface InvoiceProfileInfoResponse {
     readonly defaultTermsDays: number;
     readonly gstin: string;
     readonly defaultSac: string;
+    readonly defaultCurrency: string; // empty from the server means INR
 }
 
 export type InvoiceProfileUpdateRequest = InvoiceProfileInfoResponse;
@@ -75,10 +76,12 @@ export interface InvoiceLine {
 
 export interface InvoicePayment {
     readonly transactionId: string;
-    readonly amount: number;
+    readonly amount: number; // realised, in the account currency
     readonly transactionTime: number;
     readonly accountId: string;
     readonly comment: string;
+    readonly currency: string; // the account currency
+    readonly settledAmount: number; // in invoice currency; 0 when the currencies match (amount counts as-is)
 }
 
 export interface InvoiceInfoResponse {
@@ -138,6 +141,7 @@ export interface InvoiceCreateRequest {
     readonly taxType: InvoiceTaxType;
     readonly taxRate: number;
     readonly lines: InvoiceLineRequest[];
+    readonly currency: string; // honoured on create only; the server ignores it on modify
 }
 
 export interface InvoiceModifyRequest extends InvoiceCreateRequest {
@@ -193,6 +197,7 @@ export class InvoiceProfile implements InvoiceProfileInfoResponse {
     public defaultTermsDays: number = 7;
     public gstin: string = '';
     public defaultSac: string = '';
+    public defaultCurrency: string = INVOICE_DEFAULT_CURRENCY;
 
     public fillFrom(other: InvoiceProfileInfoResponse): void {
         this.businessName = other.businessName;
@@ -205,6 +210,7 @@ export class InvoiceProfile implements InvoiceProfileInfoResponse {
         this.defaultTermsDays = other.defaultTermsDays;
         this.gstin = other.gstin;
         this.defaultSac = other.defaultSac;
+        this.defaultCurrency = other.defaultCurrency || INVOICE_DEFAULT_CURRENCY; // profiles saved before multi-currency
     }
 
     public toUpdateRequest(): InvoiceProfileUpdateRequest {
@@ -218,7 +224,8 @@ export class InvoiceProfile implements InvoiceProfileInfoResponse {
             numberPrefix: this.numberPrefix.trim(),
             defaultTermsDays: this.defaultTermsDays,
             gstin: this.gstin.trim().toUpperCase(),
-            defaultSac: this.defaultSac.trim()
+            defaultSac: this.defaultSac.trim(),
+            defaultCurrency: this.defaultCurrency
         };
     }
 
@@ -338,7 +345,7 @@ export class Invoice implements InvoiceInfoResponse {
     public billToPhone: string = '';
     public billToPan: string = '';
     public billToGstin: string = '';
-    public currency: string = INVOICE_CURRENCY;
+    public currency: string = INVOICE_DEFAULT_CURRENCY;
     public invoiceDate: TextualYearMonthDay = '0-0-0';
     public dueDate: TextualYearMonthDay = '0-0-0';
     public notes: string = '';
@@ -398,7 +405,8 @@ export class Invoice implements InvoiceInfoResponse {
                 quantity: line.quantity,
                 rate: line.rate,
                 sac: line.sac.trim()
-            }))
+            })),
+            currency: this.currency
         };
     }
 
@@ -413,10 +421,11 @@ export class Invoice implements InvoiceInfoResponse {
         return Invoice.of(this);
     }
 
-    // a new unsaved invoice with this invoice's customer, lines and notes (the "Duplicate" action)
+    // a new unsaved invoice with this invoice's customer, currency, lines and notes (the "Duplicate" action)
     public duplicate(): Invoice {
         const invoice = Invoice.createNewInvoice();
         invoice.customerId = this.customerId;
+        invoice.currency = this.currency;
         invoice.notes = this.notes;
         invoice.lines = this.lines.map(line => ({ ...line }));
         return invoice;

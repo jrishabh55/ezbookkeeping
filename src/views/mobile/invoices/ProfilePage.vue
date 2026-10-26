@@ -47,6 +47,27 @@
                 <list-number-input :label="tt('Payment Terms (days)')" :placeholder="tt('Payment Terms (days)')"
                                    :min-value="0" :max-value="365" :max-decimal-count="0"
                                    v-model="newProfile.defaultTermsDays"></list-number-input>
+                <f7-list-item class="list-item-with-header-and-title list-item-no-item-after" link="#"
+                              :header="tt('Default Currency')"
+                              @click="showCurrencyPopup = true">
+                    <template #title>
+                        <div class="no-padding no-margin">
+                            <span>{{ getCurrencyName(newProfile.defaultCurrency) }}&nbsp;</span>
+                            <small class="smaller">{{ newProfile.defaultCurrency }}</small>
+                        </div>
+                    </template>
+                    <list-item-selection-popup value-type="item"
+                                               key-field="currencyCode" value-field="currencyCode"
+                                               title-field="displayName" after-field="currencyCode"
+                                               :title="tt('Currency Name')"
+                                               :enable-filter="true"
+                                               :filter-placeholder="tt('Currency')"
+                                               :filter-no-items-text="tt('No results')"
+                                               :items="allCurrencies"
+                                               v-model:show="showCurrencyPopup"
+                                               v-model="newProfile.defaultCurrency">
+                    </list-item-selection-popup>
+                </f7-list-item>
                 <f7-list-input type="text" autocomplete="off" clear-button
                                :label="tt('Default SAC')" :placeholder="tt('Default SAC')"
                                v-model:value="newProfile.defaultSac"></f7-list-input>
@@ -61,7 +82,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, useTemplateRef } from 'vue';
+import { ref, computed, useTemplateRef } from 'vue';
 import type { Router } from 'framework7/types';
 
 import { useI18n } from '@/locales/helpers.ts';
@@ -70,12 +91,14 @@ import { useInvoiceProfilePageBase } from '@/views/base/invoices/InvoiceProfileP
 
 import { useInvoicesStore } from '@/stores/invoice.ts';
 
+import type { LocalizedCurrencyInfo } from '@/core/currency.ts';
+
 const props = defineProps<{
     f7route: Router.Route;
     f7router: Router.Router;
 }>();
 
-const { tt } = useI18n();
+const { tt, getAllCurrencies, getCurrencyName } = useI18n();
 const { showAlert, showToast, routeBackOnError } = useI18nUIComponents();
 const {
     loading,
@@ -92,6 +115,9 @@ const invoicesStore = useInvoicesStore();
 
 const logoInput = useTemplateRef<HTMLInputElement>('logoInput');
 const loadingError = ref<unknown | null>(null);
+const showCurrencyPopup = ref<boolean>(false);
+
+const allCurrencies = computed<LocalizedCurrencyInfo[]>(() => getAllCurrencies());
 
 function init(): void {
     loading.value = true;

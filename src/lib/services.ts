@@ -1093,7 +1093,7 @@ export default {
     getInvoicePaymentSuggestions: ({ id }: { id: string }): ApiResponsePromise<InvoicePayment[]> => {
         return axios.get<ApiResponse<InvoicePayment[]>>('v1/invoices/payment/suggestions.json?id=' + id);
     },
-    linkInvoicePayment: (req: { invoiceId: string, transactionId: string }): ApiResponsePromise<boolean> => {
+    linkInvoicePayment: (req: { invoiceId: string, transactionId: string, settledAmount?: number }): ApiResponsePromise<boolean> => {
         return axios.post<ApiResponse<boolean>>('v1/invoices/payment/link.json', req);
     },
     unlinkInvoicePayment: (req: { invoiceId: string, transactionId: string }): ApiResponsePromise<boolean> => {

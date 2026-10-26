@@ -36,6 +36,30 @@
                 <f7-list-input type="text" autocomplete="off" clear-button
                                :label="tt('Invoice Number')" :placeholder="tt('Invoice Number')"
                                v-model:value="invoice.number"></f7-list-input>
+                <!-- lines and payments are in this currency, so it is fixed once the invoice exists -->
+                <f7-list-item class="list-item-with-header-and-title list-item-no-item-after" link="#"
+                              :class="{ 'disabled': !!editInvoiceId }"
+                              :header="tt('Currency')"
+                              :no-chevron="!!editInvoiceId"
+                              @click="showCurrencyPopup = true">
+                    <template #title>
+                        <div class="no-padding no-margin">
+                            <span>{{ getCurrencyName(invoice.currency) }}&nbsp;</span>
+                            <small class="smaller">{{ invoice.currency }}</small>
+                        </div>
+                    </template>
+                    <list-item-selection-popup value-type="item"
+                                               key-field="currencyCode" value-field="currencyCode"
+                                               title-field="displayName" after-field="currencyCode"
+                                               :title="tt('Currency Name')"
+                                               :enable-filter="true"
+                                               :filter-placeholder="tt('Currency')"
+                                               :filter-no-items-text="tt('No results')"
+                                               :items="allCurrencies"
+                                               v-model:show="showCurrencyPopup"
+                                               v-model="invoice.currency">
+                    </list-item-selection-popup>
+                </f7-list-item>
                 <f7-list-item class="list-item-with-header-and-title" link="#" no-chevron
                               :header="tt('Invoice Date')"
                               :title="formatDate(invoice.invoiceDate)"
@@ -146,6 +170,7 @@ import { useInvoiceEditPageBase } from '@/views/base/invoices/InvoiceEditPageBas
 import { useInvoicesStore } from '@/stores/invoice.ts';
 
 import type { TextualYearMonthDay } from '@/core/datetime.ts';
+import type { LocalizedCurrencyInfo } from '@/core/currency.ts';
 import { TRANSACTION_MAX_AMOUNT } from '@/consts/transaction.ts';
 import type { InvoiceProfile } from '@/models/invoice.ts';
 import { INVOICE_QUANTITY_SCALE } from '@/lib/invoice.ts';
@@ -155,7 +180,7 @@ const props = defineProps<{
     f7router: Router.Router;
 }>();
 
-const { tt } = useI18n();
+const { tt, getAllCurrencies, getCurrencyName } = useI18n();
 const { showAlert, showToast, routeBackOnError } = useI18nUIComponents();
 const {
     editInvoiceId,
@@ -187,6 +212,7 @@ const loadingError = ref<unknown | null>(null);
 const profile = ref<InvoiceProfile | null>(null);
 const showMoreActionSheet = ref<boolean>(false);
 const showCustomerPopup = ref<boolean>(false);
+const showCurrencyPopup = ref<boolean>(false);
 const showInvoiceDateSheet = ref<boolean>(false);
 const showDueDateSheet = ref<boolean>(false);
 const showTaxTypeSheet = ref<boolean>(false);
@@ -194,6 +220,7 @@ const rateSheetLineIndex = ref<number>(-1);
 const customerIdsBeforeAdding = ref<Set<string> | null>(null);
 
 const selectedCustomerName = computed<string>(() => invoicesStore.allCustomersMap[invoice.value.customerId]?.name ?? tt('None'));
+const allCurrencies = computed<LocalizedCurrencyInfo[]>(() => getAllCurrencies());
 
 function suggestNumber(): void {
     loadSuggestedNumber().catch(error => {

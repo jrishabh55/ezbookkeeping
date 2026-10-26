@@ -36,7 +36,7 @@
                 <tr><th>Invoice Number:</th><td>{{ invoice.number }}</td></tr>
                 <tr><th>Invoice Date:</th><td>{{ formatInvoiceDocumentDate(invoice.invoiceDate) }}</td></tr>
                 <tr><th>Payment Due:</th><td>{{ formatInvoiceDocumentDate(invoice.dueDate) }}</td></tr>
-                <tr class="invoice-meta-highlight"><th>Amount Due ({{ invoice.currency }}):</th><td class="invoice-strong">{{ formatInvoiceDocumentAmount(balanceDue) }}</td></tr>
+                <tr class="invoice-meta-highlight"><th>Amount Due ({{ invoice.currency }}):</th><td class="invoice-strong">{{ formatInvoiceDocumentAmount(balanceDue, invoice.currency) }}</td></tr>
                 </tbody>
             </table>
         </div>
@@ -59,8 +59,8 @@
                 </td>
                 <td class="invoice-right" v-if="showSac">{{ line.sac }}</td>
                 <td class="invoice-right" v-if="showQuantity">{{ formatInvoiceQuantity(line.quantity) }}</td>
-                <td class="invoice-right">{{ formatInvoiceDocumentAmount(line.rate) }}</td>
-                <td class="invoice-right">{{ formatInvoiceDocumentAmount(line.amount) }}</td>
+                <td class="invoice-right">{{ formatInvoiceDocumentAmount(line.rate, invoice.currency) }}</td>
+                <td class="invoice-right">{{ formatInvoiceDocumentAmount(line.amount, invoice.currency) }}</td>
             </tr>
             </tbody>
         </table>
@@ -68,12 +68,12 @@
         <table class="invoice-totals">
             <tbody>
             <template v-if="taxRows.length">
-                <tr><th>Subtotal:</th><td>{{ formatInvoiceDocumentAmount(subtotal) }}</td></tr>
-                <tr :key="row.name" v-for="row in taxRows"><th>{{ row.name }} ({{ formatInvoiceTaxRate(row.rate) }}):</th><td>{{ formatInvoiceDocumentAmount(row.amount) }}</td></tr>
+                <tr><th>Subtotal:</th><td>{{ formatInvoiceDocumentAmount(subtotal, invoice.currency) }}</td></tr>
+                <tr :key="row.name" v-for="row in taxRows"><th>{{ row.name }} ({{ formatInvoiceTaxRate(row.rate) }}):</th><td>{{ formatInvoiceDocumentAmount(row.amount, invoice.currency) }}</td></tr>
             </template>
-            <tr><th>Total:</th><td>{{ formatInvoiceDocumentAmount(invoice.total) }}</td></tr>
-            <tr v-if="invoice.received > 0"><th>Payments received:</th><td>−{{ formatInvoiceDocumentAmount(Math.min(invoice.received, invoice.total)) }}</td></tr>
-            <tr class="invoice-totals-due"><th>Amount Due ({{ invoice.currency }}):</th><td>{{ formatInvoiceDocumentAmount(balanceDue) }}</td></tr>
+            <tr><th>Total:</th><td>{{ formatInvoiceDocumentAmount(invoice.total, invoice.currency) }}</td></tr>
+            <tr v-if="invoice.received > 0"><th>Payments received:</th><td>−{{ formatInvoiceDocumentAmount(Math.min(invoice.received, invoice.total), invoice.currency) }}</td></tr>
+            <tr class="invoice-totals-due"><th>Amount Due ({{ invoice.currency }}):</th><td>{{ formatInvoiceDocumentAmount(balanceDue, invoice.currency) }}</td></tr>
             </tbody>
         </table>
 

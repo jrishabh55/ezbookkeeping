@@ -10,6 +10,7 @@ import (
 	"github.com/mayswind/ezbookkeeping/pkg/models"
 	"github.com/mayswind/ezbookkeeping/pkg/services"
 	"github.com/mayswind/ezbookkeeping/pkg/utils"
+	"github.com/mayswind/ezbookkeeping/pkg/validators"
 )
 
 // InvoicesApi represents invoice api
@@ -51,6 +52,22 @@ func validateInvoiceTax(taxType string, taxRate int32) (string, error) {
 // normalizeTaxId upper-cases and trims a GSTIN / SAC as typed
 func normalizeTaxId(id string) string {
 	return strings.ToUpper(strings.TrimSpace(id))
+}
+
+// normalizeInvoiceCurrency upper-cases a currency code from a request; empty stays empty (the default applies)
+// and anything else must be a known ISO 4217 code
+func normalizeInvoiceCurrency(currency string) (string, error) {
+	currency = strings.ToUpper(strings.TrimSpace(currency))
+
+	if currency == "" {
+		return "", nil
+	}
+
+	if _, known := validators.AllCurrencyNames[currency]; !known {
+		return "", errs.ErrInvoiceCurrencyInvalid
+	}
+
+	return currency, nil
 }
 
 func invoiceLinesFromRequest(lineReqs []*models.InvoiceLineRequest) []*models.InvoiceLine {
@@ -95,6 +112,12 @@ func (a *InvoicesApi) InvoiceProfileUpdateHandler(c *core.WebContext) (any, *err
 		return nil, errs.ErrInvoiceLogoInvalid
 	}
 
+	defaultCurrency, err := normalizeInvoiceCurrency(req.DefaultCurrency)
+
+	if err != nil {
+		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+
 	uid := c.GetCurrentUid()
 	profile := &models.InvoiceProfile{
 		Uid:              uid,
@@ -108,6 +131,7 @@ func (a *InvoicesApi) InvoiceProfileUpdateHandler(c *core.WebContext) (any, *err
 		DefaultTermsDays: req.DefaultTermsDays,
 		Gstin:            normalizeTaxId(req.Gstin),
 		DefaultSac:       normalizeTaxId(req.DefaultSac),
+		DefaultCurrency:  defaultCurrency,
 	}
 
 	if err := a.invoices.SaveProfile(c, profile); err != nil {
@@ -296,9 +320,15 @@ func (a *InvoicesApi) InvoiceCreateHandler(c *core.WebContext) (any, *errs.Error
 		return nil, errs.Or(err, errs.ErrOperationFailed)
 	}
 
+	currency, err := normalizeInvoiceCurrency(req.Currency)
+
+	if err != nil {
+		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+
 	uid := c.GetCurrentUid()
 	invoice := &models.Invoice{Uid: uid, Number: strings.TrimSpace(req.Number), CustomerId: req.CustomerId, InvoiceDate: req.InvoiceDate, DueDate: req.DueDate, Notes: req.Notes,
-		TaxType: taxType, TaxRate: req.TaxRate}
+		TaxType: taxType, TaxRate: req.TaxRate, Currency: currency}
 
 	if err := a.invoices.CreateInvoice(c, invoice, invoiceLinesFromRequest(req.Lines)); err != nil {
 		log.Errorf(c, "[invoices.InvoiceCreateHandler] failed to create invoice for user \"uid:%d\", because %s", uid, err.Error())
@@ -435,8 +465,8 @@ func (a *InvoicesApi) InvoicePaymentSuggestionsHandler(c *core.WebContext) (any,
 	return resps, nil
 }
 
-// invoicePaymentAction binds {invoiceId, transactionId} and runs action for current user
-func (a *InvoicesApi) invoicePaymentAction(c *core.WebContext, name string, action func(uid int64, invoiceId int64, transactionId int64) error) (any, *errs.Error) {
+// invoicePaymentAction binds {invoiceId, transactionId, settledAmount} and runs action for current user
+func (a *InvoicesApi) invoicePaymentAction(c *core.WebContext, name string, action func(uid int64, req *models.InvoicePaymentLinkRequest) error) (any, *errs.Error) {
 	var req models.InvoicePaymentLinkRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -446,7 +476,7 @@ func (a *InvoicesApi) invoicePaymentAction(c *core.WebContext, name string, acti
 
 	uid := c.GetCurrentUid()
 
-	if err := action(uid, req.InvoiceId, req.TransactionId); err != nil {
+	if err := action(uid, &req); err != nil {
 		log.Errorf(c, "[invoices.%s] failed for invoice \"id:%d\" and transaction \"id:%d\" of user \"uid:%d\", because %s", name, req.InvoiceId, req.TransactionId, uid, err.Error())
 		return nil, errs.Or(err, errs.ErrOperationFailed)
 	}
@@ -456,15 +486,15 @@ func (a *InvoicesApi) invoicePaymentAction(c *core.WebContext, name string, acti
 
 // InvoicePaymentLinkHandler links a transaction to an invoice of current user
 func (a *InvoicesApi) InvoicePaymentLinkHandler(c *core.WebContext) (any, *errs.Error) {
-	return a.invoicePaymentAction(c, "InvoicePaymentLinkHandler", func(uid int64, invoiceId int64, transactionId int64) error {
-		return a.invoices.LinkPayment(c, uid, invoiceId, transactionId)
+	return a.invoicePaymentAction(c, "InvoicePaymentLinkHandler", func(uid int64, req *models.InvoicePaymentLinkRequest) error {
+		return a.invoices.LinkPayment(c, uid, req.InvoiceId, req.TransactionId, req.SettledAmount)
 	})
 }
 
 // InvoicePaymentUnlinkHandler unlinks a transaction from an invoice of current user
 func (a *InvoicesApi) InvoicePaymentUnlinkHandler(c *core.WebContext) (any, *errs.Error) {
-	return a.invoicePaymentAction(c, "InvoicePaymentUnlinkHandler", func(uid int64, invoiceId int64, transactionId int64) error {
-		return a.invoices.UnlinkPayment(c, uid, invoiceId, transactionId)
+	return a.invoicePaymentAction(c, "InvoicePaymentUnlinkHandler", func(uid int64, req *models.InvoicePaymentLinkRequest) error {
+		return a.invoices.UnlinkPayment(c, uid, req.InvoiceId, req.TransactionId)
 	})
 }
 
@@ -538,11 +568,7 @@ func (a *InvoicesApi) InvoicePdfHandler(c *core.WebContext) ([]byte, string, *er
 		return nil, "", errs.Or(err, errs.ErrOperationFailed)
 	}
 
-	received := int64(0)
-
-	for _, payment := range payments[invoiceId] {
-		received += payment.Amount
-	}
+	received := models.InvoiceReceivedAmount(payments[invoiceId])
 
 	// the footer prints the public link when the invoice has one; InvoicePublicUrl returns "" otherwise
 	pdf, err := invoicepdf.Render(profile, invoice, lines, received, a.invoices.InvoicePublicUrl(invoice.PublicToken))

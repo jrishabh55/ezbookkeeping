@@ -19,6 +19,10 @@ var (
 	ErrInvoiceLogoInvalid               = NewNormalError(NormalSubcategoryInvoice, 12, http.StatusBadRequest, "invoice logo must be a png or jpeg image")
 	ErrInvoiceTaxTypeInvalid            = NewNormalError(NormalSubcategoryInvoice, 13, http.StatusBadRequest, "invoice tax type is invalid")
 	ErrInvoiceTaxRateInvalid            = NewNormalError(NormalSubcategoryInvoice, 14, http.StatusBadRequest, "invoice tax rate is invalid")
+	// multi-currency uses 20 to 29
+	ErrInvoiceCurrencyInvalid                = NewNormalError(NormalSubcategoryInvoice, 20, http.StatusBadRequest, "invoice currency is invalid")
+	ErrInvoicePaymentSettledAmountRequired   = NewNormalError(NormalSubcategoryInvoice, 21, http.StatusBadRequest, "settled amount is required for a payment in another currency")
+	ErrInvoicePaymentSettledAmountNotAllowed = NewNormalError(NormalSubcategoryInvoice, 22, http.StatusBadRequest, "settled amount is only for a payment in another currency")
 	// recurring invoices start at 40 so the codes do not collide with the other invoicing extensions
 	ErrRecurringInvoiceIdInvalid         = NewNormalError(NormalSubcategoryInvoice, 40, http.StatusBadRequest, "recurring invoice id is invalid")
 	ErrRecurringInvoiceNotFound          = NewNormalError(NormalSubcategoryInvoice, 41, http.StatusBadRequest, "recurring invoice not found")

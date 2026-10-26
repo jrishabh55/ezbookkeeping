@@ -84,6 +84,13 @@
                                           v-model="newProfile.defaultTermsDays" />
                         </div>
                         <div class="setting-item">
+                            <span>{{ tt('Default Currency') }}</span>
+                            <v-spacer/>
+                            <currency-select class="ms-4" density="compact" max-width="400px"
+                                             :disabled="loading || saving" :placeholder="tt('Default Currency')"
+                                             v-model="newProfile.defaultCurrency" />
+                        </div>
+                        <div class="setting-item">
                             <span>{{ tt('Default SAC') }}</span>
                             <v-spacer/>
                             <v-text-field class="ms-4" density="compact" type="text" autocomplete="off"

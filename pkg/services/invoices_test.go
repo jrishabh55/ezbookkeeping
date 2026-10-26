@@ -396,15 +396,15 @@ func TestLinkPaymentsAccumulatesReceived(t *testing.T) {
 	first := insertTestTransaction(t, uid, accountId, models.TRANSACTION_DB_TYPE_INCOME, 20000000, "2026-04-28")
 	second := insertTestTransaction(t, uid, accountId, models.TRANSACTION_DB_TYPE_INCOME, 16850000, "2026-05-03")
 
-	assert.Nil(t, Invoices.LinkPayment(ctx, uid, invoice.InvoiceId, first.TransactionId))
-	assert.Nil(t, Invoices.LinkPayment(ctx, uid, invoice.InvoiceId, second.TransactionId))
+	assert.Nil(t, Invoices.LinkPayment(ctx, uid, invoice.InvoiceId, first.TransactionId, 0))
+	assert.Nil(t, Invoices.LinkPayment(ctx, uid, invoice.InvoiceId, second.TransactionId, 0))
 
 	payments, err := Invoices.GetInvoicePayments(ctx, uid, []int64{invoice.InvoiceId})
 	assert.Nil(t, err)
 	assert.Equal(t, 2, len(payments[invoice.InvoiceId]))
-	assert.Equal(t, first.TransactionId, payments[invoice.InvoiceId][0].TransactionId)
+	assert.Equal(t, first.TransactionId, payments[invoice.InvoiceId][0].Transaction.TransactionId)
 
-	assert.Equal(t, errs.ErrInvoicePaymentAlreadyLinked, Invoices.LinkPayment(ctx, uid, invoice.InvoiceId, first.TransactionId))
+	assert.Equal(t, errs.ErrInvoicePaymentAlreadyLinked, Invoices.LinkPayment(ctx, uid, invoice.InvoiceId, first.TransactionId, 0))
 
 	assert.Nil(t, Invoices.UnlinkPayment(ctx, uid, invoice.InvoiceId, second.TransactionId))
 	assert.Equal(t, errs.ErrInvoicePaymentNotFound, Invoices.UnlinkPayment(ctx, uid, invoice.InvoiceId, second.TransactionId))
@@ -421,21 +421,136 @@ func TestLinkPaymentValidatesTransaction(t *testing.T) {
 	invoice := createTestInvoice(t, uid, customer.CustomerId, "CA/2026-27/01", 37000000)
 
 	expense := insertTestTransaction(t, uid, accountId, models.TRANSACTION_DB_TYPE_EXPENSE, 1000, "2026-04-28")
-	assert.Equal(t, errs.ErrInvoicePaymentTransactionInvalid, Invoices.LinkPayment(ctx, uid, invoice.InvoiceId, expense.TransactionId))
+	assert.Equal(t, errs.ErrInvoicePaymentTransactionInvalid, Invoices.LinkPayment(ctx, uid, invoice.InvoiceId, expense.TransactionId, 0))
 
 	tooBig := insertTestTransaction(t, uid, accountId, models.TRANSACTION_DB_TYPE_INCOME, 37000001, "2026-04-28")
-	assert.Equal(t, errs.ErrInvoicePaymentExceedsBalanceDue, Invoices.LinkPayment(ctx, uid, invoice.InvoiceId, tooBig.TransactionId))
+	assert.Equal(t, errs.ErrInvoicePaymentExceedsBalanceDue, Invoices.LinkPayment(ctx, uid, invoice.InvoiceId, tooBig.TransactionId, 0))
 }
 
-func TestLinkPaymentRejectsNonInrAccount(t *testing.T) {
+// createTestAccount creates a single account in the given currency and returns its id
+func createTestAccount(t *testing.T, ctx core.Context, uid int64, name string, currency string) int64 {
+	t.Helper()
+	account := &models.Account{Uid: uid, Name: name, Category: models.ACCOUNT_CATEGORY_SAVINGS_ACCOUNT, Type: models.ACCOUNT_TYPE_SINGLE_ACCOUNT, Icon: 1, Color: "000000", Currency: currency}
+	assert.Nil(t, Accounts.CreateAccounts(ctx, account, 0, nil, nil, time.UTC))
+	return account.AccountId
+}
+
+func TestLinkPaymentCrossCurrencyRequiresSettledAmount(t *testing.T) {
 	ctx, uid := newAlertTestUser(t)
-	usdAccount := &models.Account{Uid: uid, Name: "Wise USD", Category: models.ACCOUNT_CATEGORY_SAVINGS_ACCOUNT, Type: models.ACCOUNT_TYPE_SINGLE_ACCOUNT, Icon: 1, Color: "000000", Currency: "USD"}
-	assert.Nil(t, Accounts.CreateAccounts(ctx, usdAccount, 0, nil, nil, time.UTC))
+	usdAccountId := createTestAccount(t, ctx, uid, "Wise USD", "USD")
 	customer := createTestCustomer(t, uid)
 	invoice := createTestInvoice(t, uid, customer.CustomerId, "CA/2026-27/01", 37000000)
 
-	usdIncome := insertTestTransaction(t, uid, usdAccount.AccountId, models.TRANSACTION_DB_TYPE_INCOME, 1000, "2026-04-28")
-	assert.Equal(t, errs.ErrInvoicePaymentTransactionInvalid, Invoices.LinkPayment(ctx, uid, invoice.InvoiceId, usdIncome.TransactionId))
+	usdIncome := insertTestTransaction(t, uid, usdAccountId, models.TRANSACTION_DB_TYPE_INCOME, 440000, "2026-04-28")
+	assert.Equal(t, errs.ErrInvoicePaymentSettledAmountRequired, Invoices.LinkPayment(ctx, uid, invoice.InvoiceId, usdIncome.TransactionId, 0))
+	assert.Equal(t, errs.ErrInvoicePaymentExceedsBalanceDue, Invoices.LinkPayment(ctx, uid, invoice.InvoiceId, usdIncome.TransactionId, 37000001))
+	assert.Nil(t, Invoices.LinkPayment(ctx, uid, invoice.InvoiceId, usdIncome.TransactionId, 36850000))
+}
+
+func TestLinkPaymentSameCurrencyRefusesSettledAmount(t *testing.T) {
+	ctx, uid := newAlertTestUser(t, "PNB Savings")
+	accountId := accountIdByName(t, ctx, uid, "PNB Savings")
+	customer := createTestCustomer(t, uid)
+	invoice := createTestInvoice(t, uid, customer.CustomerId, "CA/2026-27/01", 37000000)
+
+	income := insertTestTransaction(t, uid, accountId, models.TRANSACTION_DB_TYPE_INCOME, 37000000, "2026-04-28")
+	assert.Equal(t, errs.ErrInvoicePaymentSettledAmountNotAllowed, Invoices.LinkPayment(ctx, uid, invoice.InvoiceId, income.TransactionId, 37000000))
+	assert.Nil(t, Invoices.LinkPayment(ctx, uid, invoice.InvoiceId, income.TransactionId, 0))
+}
+
+func TestInvoiceReceivedUsesSettledAmounts(t *testing.T) {
+	ctx, uid := newAlertTestUser(t, "PNB Savings")
+	inrAccountId := accountIdByName(t, ctx, uid, "PNB Savings")
+	usdAccountId := createTestAccount(t, ctx, uid, "Wise USD", "USD")
+	customer := createTestCustomer(t, uid)
+	invoice := createTestInvoice(t, uid, customer.CustomerId, "CA/2026-27/01", 37000000)
+
+	usdIncome := insertTestTransaction(t, uid, usdAccountId, models.TRANSACTION_DB_TYPE_INCOME, 440000, "2026-04-28")
+	inrIncome := insertTestTransaction(t, uid, inrAccountId, models.TRANSACTION_DB_TYPE_INCOME, 150000, "2026-05-03")
+	assert.Nil(t, Invoices.LinkPayment(ctx, uid, invoice.InvoiceId, usdIncome.TransactionId, 36850000))
+	assert.Nil(t, Invoices.LinkPayment(ctx, uid, invoice.InvoiceId, inrIncome.TransactionId, 0))
+
+	payments, err := Invoices.GetInvoicePayments(ctx, uid, []int64{invoice.InvoiceId})
+	assert.Nil(t, err)
+	assert.Equal(t, 2, len(payments[invoice.InvoiceId]))
+	assert.Equal(t, "USD", payments[invoice.InvoiceId][0].Currency)
+	assert.Equal(t, int64(440000), payments[invoice.InvoiceId][0].Transaction.Amount)
+	assert.Equal(t, int64(36850000), payments[invoice.InvoiceId][0].SettledAmount)
+	assert.Equal(t, "INR", payments[invoice.InvoiceId][1].Currency)
+	assert.Equal(t, int64(0), payments[invoice.InvoiceId][1].SettledAmount)
+	assert.Equal(t, int64(37000000), models.InvoiceReceivedAmount(payments[invoice.InvoiceId]))
+
+	// the detail / list response reports the same received amount
+	resp := invoice.ToInvoiceInfoResponse(nil, payments[invoice.InvoiceId])
+	assert.Equal(t, int64(37000000), resp.Received)
+
+	// a further same-currency link is refused: nothing is due any more
+	extra := insertTestTransaction(t, uid, inrAccountId, models.TRANSACTION_DB_TYPE_INCOME, 1, "2026-05-04")
+	assert.Equal(t, errs.ErrInvoicePaymentExceedsBalanceDue, Invoices.LinkPayment(ctx, uid, invoice.InvoiceId, extra.TransactionId, 0))
+}
+
+func TestPaymentSuggestionsIncludeOtherCurrencyAfterSameCurrency(t *testing.T) {
+	ctx, uid := newAlertTestUser(t, "PNB Savings")
+	inrAccountId := accountIdByName(t, ctx, uid, "PNB Savings")
+	usdAccountId := createTestAccount(t, ctx, uid, "Wise USD", "USD")
+	customer := createTestCustomer(t, uid)
+	invoice := createTestInvoice(t, uid, customer.CustomerId, "CA/2026-27/01", 37000000)
+
+	usdOlder := insertTestTransaction(t, uid, usdAccountId, models.TRANSACTION_DB_TYPE_INCOME, 440000, "2026-04-28")
+	usdNewer := insertTestTransaction(t, uid, usdAccountId, models.TRANSACTION_DB_TYPE_INCOME, 99999999, "2026-05-05") // not capped by the balance due
+	inrShort := insertTestTransaction(t, uid, inrAccountId, models.TRANSACTION_DB_TYPE_INCOME, 36850000, "2026-05-06")
+	insertTestTransaction(t, uid, usdAccountId, models.TRANSACTION_DB_TYPE_INCOME, 440000, "2026-03-01")  // before invoice date
+	insertTestTransaction(t, uid, usdAccountId, models.TRANSACTION_DB_TYPE_EXPENSE, 440000, "2026-05-02") // not income
+
+	suggestions, err := Invoices.GetPaymentSuggestions(ctx, uid, invoice.InvoiceId)
+	assert.Nil(t, err)
+	assert.Equal(t, 3, len(suggestions))
+	assert.Equal(t, inrShort.TransactionId, suggestions[0].Transaction.TransactionId)
+	assert.Equal(t, "INR", suggestions[0].Currency)
+	assert.Equal(t, usdNewer.TransactionId, suggestions[1].Transaction.TransactionId)
+	assert.Equal(t, "USD", suggestions[1].Currency)
+	assert.Equal(t, usdOlder.TransactionId, suggestions[2].Transaction.TransactionId)
+}
+
+func TestCreateInvoiceCurrencyDefaultsAndValidation(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	customer := createTestCustomer(t, uid)
+
+	// no profile saved: INR, exactly as before
+	invoice := createTestInvoice(t, uid, customer.CustomerId, "CA/2026-27/01", 37000000)
+	assert.Equal(t, "INR", invoice.Currency)
+
+	profile, err := Invoices.GetProfile(ctx, uid)
+	assert.Nil(t, err)
+	profile.DefaultCurrency = "USD"
+	assert.Nil(t, Invoices.SaveProfile(ctx, profile))
+	saved, err := Invoices.GetProfile(ctx, uid)
+	assert.Nil(t, err)
+	assert.Equal(t, "USD", saved.DefaultCurrency)
+
+	invoice = createTestInvoice(t, uid, customer.CustomerId, "CA/2026-27/02", 100000)
+	assert.Equal(t, "USD", invoice.Currency)
+
+	explicit := &models.Invoice{Uid: uid, Number: "CA/2026-27/03", CustomerId: customer.CustomerId, InvoiceDate: "2026-04-23", DueDate: "2026-04-30", Currency: "GBP"}
+	assert.Nil(t, Invoices.CreateInvoice(ctx, explicit, []*models.InvoiceLine{{ItemName: "Consulting", Quantity: 100, Rate: 100000}}))
+	assert.Equal(t, "GBP", explicit.Currency)
+
+	unknown := &models.Invoice{Uid: uid, Number: "CA/2026-27/04", CustomerId: customer.CustomerId, InvoiceDate: "2026-04-23", DueDate: "2026-04-30", Currency: "XXX"}
+	assert.Equal(t, errs.ErrInvoiceCurrencyInvalid, Invoices.CreateInvoice(ctx, unknown, []*models.InvoiceLine{{ItemName: "Consulting", Quantity: 100, Rate: 100000}}))
+}
+
+func TestModifyInvoiceIgnoresCurrency(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	customer := createTestCustomer(t, uid)
+	invoice := createTestInvoice(t, uid, customer.CustomerId, "CA/2026-27/01", 37000000)
+	assert.Equal(t, "INR", invoice.Currency)
+
+	invoice.Currency = "USD"
+	assert.Nil(t, Invoices.ModifyInvoice(ctx, invoice, []*models.InvoiceLine{{ItemName: "Consulting", Quantity: 100, Rate: 37000000}}))
+
+	reloaded, _, err := Invoices.GetInvoice(ctx, uid, invoice.InvoiceId)
+	assert.Nil(t, err)
+	assert.Equal(t, "INR", reloaded.Currency)
 }
 
 func TestLinkPaymentRejectsOtherUsersTransaction(t *testing.T) {
@@ -446,7 +561,7 @@ func TestLinkPaymentRejectsOtherUsersTransaction(t *testing.T) {
 	invoice := createTestInvoice(t, uid, customer.CustomerId, "CA/2026-27/01", 37000000)
 
 	othersIncome := insertTestTransaction(t, otherUid, otherAccountId, models.TRANSACTION_DB_TYPE_INCOME, 37000000, "2026-04-28")
-	assert.Equal(t, errs.ErrTransactionNotFound, Invoices.LinkPayment(ctx, uid, invoice.InvoiceId, othersIncome.TransactionId))
+	assert.Equal(t, errs.ErrTransactionNotFound, Invoices.LinkPayment(ctx, uid, invoice.InvoiceId, othersIncome.TransactionId, 0))
 }
 
 func TestInvoiceReceivedIgnoresDeletedTransaction(t *testing.T) {
@@ -455,7 +570,7 @@ func TestInvoiceReceivedIgnoresDeletedTransaction(t *testing.T) {
 	customer := createTestCustomer(t, uid)
 	invoice := createTestInvoice(t, uid, customer.CustomerId, "CA/2026-27/01", 37000000)
 	income := insertTestTransaction(t, uid, accountId, models.TRANSACTION_DB_TYPE_INCOME, 37000000, "2026-04-28")
-	assert.Nil(t, Invoices.LinkPayment(ctx, uid, invoice.InvoiceId, income.TransactionId))
+	assert.Nil(t, Invoices.LinkPayment(ctx, uid, invoice.InvoiceId, income.TransactionId, 0))
 
 	_, err := datastore.Container.UserDataStore.Choose(uid).NewSession(ctx).ID(income.TransactionId).Cols("deleted").Update(&models.Transaction{Deleted: true})
 	assert.Nil(t, err)
@@ -479,13 +594,13 @@ func TestPaymentSuggestionsFilterAndRank(t *testing.T) {
 	insertTestTransaction(t, uid, accountId, models.TRANSACTION_DB_TYPE_INCOME, 40000000, "2026-05-02")  // more than balance due
 	insertTestTransaction(t, uid, accountId, models.TRANSACTION_DB_TYPE_EXPENSE, 37000000, "2026-05-02") // not income
 	linkedElsewhere := insertTestTransaction(t, uid, accountId, models.TRANSACTION_DB_TYPE_INCOME, 100000, "2026-05-02")
-	assert.Nil(t, Invoices.LinkPayment(ctx, uid, other.InvoiceId, linkedElsewhere.TransactionId))
+	assert.Nil(t, Invoices.LinkPayment(ctx, uid, other.InvoiceId, linkedElsewhere.TransactionId, 0))
 
 	suggestions, err := Invoices.GetPaymentSuggestions(ctx, uid, invoice.InvoiceId)
 	assert.Nil(t, err)
 	assert.Equal(t, 2, len(suggestions))
-	assert.Equal(t, exact.TransactionId, suggestions[0].TransactionId)
-	assert.Equal(t, short.TransactionId, suggestions[1].TransactionId)
+	assert.Equal(t, exact.TransactionId, suggestions[0].Transaction.TransactionId)
+	assert.Equal(t, short.TransactionId, suggestions[1].Transaction.TransactionId)
 }
 
 func TestGetLinkedInvoicesByTransactionIds(t *testing.T) {
@@ -495,14 +610,14 @@ func TestGetLinkedInvoicesByTransactionIds(t *testing.T) {
 	invoice := createTestInvoice(t, uid, customer.CustomerId, "CA/2026-27/01", 37000000)
 	linked := insertTestTransaction(t, uid, accountId, models.TRANSACTION_DB_TYPE_INCOME, 20000000, "2026-04-28")
 	unlinked := insertTestTransaction(t, uid, accountId, models.TRANSACTION_DB_TYPE_INCOME, 1000, "2026-04-29")
-	assert.Nil(t, Invoices.LinkPayment(ctx, uid, invoice.InvoiceId, linked.TransactionId))
+	assert.Nil(t, Invoices.LinkPayment(ctx, uid, invoice.InvoiceId, linked.TransactionId, 0))
 
 	otherCtx, otherUid := newAlertTestUser(t, "Other Savings")
 	otherAccountId := accountIdByName(t, otherCtx, otherUid, "Other Savings")
 	otherCustomer := createTestCustomer(t, otherUid)
 	otherInvoice := createTestInvoice(t, otherUid, otherCustomer.CustomerId, "CA/2026-27/01", 37000000)
 	othersLinked := insertTestTransaction(t, otherUid, otherAccountId, models.TRANSACTION_DB_TYPE_INCOME, 20000000, "2026-04-28")
-	assert.Nil(t, Invoices.LinkPayment(otherCtx, otherUid, otherInvoice.InvoiceId, othersLinked.TransactionId))
+	assert.Nil(t, Invoices.LinkPayment(otherCtx, otherUid, otherInvoice.InvoiceId, othersLinked.TransactionId, 0))
 
 	linkedInvoices, err := Invoices.GetLinkedInvoicesByTransactionIds(ctx, uid, []int64{linked.TransactionId, unlinked.TransactionId, othersLinked.TransactionId})
 	assert.Nil(t, err)

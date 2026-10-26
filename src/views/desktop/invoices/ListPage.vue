@@ -4,12 +4,16 @@
             <div class="mx-2 mb-2">
                 <span class="text-body-medium">{{ tt('Outstanding') }}</span>
                 <div class="text-body-large text-truncate mt-1 mb-2">
-                    <span v-if="!loading || allInvoices.length > 0">{{ formatAmount(outstandingTotal) }}</span>
+                    <template v-if="!loading || allInvoices.length > 0">
+                        <div :key="total.currency" v-for="total in outstandingTotals">{{ formatAmount(total.amount, total.currency) }}</div>
+                    </template>
                     <v-skeleton-loader class="skeleton-no-margin mt-1 mb-2" type="text" :loading="true" v-else></v-skeleton-loader>
                 </div>
                 <span class="text-body-medium">{{ tt('Overdue') }}</span>
                 <div class="text-body-large text-expense text-truncate mt-1">
-                    <span v-if="!loading || allInvoices.length > 0">{{ formatAmount(overdueTotal) }}</span>
+                    <template v-if="!loading || allInvoices.length > 0">
+                        <div :key="total.currency" v-for="total in overdueTotals">{{ formatAmount(total.amount, total.currency) }}</div>
+                    </template>
                     <v-skeleton-loader class="skeleton-no-margin mt-1 mb-2" type="text" :loading="true" v-else></v-skeleton-loader>
                 </div>
             </div>
@@ -107,8 +111,8 @@
                                 <td>{{ invoice.billToName }}</td>
                                 <td>{{ formatDate(invoice.invoiceDate) }}</td>
                                 <td>{{ formatDate(invoice.dueDate) }}</td>
-                                <td class="text-right">{{ formatAmount(invoice.total) }}</td>
-                                <td class="text-right">{{ formatAmount(getInvoiceDisplayBalanceDue(invoice)) }}</td>
+                                <td class="text-right">{{ formatAmount(invoice.total, invoice.currency) }}</td>
+                                <td class="text-right">{{ formatAmount(getInvoiceDisplayBalanceDue(invoice), invoice.currency) }}</td>
                                 <td>
                                     <v-chip size="small" variant="tonal" :color="statusColors[getDisplayStatus(invoice)]">{{ tt(getDisplayStatusName(invoice)) }}</v-chip>
                                 </td>
@@ -252,8 +256,8 @@ const {
     allInvoices,
     displayInvoices,
     noAvailableInvoice,
-    outstandingTotal,
-    overdueTotal,
+    outstandingTotals,
+    overdueTotals,
     formatAmount,
     formatDate,
     getDisplayStatus,
