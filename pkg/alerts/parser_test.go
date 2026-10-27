@@ -57,6 +57,12 @@ func TestParse(t *testing.T) {
 			ParsedAlert{Outcome: OutcomeParsed, Direction: Debit, Amount: 97140, Last4: "7731", Reference: "973574662796"}},
 		{"e-mandate-reminder", "XX-HDFCBK", "E-Mandate! Rs.10000.00 will be deducted on 15/10/26, 00:00:00 For JIO BLACKROCK MUTUAL FUND mandate UMN 407d8cb6dd67d936e0634bcee10a6d7f@pthdfc Maintain Balance -HDFC Bank",
 			ParsedAlert{Outcome: OutcomeIgnored}},
+		{"card-bill-reminder", "XX-ICICIT", "Pay Total Amount Due of Rs 30,020.60 or Minimum Amount Due of Rs 1,510.00 by 30-Oct-26 towards ICICI Bank Credit Card XX3019. Delay/Non-payment is reported to Credit Bureaus. Ignore if paid.",
+			ParsedAlert{Outcome: OutcomeIgnored}},
+		{"card-statement-amount-due", "XX-ICICIT", "ICICI Bank Credit Card XX3019 statement generated. Total Amt Due Rs 30,020.60, Min Amt Due Rs 1,510.00, due by 30-Oct-26.",
+			ParsedAlert{Outcome: OutcomeIgnored}},
+		{"card-bill-payment-received-still-parsed", "XX-ICICIT", "Dear Customer, Payment of INR 30,020.60 has been received on your ICICI Bank Credit Card Account XX3019 on 29-Oct-26. Thank you.",
+			ParsedAlert{Outcome: OutcomeParsed, Direction: Credit, Amount: 3002060, Last4: "3019"}},
 		{"dual-verb-with-promo-word", "XX-HDFCBK", "Rs.500 cashback debited and credited to A/c XX1234 on 05-10-26",
 			ParsedAlert{Outcome: OutcomeUnparsed}},
 	}

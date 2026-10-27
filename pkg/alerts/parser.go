@@ -38,10 +38,11 @@ type ParsedAlert struct {
 var (
 	// reHardIgnore matches messages that are never a completed transaction, regardless of
 	// whether they otherwise look like one (OTP prompts, future-tense reminders, collect
-	// requests, limit/statement notices). "Mandate" alone is not a reason to ignore: an executed
+	// requests, limit/statement notices, card bill reminders that quote the "Total/Minimum Amount
+	// Due" and end "Ignore if paid", whose "paid" would otherwise read as a debit). "Mandate" alone is not a reason to ignore: an executed
 	// autopay reads "UPI Mandate: Sent Rs.X ... Ref N" and is a real debit; setup notices have no
 	// debit verb and reminders say "will be deducted", so both still fall out below.
-	reHardIgnore = regexp.MustCompile(`(?i)\botp\b|\bone time password\b|\bis due\b|\bdue on\b|\bwill be debited\b|\bwill be deducted\b|\blimit (?:has been )?(?:increased|enhanced)\b|\btransaction limit\b|\b(?:payment|money)\s+request\b|\brequest(?:ed)?\s+(?:money|payment)\b|\bstatement\s*:`)
+	reHardIgnore = regexp.MustCompile(`(?i)\botp\b|\bone time password\b|\bis due\b|\bdue on\b|\bwill be debited\b|\bwill be deducted\b|\blimit (?:has been )?(?:increased|enhanced)\b|\btransaction limit\b|\b(?:payment|money)\s+request\b|\brequest(?:ed)?\s+(?:money|payment)\b|\bstatement\s*:|\b(?:total|minimum|min\.?)\s+(?:amount|amt\.?)\s+due\b|\bignore if (?:already )?paid\b`)
 	// reSoftIgnore matches promo-ish words that only mean "ignore" when the message does
 	// not otherwise look like a real transaction (debit/credit verb + amount + last-4).
 	reSoftIgnore = regexp.MustCompile(`(?i)\bcashback\b|\boffer\b|\bapply now\b`)
