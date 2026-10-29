@@ -1,6 +1,7 @@
 package services
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -378,6 +379,40 @@ func TestAutoSendFailureKeepsTheUnsentInvoiceAndAdvances(t *testing.T) {
 	reloaded, err := Invoices.GetRecurringInvoice(ctx, uid, recurring.RecurringId)
 	assert.Nil(t, err)
 	assert.Equal(t, "2027-01-15", reloaded.NextDate)
+	unsent, _, err := Invoices.GetInvoice(ctx, uid, reloaded.LastInvoiceId)
+	assert.Nil(t, err)
+	assert.Equal(t, int64(0), unsent.SentUnixTime)
+}
+
+type failingMailer struct{}
+
+func (m *failingMailer) SendMail(message *mail.MailMessage) error {
+	return errors.New("smtp server unreachable")
+}
+
+// withFailingMailer enables SMTP for one test and makes every send fail, as if the SMTP server were down
+func withFailingMailer(t *testing.T) {
+	t.Helper()
+	withSmtpEnabled(t)
+	previous := mail.Container.SetMailer(&failingMailer{})
+	t.Cleanup(func() { mail.Container.SetMailer(previous) })
+}
+
+func TestAutoSendSmtpFailureKeepsTheUnsentInvoiceAndAdvances(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	withFailingMailer(t)
+	customer := createTestCustomer(t, uid)
+	customer.Email = "accounts@qubertech.com"
+	assert.Nil(t, Invoices.ModifyCustomer(ctx, customer))
+	source := createTestInvoice(t, uid, customer.CustomerId, "INV/2026-27/01", 100)
+	recurring := createTestRenewal(t, uid, source.InvoiceId, "2026-12-15", 1, models.RECURRING_INVOICE_MODE_AUTO_SEND)
+
+	assert.Nil(t, Invoices.CreateRecurringInvoices(ctx, "2026-12-15"))
+
+	reloaded, err := Invoices.GetRecurringInvoice(ctx, uid, recurring.RecurringId)
+	assert.Nil(t, err)
+	assert.Equal(t, "2027-01-15", reloaded.NextDate)
+	assert.True(t, reloaded.LastInvoiceId > 0)
 	unsent, _, err := Invoices.GetInvoice(ctx, uid, reloaded.LastInvoiceId)
 	assert.Nil(t, err)
 	assert.Equal(t, int64(0), unsent.SentUnixTime)

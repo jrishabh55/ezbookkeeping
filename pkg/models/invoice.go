@@ -85,7 +85,7 @@ type Customer struct {
 // Invoice represents an invoice stored in database
 type Invoice struct {
 	InvoiceId          int64  `xorm:"PK"`
-	Uid                int64  `xorm:"INDEX(IDX_invoice_uid_deleted) NOT NULL"`
+	Uid                int64  `xorm:"INDEX(IDX_invoice_uid_deleted) INDEX(IDX_invoice_uid_recurring_id) NOT NULL"`
 	Deleted            bool   `xorm:"INDEX(IDX_invoice_uid_deleted) NOT NULL"`
 	Kind               string `xorm:"VARCHAR(16) NOT NULL"`
 	Number             string `xorm:"VARCHAR(64) NOT NULL"`
