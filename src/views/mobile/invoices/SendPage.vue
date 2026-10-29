@@ -19,6 +19,13 @@
                            :disabled="sending" :label="tt('To')" :placeholder="tt('Email')"
                            v-model:value="sendRequest.to"></f7-list-input>
         </f7-list>
+        <f7-block strong inset v-if="!loading && renewalOption && renewalOption.mixedPeriods">
+            <small>{{ tt('These products renew on different periods. Split them into separate invoices to track their renewals.') }}</small>
+        </f7-block>
+        <f7-list strong inset dividers v-if="!loading && renewalOption && !renewalOption.mixedPeriods">
+            <f7-list-item checkbox :title="renewalOptionText" :disabled="sending"
+                          :checked="!!sendRequest.createRenewal" @change="sendRequest.createRenewal = $event.target.checked"></f7-list-item>
+        </f7-list>
         <f7-block strong inset v-if="!loading">
             <invoice-email-template-form v-model:subject="sendRequest.subject" v-model:body="sendRequest.bodyHtml"
                                          :invoice-id="sendRequest.id" :disabled="sending"
@@ -52,6 +59,8 @@ const {
     loading,
     invoice,
     profile,
+    renewalOption,
+    renewalOptionText,
     prepareSendRequest,
     sendInvoice
 } = useInvoiceDetailPageBase();
@@ -99,6 +108,7 @@ function send(): void {
     sendInvoice(sendRequest.value).then(() => {
         sending.value = false;
         hideLoading();
+        invoicesStore.loadAllRecurringInvoices({ force: false }).catch(() => []);
         showToast('Invoice has been sent');
         router.back();
     }).catch(error => {

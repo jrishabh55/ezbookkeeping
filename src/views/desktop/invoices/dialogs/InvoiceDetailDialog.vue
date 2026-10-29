@@ -182,6 +182,13 @@
                               :disabled="sending"
                               :label="tt('To')" :placeholder="tt('Email')"
                               v-model="sendRequest.to" />
+                <template v-if="renewalOption">
+                    <v-alert class="mb-2" type="warning" variant="tonal" density="compact" v-if="renewalOption.mixedPeriods">
+                        {{ tt('These products renew on different periods. Split them into separate invoices to track their renewals.') }}
+                    </v-alert>
+                    <v-checkbox class="mb-2" density="compact" hide-details :disabled="sending"
+                                :label="renewalOptionText" v-model="sendRequest.createRenewal" v-else />
+                </template>
                 <invoice-email-template-form v-if="showSendDialog" :key="sendRequest.id"
                                              v-model:subject="sendRequest.subject" v-model:body="sendRequest.bodyHtml"
                                              :invoice-id="sendRequest.id" :disabled="sending" split
@@ -260,6 +267,8 @@ const {
     shortfallName,
     publicLinkUrl,
     sentOnText,
+    renewalOption,
+    renewalOptionText,
     viewedEmail,
     loadingEmail,
     formatAmount,

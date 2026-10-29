@@ -10,7 +10,8 @@ import { createInvoiceEmailSendRequest } from '@/lib/invoiceEmail.ts';
 import { startDownloadFile } from '@/lib/ui/common.ts';
 
 import type { TextualYearMonthDay } from '@/core/datetime.ts';
-import type { Invoice, InvoiceEmail, InvoicePayment, InvoiceProfile, InvoiceSendRequest } from '@/models/invoice.ts';
+import type { Invoice, InvoiceEmail, InvoicePayment, InvoiceProfile, InvoiceSendRequest, InvoiceRenewalOption } from '@/models/invoice.ts';
+import { RECURRING_INVOICE_MODES, RECURRING_INVOICE_PERIODS } from '@/models/invoice.ts';
 
 import { parseBigDecimal } from '@/lib/numeral.ts';
 import { parseDateTimeFromUnixTimeWithTimezoneOffset, getTimezoneOffsetMinutes } from '@/lib/datetime.ts';
@@ -29,7 +30,7 @@ import {
 import { getInvoiceDisplayStatusName } from './InvoiceListPageBase.ts';
 
 export function useInvoiceDetailPageBase() {
-    const { formatAmountToLocalizedNumeralsWithCurrency, formatGregorianTextualYearMonthDayToLongDate, formatDateTimeToLongDate, formatDateTimeToLongDateTime } = useI18n();
+    const { tt, formatAmountToLocalizedNumeralsWithCurrency, formatGregorianTextualYearMonthDayToLongDate, formatDateTimeToLongDate, formatDateTimeToLongDateTime } = useI18n();
 
     const accountsStore = useAccountsStore();
     const invoicesStore = useInvoicesStore();
@@ -93,9 +94,36 @@ export function useInvoiceDetailPageBase() {
         return [realised, date, accountName, payment.comment].filter(part => !!part).join(' · ');
     }
 
+    // shown in the send form only while no schedule renews this invoice yet
+    const renewalOption = computed<InvoiceRenewalOption | null>(() => {
+        const option = invoice.value?.renewalOption;
+        return option && !option.scheduled ? option : null;
+    });
+
+    const renewalOptionText = computed<string>(() => {
+        const option = renewalOption.value;
+
+        if (!option) {
+            return '';
+        }
+
+        const period = RECURRING_INVOICE_PERIODS.find(item => item.months === option.periodMonths);
+        const mode = RECURRING_INVOICE_MODES.find(item => item.mode === option.mode);
+
+        return tt('format.misc.createRenewal', {
+            period: period ? tt(period.name) : tt('format.misc.everyNMonths', { count: option.periodMonths }),
+            mode: mode ? tt(mode.name) : option.mode
+        });
+    });
+
     // Each compose starts from unresolved saved templates; editing this request never mutates the profile.
     function buildSendRequest(): InvoiceSendRequest {
-        return invoice.value ? createInvoiceEmailSendRequest(invoice.value, profile.value) : { id: '', to: '', subject: '', bodyHtml: '', message: '' };
+        if (!invoice.value) {
+            return { id: '', to: '', subject: '', bodyHtml: '', message: '' };
+        }
+
+        const option = renewalOption.value;
+        return { ...createInvoiceEmailSendRequest(invoice.value, profile.value), createRenewal: !!option && !option.mixedPeriods };
     }
 
     // Preserve the existing public-link creation flow before opening the actual-invoice preview.
@@ -130,6 +158,7 @@ export function useInvoiceDetailPageBase() {
                 invoice.value.publicToken = sent.publicToken;
                 invoice.value.sentUnixTime = sent.sentUnixTime;
                 invoice.value.emails = sent.emails;
+                invoice.value.renewalOption = sent.renewalOption;
             }
 
             return sent;
@@ -198,6 +227,8 @@ export function useInvoiceDetailPageBase() {
         shortfallName,
         publicLinkUrl,
         sentOnText,
+        renewalOption,
+        renewalOptionText,
         // functions
         formatAmount,
         formatDate,
