@@ -31,6 +31,12 @@ const InvoicePaymentSuggestionDaysAfterDue = 60
 // InvoicePaymentSuggestionMaxCount is the maximum number of suggested payments
 const InvoicePaymentSuggestionMaxCount = 10
 
+// InvoiceRenewalDraftDaysDefault is how many days before the renewal date a draft_ahead invoice is created, unless the profile says otherwise
+const InvoiceRenewalDraftDaysDefault = 15
+
+// InvoiceRenewalDraftDaysMax is the largest allowed renewal draft lead time
+const InvoiceRenewalDraftDaysMax = 90
+
 // InvoiceProfile represents the user's own business details printed on every invoice
 type InvoiceProfile struct {
 	EmailSubjectTemplate string `xorm:"VARCHAR(256) NOT NULL DEFAULT ''"`
@@ -50,6 +56,7 @@ type InvoiceProfile struct {
 	CreatedUnixTime      int64
 	UpdatedUnixTime      int64
 	DefaultCurrency      string `xorm:"VARCHAR(3) NOT NULL DEFAULT ''"` // empty means INVOICE_DEFAULT_CURRENCY
+	RenewalDraftDays     int32  `xorm:"NOT NULL DEFAULT 15"`
 }
 
 // Customer represents an invoice customer stored in database
@@ -205,6 +212,7 @@ type InvoiceProfileUpdateRequest struct {
 	Gstin            string `json:"gstin" binding:"max=15"`
 	DefaultSac       string `json:"defaultSac" binding:"max=8"`
 	DefaultCurrency  string `json:"defaultCurrency" binding:"max=3"` // empty means INR; checked against the known currencies by the handler
+	RenewalDraftDays int32  `json:"renewalDraftDays" binding:"min=0,max=90"`
 }
 
 // InvoiceProfileResponse represents a view-object of invoice profile
@@ -223,6 +231,7 @@ type InvoiceProfileResponse struct {
 	Gstin                string `json:"gstin"`
 	DefaultSac           string `json:"defaultSac"`
 	DefaultCurrency      string `json:"defaultCurrency"`
+	RenewalDraftDays     int32  `json:"renewalDraftDays"`
 }
 
 // CustomerCreateRequest represents all parameters of customer creation request
@@ -485,6 +494,7 @@ func (p *InvoiceProfile) ToInvoiceProfileResponse() *InvoiceProfileResponse {
 		Gstin:                p.Gstin,
 		DefaultSac:           p.DefaultSac,
 		DefaultCurrency:      p.DefaultCurrency,
+		RenewalDraftDays:     p.RenewalDraftDays,
 	}
 }
 

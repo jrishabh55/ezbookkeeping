@@ -133,6 +133,7 @@ func (a *InvoicesApi) InvoiceProfileUpdateHandler(c *core.WebContext) (any, *err
 		Gstin:            normalizeTaxId(req.Gstin),
 		DefaultSac:       normalizeTaxId(req.DefaultSac),
 		DefaultCurrency:  defaultCurrency,
+		RenewalDraftDays: req.RenewalDraftDays,
 	}
 
 	if err := a.invoices.SaveBusinessProfile(c, profile); err != nil {

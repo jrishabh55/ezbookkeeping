@@ -94,7 +94,7 @@ func (s *InvoiceService) GetProfile(c core.Context, uid int64) (*models.InvoiceP
 }
 
 func defaultInvoiceProfile(uid int64) *models.InvoiceProfile {
-	return &models.InvoiceProfile{Uid: uid, NumberPrefix: "INV", DefaultTermsDays: 7}
+	return &models.InvoiceProfile{Uid: uid, NumberPrefix: "INV", DefaultTermsDays: 7, RenewalDraftDays: models.InvoiceRenewalDraftDaysDefault}
 }
 
 // SaveProfile creates or updates the invoice profile of user

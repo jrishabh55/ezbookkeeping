@@ -877,3 +877,19 @@ func TestResavingInvoiceRefreshesBillToFromEditedCustomer(t *testing.T) {
 	assert.Equal(t, untouched.Total, regenerated.Total)
 	assert.Len(t, regeneratedLines, len(lines))
 }
+
+func TestInvoiceProfileRenewalDraftDaysDefaultsAndPersists(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+
+	profile, err := Invoices.GetProfile(ctx, uid)
+	assert.Nil(t, err)
+	assert.Equal(t, int32(models.InvoiceRenewalDraftDaysDefault), profile.RenewalDraftDays)
+
+	profile.RenewalDraftDays = 30
+	assert.Nil(t, Invoices.SaveBusinessProfile(ctx, profile))
+
+	reloaded, err := Invoices.GetProfile(ctx, uid)
+	assert.Nil(t, err)
+	assert.Equal(t, int32(30), reloaded.RenewalDraftDays)
+	assert.Equal(t, int32(30), reloaded.ToInvoiceProfileResponse().RenewalDraftDays)
+}
