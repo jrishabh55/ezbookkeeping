@@ -50,6 +50,7 @@
                 <f7-actions-button v-if="!showPaid" @click="showPaid = true">{{ tt('Show Paid Invoices') }}</f7-actions-button>
                 <f7-actions-button v-if="showPaid" @click="showPaid = false">{{ tt('Hide Paid Invoices') }}</f7-actions-button>
                 <f7-actions-button @click="f7router.navigate('/invoice/customer/list')">{{ tt('Customers') }}</f7-actions-button>
+                <f7-actions-button @click="f7router.navigate('/invoice/product/list')">{{ tt('Products') }}</f7-actions-button>
                 <f7-actions-button @click="f7router.navigate('/invoice/profile')">{{ tt('Invoice Profile') }}</f7-actions-button>
                 <f7-actions-button @click="f7router.navigate('/invoice/email_template')">{{ tt('Invoice Email Template') }}</f7-actions-button>
                 <f7-actions-button @click="f7router.navigate('/invoice/recurring/list')">{{ tt('Recurring') }}</f7-actions-button>

@@ -63,6 +63,9 @@ import InvoiceEditPage from '@/views/mobile/invoices/EditPage.vue';
 import InvoiceDetailPage from '@/views/mobile/invoices/DetailPage.vue';
 import InvoiceCustomerListPage from '@/views/mobile/invoices/CustomerListPage.vue';
 import InvoiceCustomerEditPage from '@/views/mobile/invoices/CustomerEditPage.vue';
+import InvoiceProductListPage from '@/views/mobile/invoices/ProductListPage.vue';
+import InvoiceProductEditPage from '@/views/mobile/invoices/ProductEditPage.vue';
+import InvoiceProductLinkPage from '@/views/mobile/invoices/ProductLinkPage.vue';
 import InvoiceProfilePage from '@/views/mobile/invoices/ProfilePage.vue';
 import InvoiceEmailTemplatePage from '@/views/mobile/invoices/EmailTemplatePage.vue';
 import InvoiceRecurringListPage from '@/views/mobile/invoices/RecurringListPage.vue';
@@ -458,6 +461,26 @@ const routes: Router.RouteParameters[] = [
     {
         path: '/invoice/customer/edit',
         async: asyncResolve(InvoiceCustomerEditPage),
+        beforeEnter: [checkLogin]
+    },
+    {
+        path: '/invoice/product/list',
+        async: asyncResolve(InvoiceProductListPage),
+        beforeEnter: [checkLogin]
+    },
+    {
+        path: '/invoice/product/add',
+        async: asyncResolve(InvoiceProductEditPage),
+        beforeEnter: [checkLogin]
+    },
+    {
+        path: '/invoice/product/edit',
+        async: asyncResolve(InvoiceProductEditPage),
+        beforeEnter: [checkLogin]
+    },
+    {
+        path: '/invoice/product/link',
+        async: asyncResolve(InvoiceProductLinkPage),
         beforeEnter: [checkLogin]
     },
     {

@@ -44,6 +44,14 @@
                     <span class="nav-item-title">{{ tt('Recurring') }}</span>
                 </a>
             </li>
+            <li class="nav-link">
+                <a class="d-flex align-center cursor-pointer"
+                   :class="{ 'router-link-active router-link-exact-active': activeView === 'products', 'disabled': loading }"
+                   @click="activeView = 'products'">
+                    <v-icon class="nav-item-icon" :icon="mdiPackageVariantClosed"/>
+                    <span class="nav-item-title">{{ tt('Products') }}</span>
+                </a>
+            </li>
         </template>
 
         <template #content>
@@ -78,6 +86,8 @@
                                                          to="/settings/invoice_profile"></v-list-item>
                                             <v-list-item :prepend-icon="mdiEmailEditOutline" :title="tt('Invoice Email Template')"
                                                          to="/settings/invoice_email_template"></v-list-item>
+                                            <v-list-item :prepend-icon="mdiLinkVariant" :title="tt('Link Past Invoice Lines')"
+                                                         v-if="activeView === 'products'" @click="productLinkDialog?.open()"></v-list-item>
                                         </v-list>
                                     </v-menu>
                                 </v-btn>
@@ -205,6 +215,43 @@
                             </tr>
                             </tbody>
                         </v-table>
+
+                        <v-table class="table-striped" :hover="!loading" v-if="activeView === 'products'">
+                            <thead>
+                            <tr>
+                                <th>{{ tt('Product Name') }}</th>
+                                <th>{{ tt('Renews') }}</th>
+                                <th class="text-right">{{ tt('Default Rate') }}</th>
+                                <th class="text-right">{{ tt('Operation') }}</th>
+                            </tr>
+                            </thead>
+
+                            <tbody v-if="!loading && !allProducts.length">
+                            <tr><td colspan="4">{{ tt('No available product') }}</td></tr>
+                            </tbody>
+
+                            <tbody>
+                            <tr :key="product.id" v-for="product in allProducts"
+                                @mouseover="hoveredProductId = product.id" @mouseleave="hoveredProductId = ''">
+                                <td>
+                                    <span :class="{ 'text-medium-emphasis': product.archived }">{{ product.name }}</span>
+                                    <v-chip class="ms-2" size="x-small" variant="tonal" v-if="product.archived">{{ tt('Archived') }}</v-chip>
+                                </td>
+                                <td>{{ getProductSummary(product) }}</td>
+                                <td class="text-right">{{ formatRate(product) }}</td>
+                                <td class="text-right">
+                                    <template v-if="hoveredProductId === product.id && !loading">
+                                        <v-btn class="px-2" color="default" density="comfortable" variant="text"
+                                               :prepend-icon="mdiPencilOutline" :disabled="loading || updating"
+                                               @click="editProduct(product)">{{ tt('Edit') }}</v-btn>
+                                        <v-btn class="px-2" color="default" density="comfortable" variant="text"
+                                               :prepend-icon="mdiDeleteOutline" :disabled="loading || updating"
+                                               @click="removeProduct(product)">{{ tt('Delete') }}</v-btn>
+                                    </template>
+                                </td>
+                            </tr>
+                            </tbody>
+                        </v-table>
                     </v-card>
                 </v-col>
             </v-row>
@@ -215,6 +262,8 @@
     <invoice-detail-dialog ref="invoiceDetailDialog" />
     <customer-edit-dialog ref="customerEditDialog" />
     <recurring-invoice-edit-dialog ref="recurringInvoiceEditDialog" />
+    <product-edit-dialog ref="productEditDialog" />
+    <product-link-dialog ref="productLinkDialog" />
     <confirm-dialog ref="confirmDialog"/>
     <snack-bar ref="snackbar" />
 </template>
@@ -234,7 +283,9 @@ import {
     mdiFileDocumentEditOutline,
     mdiEmailEditOutline,
     mdiAccountMultipleOutline,
-    mdiRepeat
+    mdiRepeat,
+    mdiPackageVariantClosed,
+    mdiLinkVariant
 } from '@mdi/js';
 
 import ConfirmDialog from '@/components/desktop/ConfirmDialog.vue';
@@ -243,14 +294,18 @@ import InvoiceEditDialog from './dialogs/InvoiceEditDialog.vue';
 import InvoiceDetailDialog from './dialogs/InvoiceDetailDialog.vue';
 import CustomerEditDialog from './dialogs/CustomerEditDialog.vue';
 import RecurringInvoiceEditDialog from './dialogs/RecurringInvoiceEditDialog.vue';
+import ProductEditDialog from './dialogs/ProductEditDialog.vue';
+import ProductLinkDialog from './dialogs/ProductLinkDialog.vue';
 
 import { useI18n } from '@/locales/helpers.ts';
 import { useInvoiceListPageBase } from '@/views/base/invoices/InvoiceListPageBase.ts';
 import { useRecurringInvoiceListPageBase } from '@/views/base/invoices/RecurringInvoiceListPageBase.ts';
+import { useProductEditPageBase } from '@/views/base/invoices/ProductEditPageBase.ts';
 
 import { useInvoicesStore } from '@/stores/invoice.ts';
 
 import type { Customer, Invoice, RecurringInvoice } from '@/models/invoice.ts';
+import type { Product } from '@/models/product.ts';
 
 import { type InvoiceDisplayStatus, getInvoiceDisplayBalanceDue } from '@/lib/invoice.ts';
 
@@ -260,6 +315,8 @@ type InvoiceEditDialogType = InstanceType<typeof InvoiceEditDialog>;
 type InvoiceDetailDialogType = InstanceType<typeof InvoiceDetailDialog>;
 type CustomerEditDialogType = InstanceType<typeof CustomerEditDialog>;
 type RecurringInvoiceEditDialogType = InstanceType<typeof RecurringInvoiceEditDialog>;
+type ProductEditDialogType = InstanceType<typeof ProductEditDialog>;
+type ProductLinkDialogType = InstanceType<typeof ProductLinkDialog>;
 
 const { tt } = useI18n();
 const {
@@ -281,6 +338,7 @@ const {
     getSourceNumber,
     getScheduleText
 } = useRecurringInvoiceListPageBase();
+const { getProductSummary, formatRate } = useProductEditPageBase();
 
 const invoicesStore = useInvoicesStore();
 const route = useRoute();
@@ -292,16 +350,20 @@ const invoiceEditDialog = useTemplateRef<InvoiceEditDialogType>('invoiceEditDial
 const invoiceDetailDialog = useTemplateRef<InvoiceDetailDialogType>('invoiceDetailDialog');
 const customerEditDialog = useTemplateRef<CustomerEditDialogType>('customerEditDialog');
 const recurringInvoiceEditDialog = useTemplateRef<RecurringInvoiceEditDialogType>('recurringInvoiceEditDialog');
+const productEditDialog = useTemplateRef<ProductEditDialogType>('productEditDialog');
+const productLinkDialog = useTemplateRef<ProductLinkDialogType>('productLinkDialog');
 
 const statusColors: Record<InvoiceDisplayStatus, string> = { unpaid: 'warning', partial: 'primary', paid: 'success', overdue: 'error' };
 
-const activeView = ref<'invoices' | 'customers' | 'recurring'>('invoices');
+const activeView = ref<'invoices' | 'customers' | 'recurring' | 'products'>('invoices');
 const updating = ref<boolean>(false);
 const hoveredCustomerId = ref<string>('');
 const hoveredRecurringId = ref<string>('');
+const hoveredProductId = ref<string>('');
 
 const allCustomers = computed<Customer[]>(() => invoicesStore.allCustomers);
-const activeViewTitle = computed<string>(() => activeView.value === 'invoices' ? 'Invoices' : activeView.value === 'customers' ? 'Customers' : 'Recurring');
+const allProducts = computed<Product[]>(() => invoicesStore.allProducts);
+const activeViewTitle = computed<string>(() => activeView.value === 'invoices' ? 'Invoices' : activeView.value === 'customers' ? 'Customers' : activeView.value === 'products' ? 'Products' : 'Recurring');
 
 function reload(force: boolean): void {
     loading.value = true;
@@ -309,7 +371,9 @@ function reload(force: boolean): void {
     Promise.all([
         invoicesStore.loadAllInvoices({ force: force }),
         invoicesStore.loadAllCustomers({ force: force }),
-        invoicesStore.loadAllRecurringInvoices({ force: force })
+        invoicesStore.loadAllRecurringInvoices({ force: force }),
+        invoicesStore.loadAllProducts({ force: force }),
+        invoicesStore.loadInvoiceProfile({ force: false })
     ]).then(() => {
         loading.value = false;
 
@@ -330,6 +394,17 @@ function reload(force: boolean): void {
 function add(): void {
     if (activeView.value === 'customers') {
         customerEditDialog.value?.open({}).then(result => {
+            snackbar.value?.showMessage(result.message);
+        }).catch(error => {
+            if (error && !error.processed) {
+                snackbar.value?.showError(error);
+            }
+        });
+        return;
+    }
+
+    if (activeView.value === 'products') {
+        productEditDialog.value?.open({}).then(result => {
             snackbar.value?.showMessage(result.message);
         }).catch(error => {
             if (error && !error.processed) {
@@ -387,6 +462,32 @@ function removeCustomer(customer: Customer): void {
 
             if (!error.processed) {
                 snackbar.value?.showError(error);
+            }
+        });
+    });
+}
+
+function editProduct(product: Product): void {
+    productEditDialog.value?.open({ id: product.id, currentProduct: product }).then(result => {
+        snackbar.value?.showMessage(result.message);
+    }).catch(error => {
+        if (error && !error.processed) {
+            snackbar.value?.showError(error);
+        }
+    });
+}
+
+function removeProduct(product: Product): void {
+    confirmDialog.value?.open('Are you sure you want to delete this product?').then(() => {
+        updating.value = true;
+
+        invoicesStore.deleteProduct({ product }).then(() => {
+            updating.value = false;
+        }).catch(error => {
+            updating.value = false;
+
+            if (!error.processed) {
+                snackbar.value?.showError(error); // "product is used by invoices, archive it instead"
             }
         });
     });
