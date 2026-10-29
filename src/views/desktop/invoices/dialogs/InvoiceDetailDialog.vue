@@ -42,9 +42,9 @@
                     <v-tooltip activator="parent">{{ tt('Print') }}</v-tooltip>
                 </v-btn>
                 <v-btn density="comfortable" color="default" variant="text" class="ms-1" :icon="true"
-                       :aria-label="tt('Repeat Monthly')" :disabled="!invoice || loading || updating" @click="repeatMonthly">
+                       :aria-label="tt('Repeat')" :disabled="!invoice || loading || updating" @click="repeatMonthly">
                     <v-icon :icon="mdiRepeat" />
-                    <v-tooltip activator="parent">{{ tt('Repeat Monthly') }}</v-tooltip>
+                    <v-tooltip activator="parent">{{ tt('Repeat') }}</v-tooltip>
                 </v-btn>
                 <v-btn density="comfortable" color="default" variant="text" class="ms-1" :icon="true"
                        :aria-label="tt('Share Link')" :disabled="!invoice || loading || updating" @click="share">

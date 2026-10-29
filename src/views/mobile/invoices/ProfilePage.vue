@@ -57,6 +57,9 @@
                 <list-number-input :label="tt('Payment Terms (days)')" :placeholder="tt('Payment Terms (days)')"
                                    :min-value="0" :max-value="365" :max-decimal-count="0"
                                    v-model="newProfile.defaultTermsDays"></list-number-input>
+                <list-number-input :label="tt('Renewal Drafts (days before)')" :placeholder="tt('Renewal Drafts (days before)')"
+                                   :min-value="0" :max-value="90" :max-decimal-count="0"
+                                   v-model="newProfile.renewalDraftDays"></list-number-input>
                 <f7-list-item class="list-item-with-header-and-title list-item-no-item-after" link="#"
                               :header="tt('Default Currency')"
                               @click="showCurrencyPopup = true">

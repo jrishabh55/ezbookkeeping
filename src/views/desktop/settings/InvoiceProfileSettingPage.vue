@@ -89,6 +89,14 @@
                                           v-model="newProfile.defaultTermsDays" />
                         </div>
                         <div class="setting-item">
+                            <span>{{ tt('Renewal Drafts (days before)') }}</span>
+                            <v-spacer/>
+                            <number-input class="ms-4" density="compact" max-width="400px"
+                                          :disabled="loading || saving"
+                                          :min-value="0" :max-value="90" :max-decimal-count="0"
+                                          v-model="newProfile.renewalDraftDays" />
+                        </div>
+                        <div class="setting-item">
                             <span>{{ tt('Default Currency') }}</span>
                             <v-spacer/>
                             <currency-select class="ms-4" density="compact" max-width="400px"

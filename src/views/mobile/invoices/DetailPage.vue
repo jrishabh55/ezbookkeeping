@@ -97,7 +97,7 @@
                 <f7-actions-button @click="regenerate">{{ tt('Regenerate with Current Customer Details') }}</f7-actions-button>
                 <f7-actions-button @click="toggleClosed">{{ invoice?.closedManually ? tt('Reopen') : tt('Mark as Paid') }}</f7-actions-button>
                 <f7-actions-button @click="printInvoice">{{ tt('Print') }}</f7-actions-button>
-                <f7-actions-button @click="showRepeatMonthlyPopup = true">{{ tt('Repeat Monthly') }}</f7-actions-button>
+                <f7-actions-button @click="showRepeatMonthlyPopup = true">{{ tt('Repeat') }}</f7-actions-button>
                 <f7-actions-button @click="share">{{ tt('Share Link') }}</f7-actions-button>
                 <f7-actions-button @click="downloadPdf" :disabled="downloadingPdf">{{ tt('Download PDF') }}</f7-actions-button>
                 <f7-actions-button @click="f7router.navigate(`/invoice/send?id=${invoiceId}`)">{{ tt('Send') }}</f7-actions-button>

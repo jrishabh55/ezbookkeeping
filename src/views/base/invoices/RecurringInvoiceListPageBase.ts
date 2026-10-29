@@ -5,7 +5,7 @@ import { useI18n } from '@/locales/helpers.ts';
 import { useInvoicesStore } from '@/stores/invoice.ts';
 
 import type { TextualYearMonthDay } from '@/core/datetime.ts';
-import type { RecurringInvoice } from '@/models/invoice.ts';
+import { RECURRING_INVOICE_MODES, RECURRING_INVOICE_PERIODS, type RecurringInvoice } from '@/models/invoice.ts';
 
 export function useRecurringInvoiceListPageBase() {
     const { tt, formatGregorianTextualYearMonthDayToLongDate } = useI18n();
@@ -26,6 +26,14 @@ export function useRecurringInvoiceListPageBase() {
         return recurring.sourceInvoiceNumber || tt('Deleted invoice');
     }
 
+    // "Every year · Draft ahead, I send it"
+    function getScheduleText(recurring: RecurringInvoice): string {
+        const period = RECURRING_INVOICE_PERIODS.find(item => item.months === recurring.periodMonths);
+        const mode = RECURRING_INVOICE_MODES.find(item => item.mode === recurring.mode);
+        const periodText = period ? tt(period.name) : tt('format.misc.everyNMonths', { count: recurring.periodMonths });
+        return mode ? `${periodText} · ${tt(mode.name)}` : periodText;
+    }
+
     return {
         // states
         loading,
@@ -34,6 +42,7 @@ export function useRecurringInvoiceListPageBase() {
         noAvailableRecurringInvoice,
         // functions
         formatDate,
-        getSourceNumber
+        getSourceNumber,
+        getScheduleText
     };
 }

@@ -166,6 +166,7 @@
                             <tr>
                                 <th>{{ tt('Customer') }}</th>
                                 <th>{{ tt('Source Invoice') }}</th>
+                                <th>{{ tt('Schedule') }}</th>
                                 <th>{{ tt('Next Date') }}</th>
                                 <th>{{ tt('Enabled') }}</th>
                                 <th class="text-right">{{ tt('Operation') }}</th>
@@ -173,7 +174,7 @@
                             </thead>
 
                             <tbody v-if="!loading && noAvailableRecurringInvoice">
-                            <tr><td colspan="5">{{ tt('No available recurring invoice') }}</td></tr>
+                            <tr><td colspan="6">{{ tt('No available recurring invoice') }}</td></tr>
                             </tbody>
 
                             <tbody>
@@ -184,6 +185,7 @@
                                     <a class="cursor-pointer" @click="viewRecurringSource(recurring)" v-if="recurring.sourceInvoiceNumber">{{ recurring.sourceInvoiceNumber }}</a>
                                     <span class="text-medium-emphasis" v-else>{{ getSourceNumber(recurring) }}</span>
                                 </td>
+                                <td>{{ getScheduleText(recurring) }}</td>
                                 <td>{{ formatDate(recurring.nextDate) }}</td>
                                 <td>
                                     <v-switch density="compact" hide-details color="primary"
@@ -191,6 +193,10 @@
                                               @update:model-value="setRecurringEnabled(recurring, !!$event)" />
                                 </td>
                                 <td class="text-right">
+                                    <v-btn class="px-2" color="default" density="comfortable" variant="text"
+                                           :prepend-icon="mdiPencilOutline" :disabled="loading || updating"
+                                           v-if="hoveredRecurringId === recurring.id && !loading"
+                                           @click="editRecurring(recurring)">{{ tt('Edit') }}</v-btn>
                                     <v-btn class="px-2" color="default" density="comfortable" variant="text"
                                            :prepend-icon="mdiDeleteOutline" :disabled="loading || updating"
                                            v-if="hoveredRecurringId === recurring.id && !loading"
@@ -208,6 +214,7 @@
     <invoice-edit-dialog ref="invoiceEditDialog" />
     <invoice-detail-dialog ref="invoiceDetailDialog" />
     <customer-edit-dialog ref="customerEditDialog" />
+    <recurring-invoice-edit-dialog ref="recurringInvoiceEditDialog" />
     <confirm-dialog ref="confirmDialog"/>
     <snack-bar ref="snackbar" />
 </template>
@@ -235,6 +242,7 @@ import SnackBar from '@/components/desktop/SnackBar.vue';
 import InvoiceEditDialog from './dialogs/InvoiceEditDialog.vue';
 import InvoiceDetailDialog from './dialogs/InvoiceDetailDialog.vue';
 import CustomerEditDialog from './dialogs/CustomerEditDialog.vue';
+import RecurringInvoiceEditDialog from './dialogs/RecurringInvoiceEditDialog.vue';
 
 import { useI18n } from '@/locales/helpers.ts';
 import { useInvoiceListPageBase } from '@/views/base/invoices/InvoiceListPageBase.ts';
@@ -251,6 +259,7 @@ type SnackBarType = InstanceType<typeof SnackBar>;
 type InvoiceEditDialogType = InstanceType<typeof InvoiceEditDialog>;
 type InvoiceDetailDialogType = InstanceType<typeof InvoiceDetailDialog>;
 type CustomerEditDialogType = InstanceType<typeof CustomerEditDialog>;
+type RecurringInvoiceEditDialogType = InstanceType<typeof RecurringInvoiceEditDialog>;
 
 const { tt } = useI18n();
 const {
@@ -269,7 +278,8 @@ const {
 const {
     allRecurringInvoices,
     noAvailableRecurringInvoice,
-    getSourceNumber
+    getSourceNumber,
+    getScheduleText
 } = useRecurringInvoiceListPageBase();
 
 const invoicesStore = useInvoicesStore();
@@ -281,6 +291,7 @@ const snackbar = useTemplateRef<SnackBarType>('snackbar');
 const invoiceEditDialog = useTemplateRef<InvoiceEditDialogType>('invoiceEditDialog');
 const invoiceDetailDialog = useTemplateRef<InvoiceDetailDialogType>('invoiceDetailDialog');
 const customerEditDialog = useTemplateRef<CustomerEditDialogType>('customerEditDialog');
+const recurringInvoiceEditDialog = useTemplateRef<RecurringInvoiceEditDialogType>('recurringInvoiceEditDialog');
 
 const statusColors: Record<InvoiceDisplayStatus, string> = { unpaid: 'warning', partial: 'primary', paid: 'success', overdue: 'error' };
 
@@ -408,6 +419,16 @@ function setRecurringEnabled(recurring: RecurringInvoice, enabled: boolean): voi
         updating.value = false;
 
         if (!error.processed) {
+            snackbar.value?.showError(error);
+        }
+    });
+}
+
+function editRecurring(recurring: RecurringInvoice): void {
+    recurringInvoiceEditDialog.value?.open({ recurring }).then(result => {
+        snackbar.value?.showMessage(result.message);
+    }).catch(error => {
+        if (error && !error.processed) {
             snackbar.value?.showError(error);
         }
     });

@@ -1,7 +1,7 @@
 <template>
     <v-dialog width="480" v-model="showState">
         <one-column-dialog-layout :disabled="submitting" :loading="false"
-                                  :title="tt('Repeat Monthly')" :cancel-button-title="tt('Cancel')"
+                                  :title="tt(title)" :cancel-button-title="tt('Cancel')"
                                   @cancel="cancel">
             <template #content>
                 <v-form class="mt-2">
@@ -18,8 +18,21 @@
                                          :label="tt('First Invoice Date')"
                                          v-model="recurring.nextDate" />
                         </v-col>
+                        <v-col cols="12" md="6">
+                            <v-combobox persistent-placeholder :disabled="submitting"
+                                        :label="tt('Repeat Every')"
+                                        :items="allPeriods" item-title="displayName" item-value="months" :return-object="false"
+                                        :model-value="recurring.periodMonths"
+                                        @update:model-value="recurring.periodMonths = Number($event) || 0" />
+                        </v-col>
+                        <v-col cols="12" md="6">
+                            <v-select persistent-placeholder :disabled="submitting"
+                                      :label="tt('When Due')"
+                                      :items="allModes" item-title="displayName" item-value="mode"
+                                      v-model="recurring.mode" />
+                        </v-col>
                         <v-col cols="12" md="12">
-                            <span class="text-body-medium text-medium-emphasis">{{ tt('A new unpaid invoice is created on this day every month, starting from the first date.') }}</span>
+                            <span class="text-body-medium text-medium-emphasis">{{ tt(modeHelpText) }}</span>
                         </v-col>
                     </v-row>
                 </v-form>
@@ -31,7 +44,7 @@
                     <template v-slot:activator="{ props }">
                         <div v-bind="props" class="d-inline-block">
                             <v-btn :disabled="inputIsEmpty || submitting" @click="save">
-                                {{ tt('Add') }}
+                                {{ tt(saveButtonTitle) }}
                                 <v-progress-circular indeterminate size="22" class="ms-2" v-if="submitting"></v-progress-circular>
                             </v-btn>
                         </div>
@@ -45,7 +58,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, useTemplateRef } from 'vue';
+import { ref, computed, useTemplateRef } from 'vue';
 
 import SnackBar from '@/components/desktop/SnackBar.vue';
 
@@ -66,10 +79,16 @@ interface RecurringInvoiceEditResponse {
 const { tt } = useI18n();
 const {
     submitting,
+    editRecurringId,
     recurring,
+    title,
+    saveButtonTitle,
+    allModes,
+    allPeriods,
     inputEmptyProblemMessage,
     inputIsEmpty,
     initFromInvoice,
+    initFromRecurring,
     setDayOfMonth
 } = useRecurringInvoiceEditPageBase();
 
@@ -82,10 +101,17 @@ let rejectFunc: ((reason?: unknown) => void) | null = null;
 
 const showState = ref<boolean>(false);
 
-function open(options: { invoice: Invoice }): Promise<RecurringInvoiceEditResponse> {
+const modeHelpText = computed(() => recurring.value.mode === 'draft_ahead' ? 'Draft ahead: the invoice is created this many days early (set in Invoice Profile) and waits for you to send it.' : recurring.value.mode === 'auto_send' ? 'Send automatically: the invoice is emailed to the customer on the date.' : 'Create only: the invoice is created on the date and not sent.');
+
+function open(options: { invoice?: Invoice, recurring?: RecurringInvoice }): Promise<RecurringInvoiceEditResponse> {
     showState.value = true;
     submitting.value = false;
-    initFromInvoice(options.invoice);
+
+    if (options.recurring) {
+        initFromRecurring(options.recurring);
+    } else if (options.invoice) {
+        initFromInvoice(options.invoice);
+    }
 
     return new Promise((resolve, reject) => {
         resolveFunc = resolve;
@@ -101,11 +127,14 @@ function save(): void {
         return;
     }
 
+    const isEdit = !!editRecurringId.value;
     submitting.value = true;
 
-    invoicesStore.addRecurringInvoice({ recurring: recurring.value }).then(saved => {
+    const saving = isEdit ? invoicesStore.modifyRecurringInvoice({ recurring: recurring.value }) : invoicesStore.addRecurringInvoice({ recurring: recurring.value });
+
+    saving.then(saved => {
         submitting.value = false;
-        resolveFunc?.({ message: 'You have added a recurring invoice', recurring: saved });
+        resolveFunc?.({ message: isEdit ? 'You have saved this recurring invoice' : 'You have added a recurring invoice', recurring: saved });
         showState.value = false;
     }).catch(error => {
         submitting.value = false;

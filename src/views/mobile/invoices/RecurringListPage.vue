@@ -20,19 +20,22 @@
                           :key="recurring.id"
                           v-for="recurring in allRecurringInvoices">
                 <template #footer>
-                    <div>{{ getSourceNumber(recurring) }} · {{ tt('Next Date') }}: {{ formatDate(recurring.nextDate) }}</div>
+                    <div>{{ getSourceNumber(recurring) }} · {{ getScheduleText(recurring) }} · {{ tt('Next Date') }}: {{ formatDate(recurring.nextDate) }}</div>
                 </template>
                 <template #after>
                     <f7-toggle :checked="recurring.enabled" :disabled="updating" @toggle:change="setEnabled(recurring, $event)"></f7-toggle>
                 </template>
                 <f7-swipeout-actions :left="textDirection === TextDirection.RTL"
                                      :right="textDirection === TextDirection.LTR">
+                    <f7-swipeout-button color="orange" close :text="tt('Edit')" @click="recurringToEdit = recurring; showEditPopup = true"></f7-swipeout-button>
                     <f7-swipeout-button color="red" class="padding-horizontal" :aria-label="tt('Delete')" @click="remove(recurring, false)">
                         <f7-icon f7="trash"></f7-icon>
                     </f7-swipeout-button>
                 </f7-swipeout-actions>
             </f7-list-item>
         </f7-list>
+
+        <recurring-invoice-add-popup :invoice="null" :recurring="recurringToEdit" v-model:show="showEditPopup" />
 
         <f7-actions close-by-outside-click close-on-escape :opened="showDeleteActionSheet" @actions:closed="showDeleteActionSheet = false">
             <f7-actions-group>
@@ -54,6 +57,8 @@ import { useI18n } from '@/locales/helpers.ts';
 import { useI18nUIComponents, showLoading, hideLoading, onSwipeoutDeleted } from '@/lib/ui/mobile.ts';
 import { useRecurringInvoiceListPageBase } from '@/views/base/invoices/RecurringInvoiceListPageBase.ts';
 
+import RecurringInvoiceAddPopup from './RecurringInvoiceAddPopup.vue';
+
 import { useInvoicesStore } from '@/stores/invoice.ts';
 
 import { TextDirection } from '@/core/text.ts';
@@ -71,7 +76,8 @@ const {
     allRecurringInvoices,
     noAvailableRecurringInvoice,
     formatDate,
-    getSourceNumber
+    getSourceNumber,
+    getScheduleText
 } = useRecurringInvoiceListPageBase();
 
 const invoicesStore = useInvoicesStore();
@@ -80,6 +86,8 @@ const loadingError = ref<unknown | null>(null);
 const updating = ref<boolean>(false);
 const recurringToDelete = ref<RecurringInvoice | null>(null);
 const showDeleteActionSheet = ref<boolean>(false);
+const recurringToEdit = ref<RecurringInvoice | null>(null);
+const showEditPopup = ref<boolean>(false);
 
 const textDirection = computed<TextDirection>(() => getCurrentLanguageTextDirection());
 
