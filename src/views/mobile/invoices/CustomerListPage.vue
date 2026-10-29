@@ -21,6 +21,7 @@
                           :id="getCustomerDomId(customer)"
                           :title="customer.name"
                           :footer="customer.contactName"
+                          :link="'/invoice/customer/detail?id=' + customer.id"
                           :key="customer.id"
                           v-for="customer in customers">
                 <f7-swipeout-actions :left="textDirection === TextDirection.RTL"

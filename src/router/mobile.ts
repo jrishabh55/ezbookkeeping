@@ -62,6 +62,7 @@ import InvoiceListPage from '@/views/mobile/invoices/ListPage.vue';
 import InvoiceEditPage from '@/views/mobile/invoices/EditPage.vue';
 import InvoiceDetailPage from '@/views/mobile/invoices/DetailPage.vue';
 import InvoiceCustomerListPage from '@/views/mobile/invoices/CustomerListPage.vue';
+import InvoiceCustomerDetailPage from '@/views/mobile/invoices/CustomerDetailPage.vue';
 import InvoiceCustomerEditPage from '@/views/mobile/invoices/CustomerEditPage.vue';
 import InvoiceProductListPage from '@/views/mobile/invoices/ProductListPage.vue';
 import InvoiceProductEditPage from '@/views/mobile/invoices/ProductEditPage.vue';
@@ -451,6 +452,11 @@ const routes: Router.RouteParameters[] = [
     {
         path: '/invoice/customer/list',
         async: asyncResolve(InvoiceCustomerListPage),
+        beforeEnter: [checkLogin]
+    },
+    {
+        path: '/invoice/customer/detail',
+        async: asyncResolve(InvoiceCustomerDetailPage),
         beforeEnter: [checkLogin]
     },
     {

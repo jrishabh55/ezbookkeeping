@@ -154,7 +154,7 @@
                                 @mouseover="hoveredCustomerId = customer.id" @mouseleave="hoveredCustomerId = ''">
                                 <td>
                                     <div class="d-flex align-center">
-                                        <span>{{ customer.name }}</span>
+                                        <a class="cursor-pointer" @click="viewCustomer(customer)">{{ customer.name }}</a>
                                         <small class="text-medium-emphasis ms-2" v-if="customer.contactName">{{ customer.contactName }}</small>
                                         <v-spacer/>
                                         <template v-if="hoveredCustomerId === customer.id && !loading">
@@ -261,6 +261,7 @@
     <invoice-edit-dialog ref="invoiceEditDialog" />
     <invoice-detail-dialog ref="invoiceDetailDialog" />
     <customer-edit-dialog ref="customerEditDialog" />
+    <customer-detail-dialog ref="customerDetailDialog" />
     <recurring-invoice-edit-dialog ref="recurringInvoiceEditDialog" />
     <product-edit-dialog ref="productEditDialog" />
     <product-link-dialog ref="productLinkDialog" />
@@ -293,6 +294,7 @@ import SnackBar from '@/components/desktop/SnackBar.vue';
 import InvoiceEditDialog from './dialogs/InvoiceEditDialog.vue';
 import InvoiceDetailDialog from './dialogs/InvoiceDetailDialog.vue';
 import CustomerEditDialog from './dialogs/CustomerEditDialog.vue';
+import CustomerDetailDialog from './dialogs/CustomerDetailDialog.vue';
 import RecurringInvoiceEditDialog from './dialogs/RecurringInvoiceEditDialog.vue';
 import ProductEditDialog from './dialogs/ProductEditDialog.vue';
 import ProductLinkDialog from './dialogs/ProductLinkDialog.vue';
@@ -314,6 +316,7 @@ type SnackBarType = InstanceType<typeof SnackBar>;
 type InvoiceEditDialogType = InstanceType<typeof InvoiceEditDialog>;
 type InvoiceDetailDialogType = InstanceType<typeof InvoiceDetailDialog>;
 type CustomerEditDialogType = InstanceType<typeof CustomerEditDialog>;
+type CustomerDetailDialogType = InstanceType<typeof CustomerDetailDialog>;
 type RecurringInvoiceEditDialogType = InstanceType<typeof RecurringInvoiceEditDialog>;
 type ProductEditDialogType = InstanceType<typeof ProductEditDialog>;
 type ProductLinkDialogType = InstanceType<typeof ProductLinkDialog>;
@@ -349,6 +352,7 @@ const snackbar = useTemplateRef<SnackBarType>('snackbar');
 const invoiceEditDialog = useTemplateRef<InvoiceEditDialogType>('invoiceEditDialog');
 const invoiceDetailDialog = useTemplateRef<InvoiceDetailDialogType>('invoiceDetailDialog');
 const customerEditDialog = useTemplateRef<CustomerEditDialogType>('customerEditDialog');
+const customerDetailDialog = useTemplateRef<CustomerDetailDialogType>('customerDetailDialog');
 const recurringInvoiceEditDialog = useTemplateRef<RecurringInvoiceEditDialogType>('recurringInvoiceEditDialog');
 const productEditDialog = useTemplateRef<ProductEditDialogType>('productEditDialog');
 const productLinkDialog = useTemplateRef<ProductLinkDialogType>('productLinkDialog');
@@ -439,6 +443,10 @@ function viewById(invoiceId: string): void {
             snackbar.value?.showError(error);
         }
     });
+}
+
+function viewCustomer(customer: Customer): void {
+    customerDetailDialog.value?.open({ id: customer.id });
 }
 
 function editCustomer(customer: Customer): void {
