@@ -27,4 +27,6 @@ var (
 	ErrRecurringInvoiceIdInvalid         = NewNormalError(NormalSubcategoryInvoice, 40, http.StatusBadRequest, "recurring invoice id is invalid")
 	ErrRecurringInvoiceNotFound          = NewNormalError(NormalSubcategoryInvoice, 41, http.StatusBadRequest, "recurring invoice not found")
 	ErrRecurringInvoiceDayOfMonthInvalid = NewNormalError(NormalSubcategoryInvoice, 42, http.StatusBadRequest, "recurring invoice day of month must be between 1 and 28")
+	ErrRecurringInvoicePeriodInvalid     = NewNormalError(NormalSubcategoryInvoice, 43, http.StatusBadRequest, "recurring invoice period must be between 1 and 120 months")
+	ErrRecurringInvoiceModeInvalid       = NewNormalError(NormalSubcategoryInvoice, 44, http.StatusBadRequest, "recurring invoice mode is invalid")
 )

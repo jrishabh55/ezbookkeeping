@@ -18,16 +18,24 @@ func createTestRecurringInvoice(t *testing.T, uid int64, sourceInvoiceId int64, 
 	return recurring
 }
 
-func TestNextRecurringDateAdvancesOneMonthAcrossYearBoundary(t *testing.T) {
-	next, err := nextRecurringDate("2026-12-15", 15)
+func TestNextRecurringDateAdvancesByPeriod(t *testing.T) {
+	next, err := nextRecurringDate("2026-12-15", 15, 1)
 	assert.Nil(t, err)
 	assert.Equal(t, "2027-01-15", next)
 
-	next, err = nextRecurringDate("2026-01-31", 28)
+	next, err = nextRecurringDate("2026-01-31", 28, 1)
 	assert.Nil(t, err)
 	assert.Equal(t, "2026-02-28", next)
 
-	_, err = nextRecurringDate("2026-13-01", 1)
+	next, err = nextRecurringDate("2026-11-10", 10, 3)
+	assert.Nil(t, err)
+	assert.Equal(t, "2027-02-10", next)
+
+	next, err = nextRecurringDate("2026-03-28", 28, 12)
+	assert.Nil(t, err)
+	assert.Equal(t, "2027-03-28", next)
+
+	_, err = nextRecurringDate("2026-13-01", 1, 1)
 	assert.Equal(t, errs.ErrInvoiceDateInvalid, err)
 }
 
@@ -186,13 +194,57 @@ func TestCreateRecurringInvoicesSkipsDeletedSourceWithoutError(t *testing.T) {
 }
 
 func TestCatchUpRecurringDate(t *testing.T) {
-	// a stale next date moves to the next occurrence of the day of month on or after today
-	assert.Equal(t, "2026-10-15", catchUpRecurringDate("2026-07-15", 15, "2026-10-01"))
-	assert.Equal(t, "2026-10-15", catchUpRecurringDate("2026-07-15", 15, "2026-10-15"))
-	assert.Equal(t, "2026-11-15", catchUpRecurringDate("2026-07-15", 15, "2026-10-16"))
-	assert.Equal(t, "2027-01-05", catchUpRecurringDate("2026-07-05", 5, "2026-12-31"))
+	// monthly: a stale next date moves to the next occurrence of the day of month on or after today
+	assert.Equal(t, "2026-10-15", catchUpRecurringDate("2026-07-15", 15, 1, "2026-10-01"))
+	assert.Equal(t, "2026-10-15", catchUpRecurringDate("2026-07-15", 15, 1, "2026-10-15"))
+	assert.Equal(t, "2026-11-15", catchUpRecurringDate("2026-07-15", 15, 1, "2026-10-16"))
+	assert.Equal(t, "2027-01-05", catchUpRecurringDate("2026-07-05", 5, 1, "2026-12-31"))
 	// a future next date is left alone
-	assert.Equal(t, "2026-12-15", catchUpRecurringDate("2026-12-15", 15, "2026-10-01"))
+	assert.Equal(t, "2026-12-15", catchUpRecurringDate("2026-12-15", 15, 1, "2026-10-01"))
+	// yearly: steps by whole years so the anniversary is kept
+	assert.Equal(t, "2027-03-10", catchUpRecurringDate("2024-03-10", 10, 12, "2026-10-29"))
+	// quarterly
+	assert.Equal(t, "2026-11-01", catchUpRecurringDate("2026-02-01", 1, 3, "2026-10-29"))
+}
+
+func TestRecurringInvoicePeriodAndModeDefaultAndValidate(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	customer := createTestCustomer(t, uid)
+	source := createTestInvoice(t, uid, customer.CustomerId, "INV/2026-27/01", 100)
+
+	// zero values mean today's behaviour
+	recurring := createTestRecurringInvoice(t, uid, source.InvoiceId, 15, "2026-12-15")
+	reloaded, err := Invoices.GetRecurringInvoice(ctx, uid, recurring.RecurringId)
+	assert.Nil(t, err)
+	assert.Equal(t, int32(1), reloaded.PeriodMonths)
+	assert.Equal(t, models.RECURRING_INVOICE_MODE_CREATE, reloaded.Mode)
+
+	err = Invoices.CreateRecurringInvoice(ctx, &models.RecurringInvoice{Uid: uid, SourceInvoiceId: source.InvoiceId, DayOfMonth: 15, NextDate: "2026-12-15", PeriodMonths: 121, Enabled: true})
+	assert.Equal(t, errs.ErrRecurringInvoicePeriodInvalid, err)
+
+	err = Invoices.CreateRecurringInvoice(ctx, &models.RecurringInvoice{Uid: uid, SourceInvoiceId: source.InvoiceId, DayOfMonth: 15, NextDate: "2026-12-15", Mode: "weekly", Enabled: true})
+	assert.Equal(t, errs.ErrRecurringInvoiceModeInvalid, err)
+
+	reloaded.PeriodMonths, reloaded.Mode = 12, models.RECURRING_INVOICE_MODE_AUTO_SEND
+	assert.Nil(t, Invoices.ModifyRecurringInvoice(ctx, reloaded))
+	reloaded, err = Invoices.GetRecurringInvoice(ctx, uid, recurring.RecurringId)
+	assert.Nil(t, err)
+	assert.Equal(t, int32(12), reloaded.PeriodMonths)
+	assert.Equal(t, models.RECURRING_INVOICE_MODE_AUTO_SEND, reloaded.Mode)
+}
+
+func TestCreateRecurringInvoicesAdvancesByPeriod(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	customer := createTestCustomer(t, uid)
+	source := createTestInvoice(t, uid, customer.CustomerId, "INV/2026-27/01", 100)
+	recurring := &models.RecurringInvoice{Uid: uid, SourceInvoiceId: source.InvoiceId, DayOfMonth: 15, NextDate: "2026-12-15", PeriodMonths: 12, Enabled: true}
+	assert.Nil(t, Invoices.CreateRecurringInvoice(ctx, recurring))
+
+	assert.Nil(t, Invoices.CreateRecurringInvoices(ctx, "2026-12-15"))
+
+	reloaded, err := Invoices.GetRecurringInvoice(ctx, uid, recurring.RecurringId)
+	assert.Nil(t, err)
+	assert.Equal(t, "2027-12-15", reloaded.NextDate)
 }
 
 func TestModifyRecurringInvoiceEnablingCatchesUpAStaleNextDate(t *testing.T) {

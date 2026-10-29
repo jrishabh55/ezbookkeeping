@@ -12,40 +12,36 @@ import (
 	"github.com/mayswind/ezbookkeeping/pkg/uuid"
 )
 
-// nextRecurringDate returns dayOfMonth of the month after date; dayOfMonth is at most 28, so every month has it
-func nextRecurringDate(date string, dayOfMonth int32) (string, error) {
+// nextRecurringDate returns dayOfMonth of the month periodMonths after date; dayOfMonth is at most 28, so every month has it
+func nextRecurringDate(date string, dayOfMonth int32, periodMonths int32) (string, error) {
 	t, err := time.Parse(invoiceDateLayout, date)
 
 	if err != nil {
 		return "", errs.ErrInvoiceDateInvalid
 	}
 
-	return time.Date(t.Year(), t.Month()+1, int(dayOfMonth), 0, 0, 0, 0, time.UTC).Format(invoiceDateLayout), nil
+	return time.Date(t.Year(), t.Month()+time.Month(periodMonths), int(dayOfMonth), 0, 0, 0, 0, time.UTC).Format(invoiceDateLayout), nil
 }
 
-// catchUpRecurringDate moves a next date that is already in the past to the next occurrence of the day of month
-// on or after today, so re-enabling a paused row does not back-fill one invoice per missed month
-func catchUpRecurringDate(nextDate string, dayOfMonth int32, today string) string {
-	if nextDate >= today {
-		return nextDate
+// catchUpRecurringDate steps a next date that is already in the past forward by whole periods until it is on or after today,
+// so re-enabling a paused row does not back-fill one invoice per missed period and a yearly row keeps its anniversary
+func catchUpRecurringDate(nextDate string, dayOfMonth int32, periodMonths int32, today string) string {
+	candidate := nextDate
+
+	for candidate < today {
+		next, err := nextRecurringDate(candidate, dayOfMonth, periodMonths)
+
+		if err != nil {
+			return nextDate
+		}
+
+		candidate = next
 	}
 
-	t, err := time.Parse(invoiceDateLayout, today)
-
-	if err != nil {
-		return nextDate
-	}
-
-	candidate := time.Date(t.Year(), t.Month(), int(dayOfMonth), 0, 0, 0, 0, time.UTC)
-
-	if candidate.Before(t) {
-		candidate = time.Date(t.Year(), t.Month()+1, int(dayOfMonth), 0, 0, 0, 0, time.UTC)
-	}
-
-	return candidate.Format(invoiceDateLayout)
+	return candidate
 }
 
-// validateRecurringInvoice checks the day of month and the next date
+// validateRecurringInvoice fills the period and mode defaults (1 month, create) and checks every field
 func validateRecurringInvoice(recurring *models.RecurringInvoice) error {
 	if recurring.DayOfMonth < 1 || recurring.DayOfMonth > models.RecurringInvoiceMaxDayOfMonth {
 		return errs.ErrRecurringInvoiceDayOfMonthInvalid
@@ -53,6 +49,22 @@ func validateRecurringInvoice(recurring *models.RecurringInvoice) error {
 
 	if _, err := time.Parse(invoiceDateLayout, recurring.NextDate); err != nil {
 		return errs.ErrInvoiceDateInvalid
+	}
+
+	if recurring.PeriodMonths == 0 {
+		recurring.PeriodMonths = 1
+	}
+
+	if recurring.PeriodMonths < 1 || recurring.PeriodMonths > models.RecurringInvoiceMaxPeriodMonths {
+		return errs.ErrRecurringInvoicePeriodInvalid
+	}
+
+	if recurring.Mode == "" {
+		recurring.Mode = models.RECURRING_INVOICE_MODE_CREATE
+	}
+
+	if !models.IsValidRecurringInvoiceMode(recurring.Mode) {
+		return errs.ErrRecurringInvoiceModeInvalid
 	}
 
 	return nil
@@ -139,13 +151,13 @@ func (s *InvoiceService) ModifyRecurringInvoice(c core.Context, recurring *model
 	}
 
 	if recurring.Enabled {
-		recurring.NextDate = catchUpRecurringDate(recurring.NextDate, recurring.DayOfMonth, time.Now().Format(invoiceDateLayout))
+		recurring.NextDate = catchUpRecurringDate(recurring.NextDate, recurring.DayOfMonth, recurring.PeriodMonths, time.Now().Format(invoiceDateLayout))
 	}
 
 	recurring.UpdatedUnixTime = time.Now().Unix()
 
 	return s.UserDataDB(recurring.Uid).DoTransaction(c, func(sess *xorm.Session) error {
-		updatedRows, err := sess.Cols("day_of_month", "next_date", "enabled", "updated_unix_time").
+		updatedRows, err := sess.Cols("day_of_month", "next_date", "enabled", "period_months", "mode", "updated_unix_time").
 			Where("uid=? AND deleted=? AND recurring_id=?", recurring.Uid, false, recurring.RecurringId).Update(recurring)
 
 		if err != nil {
@@ -265,7 +277,7 @@ func (s *InvoiceService) createRecurringInvoice(c core.Context, recurring *model
 		lines[idx] = &line
 	}
 
-	nextDate, err := nextRecurringDate(recurring.NextDate, recurring.DayOfMonth)
+	nextDate, err := nextRecurringDate(recurring.NextDate, recurring.DayOfMonth, max(recurring.PeriodMonths, 1))
 
 	if err != nil {
 		return err

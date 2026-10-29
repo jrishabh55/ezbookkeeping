@@ -5,7 +5,22 @@ import "github.com/mayswind/ezbookkeeping/pkg/utils"
 // RecurringInvoiceMaxDayOfMonth is the last day of month a recurring invoice may repeat on, so every month has it
 const RecurringInvoiceMaxDayOfMonth = 28
 
-// RecurringInvoice repeats a source invoice every month; the cron job creates the next invoice once NextDate is reached
+// RecurringInvoiceMaxPeriodMonths is the longest repeat period (10 years)
+const RecurringInvoiceMaxPeriodMonths = 120
+
+// Recurring invoice modes: create the invoice on the date (unsent), create it early as a draft, or create and email it on the date
+const (
+	RECURRING_INVOICE_MODE_CREATE      = "create"
+	RECURRING_INVOICE_MODE_DRAFT_AHEAD = "draft_ahead"
+	RECURRING_INVOICE_MODE_AUTO_SEND   = "auto_send"
+)
+
+// IsValidRecurringInvoiceMode reports whether mode is one of the recurring invoice modes
+func IsValidRecurringInvoiceMode(mode string) bool {
+	return mode == RECURRING_INVOICE_MODE_CREATE || mode == RECURRING_INVOICE_MODE_DRAFT_AHEAD || mode == RECURRING_INVOICE_MODE_AUTO_SEND
+}
+
+// RecurringInvoice repeats a source invoice every PeriodMonths months; the cron job creates the next invoice once NextDate (minus the draft days for draft_ahead) is reached
 type RecurringInvoice struct {
 	RecurringId     int64  `xorm:"PK"`
 	Uid             int64  `xorm:"INDEX(IDX_recurring_invoice_uid_deleted) NOT NULL"`
@@ -16,6 +31,8 @@ type RecurringInvoice struct {
 	NextDate        string `xorm:"VARCHAR(10) INDEX(IDX_recurring_invoice_deleted_enabled_next_date) NOT NULL"`
 	LastInvoiceId   int64  `xorm:"NOT NULL"`
 	LastRunUnixTime int64
+	PeriodMonths    int32  `xorm:"NOT NULL DEFAULT 1"`
+	Mode            string `xorm:"VARCHAR(16) NOT NULL DEFAULT 'create'"`
 	CreatedUnixTime int64
 	UpdatedUnixTime int64
 	DeletedUnixTime int64
@@ -26,14 +43,18 @@ type RecurringInvoiceCreateRequest struct {
 	SourceInvoiceId int64  `json:"sourceInvoiceId,string" binding:"required,min=1"`
 	DayOfMonth      int32  `json:"dayOfMonth" binding:"required,min=1,max=28"`
 	NextDate        string `json:"nextDate" binding:"required,len=10"`
+	PeriodMonths    int32  `json:"periodMonths" binding:"min=0,max=120"` // 0 means 1 (clients before renewals)
+	Mode            string `json:"mode" binding:"max=16"`                // empty means create
 }
 
 // RecurringInvoiceModifyRequest represents all parameters of recurring invoice modification request
 type RecurringInvoiceModifyRequest struct {
-	Id         int64  `json:"id,string" binding:"required,min=1"`
-	DayOfMonth int32  `json:"dayOfMonth" binding:"required,min=1,max=28"`
-	NextDate   string `json:"nextDate" binding:"required,len=10"`
-	Enabled    bool   `json:"enabled"`
+	Id           int64  `json:"id,string" binding:"required,min=1"`
+	DayOfMonth   int32  `json:"dayOfMonth" binding:"required,min=1,max=28"`
+	NextDate     string `json:"nextDate" binding:"required,len=10"`
+	Enabled      bool   `json:"enabled"`
+	PeriodMonths int32  `json:"periodMonths" binding:"min=0,max=120"` // 0 means 1 (clients before renewals)
+	Mode         string `json:"mode" binding:"max=16"`                // empty means create
 }
 
 // RecurringInvoiceResponse represents a view-object of recurring invoice; the source number and customer name
@@ -48,6 +69,8 @@ type RecurringInvoiceResponse struct {
 	Enabled             bool   `json:"enabled"`
 	LastInvoiceId       string `json:"lastInvoiceId"`
 	LastRunUnixTime     int64  `json:"lastRunUnixTime"`
+	PeriodMonths        int32  `json:"periodMonths"`
+	Mode                string `json:"mode"`
 }
 
 // ToRecurringInvoiceResponse returns a view-object according to database model; source may be nil (deleted)
@@ -60,6 +83,8 @@ func (r *RecurringInvoice) ToRecurringInvoiceResponse(source *Invoice) *Recurrin
 		Enabled:         r.Enabled,
 		LastInvoiceId:   utils.Int64ToString(r.LastInvoiceId),
 		LastRunUnixTime: r.LastRunUnixTime,
+		PeriodMonths:    r.PeriodMonths,
+		Mode:            r.Mode,
 	}
 
 	if source != nil {

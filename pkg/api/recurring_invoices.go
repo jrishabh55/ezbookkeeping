@@ -61,7 +61,7 @@ func (a *InvoicesApi) RecurringInvoiceCreateHandler(c *core.WebContext) (any, *e
 	}
 
 	uid := c.GetCurrentUid()
-	recurring := &models.RecurringInvoice{Uid: uid, SourceInvoiceId: req.SourceInvoiceId, DayOfMonth: req.DayOfMonth, NextDate: req.NextDate, Enabled: true}
+	recurring := &models.RecurringInvoice{Uid: uid, SourceInvoiceId: req.SourceInvoiceId, DayOfMonth: req.DayOfMonth, NextDate: req.NextDate, PeriodMonths: req.PeriodMonths, Mode: req.Mode, Enabled: true}
 
 	if err := a.invoices.CreateRecurringInvoice(c, recurring); err != nil {
 		log.Errorf(c, "[recurring_invoices.RecurringInvoiceCreateHandler] failed to create recurring invoice for user \"uid:%d\", because %s", uid, err.Error())
@@ -81,7 +81,7 @@ func (a *InvoicesApi) RecurringInvoiceModifyHandler(c *core.WebContext) (any, *e
 	}
 
 	uid := c.GetCurrentUid()
-	recurring := &models.RecurringInvoice{RecurringId: req.Id, Uid: uid, DayOfMonth: req.DayOfMonth, NextDate: req.NextDate, Enabled: req.Enabled}
+	recurring := &models.RecurringInvoice{RecurringId: req.Id, Uid: uid, DayOfMonth: req.DayOfMonth, NextDate: req.NextDate, PeriodMonths: req.PeriodMonths, Mode: req.Mode, Enabled: req.Enabled}
 
 	if err := a.invoices.ModifyRecurringInvoice(c, recurring); err != nil {
 		log.Errorf(c, "[recurring_invoices.RecurringInvoiceModifyHandler] failed to modify recurring invoice \"id:%d\" for user \"uid:%d\", because %s", req.Id, uid, err.Error())
