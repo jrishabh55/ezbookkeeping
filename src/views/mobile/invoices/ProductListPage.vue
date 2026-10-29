@@ -137,8 +137,13 @@ function remove(product: Product | null, confirm: boolean): void {
     productToDelete.value = null;
     showLoading();
 
-    invoicesStore.deleteProduct({ product: product }).then(() => {
-        onSwipeoutDeleted(getProductDomId(product), () => hideLoading());
+    invoicesStore.deleteProduct({
+        product: product,
+        beforeResolve: (done) => {
+            onSwipeoutDeleted(getProductDomId(product), done);
+        }
+    }).then(() => {
+        hideLoading();
     }).catch(error => {
         hideLoading();
 

@@ -327,9 +327,18 @@ export const useInvoicesStore = defineStore('invoices', () => {
         });
     }
 
-    function deleteProduct({ product }: { product: Product }): Promise<boolean> {
+    function removeProductFromList(productId: string): void {
+        loadProductList(allProducts.value.filter(item => item.id !== productId));
+    }
+
+    function deleteProduct({ product, beforeResolve }: { product: Product, beforeResolve?: (done: () => void) => void }): Promise<boolean> {
         return request(services.deleteProduct({ id: product.id }), 'Unable to delete this product').then(result => {
-            loadProductList(allProducts.value.filter(item => item.id !== product.id));
+            if (beforeResolve) {
+                beforeResolve(() => removeProductFromList(product.id));
+            } else {
+                removeProductFromList(product.id);
+            }
+
             return result;
         });
     }
