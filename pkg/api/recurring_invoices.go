@@ -1,10 +1,13 @@
 package api
 
 import (
+	"time"
+
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/errs"
 	"github.com/mayswind/ezbookkeeping/pkg/log"
 	"github.com/mayswind/ezbookkeeping/pkg/models"
+	"github.com/mayswind/ezbookkeeping/pkg/utils"
 )
 
 // getRecurringInvoiceResponses joins recurring invoices with their source invoices for the number and customer name
@@ -115,6 +118,42 @@ func (a *InvoicesApi) RecurringInvoiceDeleteHandler(c *core.WebContext) (any, *e
 	}
 
 	return true, nil
+}
+
+// InvoiceRenewalListHandler returns the renewals the home card lists for current user
+func (a *InvoicesApi) InvoiceRenewalListHandler(c *core.WebContext) (any, *errs.Error) {
+	uid := c.GetCurrentUid()
+	renewals, err := a.invoices.GetInvoiceRenewals(c, uid, time.Now().Unix())
+
+	if err != nil {
+		log.Errorf(c, "[recurring_invoices.InvoiceRenewalListHandler] failed to get renewals for user \"uid:%d\", because %s", uid, err.Error())
+		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+
+	invoiceIds := make([]int64, len(renewals))
+
+	for idx, renewal := range renewals {
+		invoiceIds[idx] = renewal.Invoice.InvoiceId
+	}
+
+	payments, err := a.invoices.GetInvoicePayments(c, uid, invoiceIds)
+
+	if err != nil {
+		log.Errorf(c, "[recurring_invoices.InvoiceRenewalListHandler] failed to get payments for user \"uid:%d\", because %s", uid, err.Error())
+		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+
+	resps := make([]*models.InvoiceRenewalResponse, len(renewals))
+
+	for idx, renewal := range renewals {
+		resps[idx] = &models.InvoiceRenewalResponse{
+			State:       renewal.State,
+			RecurringId: utils.Int64ToString(renewal.RecurringId),
+			Invoice:     renewal.Invoice.ToInvoiceInfoResponse(nil, payments[renewal.Invoice.InvoiceId]),
+		}
+	}
+
+	return resps, nil
 }
 
 // recurringInvoiceResponse returns one recurring invoice joined with its source invoice

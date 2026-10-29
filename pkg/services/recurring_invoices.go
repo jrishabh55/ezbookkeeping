@@ -258,6 +258,64 @@ func (s *InvoiceService) CreateRecurringInvoices(c core.Context, today string) e
 	return nil
 }
 
+// GetInvoiceRenewals returns the generated invoices the home card lists, soonest invoice date first: unsent draft_ahead
+// invoices (due), unsent auto_send invoices (send failed) and auto_send invoices sent in the last 7 days (auto sent).
+// The schedule's current mode decides the state; create-mode invoices are never listed.
+func (s *InvoiceService) GetInvoiceRenewals(c core.Context, uid int64, nowUnixTime int64) ([]*models.InvoiceRenewal, error) {
+	if uid <= 0 {
+		return nil, errs.ErrUserIdInvalid
+	}
+
+	var invoices []*models.Invoice
+	err := s.UserDataDB(uid).NewSession(c).
+		Where("uid=? AND deleted=? AND recurring_id>? AND closed_manually=? AND (sent_unix_time=? OR sent_unix_time>=?)", uid, false, 0, false, 0, nowUnixTime-models.InvoiceRenewalAutoSentVisibleSeconds).
+		OrderBy("invoice_date asc, number asc").Find(&invoices)
+
+	if err != nil || len(invoices) < 1 {
+		return nil, err
+	}
+
+	recurringIds := make([]int64, 0, len(invoices))
+
+	for _, invoice := range invoices {
+		recurringIds = append(recurringIds, invoice.RecurringId)
+	}
+
+	var recurrings []*models.RecurringInvoice
+	err = s.UserDataDB(uid).NewSession(c).Where("uid=? AND deleted=?", uid, false).In("recurring_id", recurringIds).Find(&recurrings)
+
+	if err != nil {
+		return nil, err
+	}
+
+	modes := make(map[int64]string, len(recurrings))
+
+	for _, recurring := range recurrings {
+		modes[recurring.RecurringId] = recurring.Mode
+	}
+
+	renewals := make([]*models.InvoiceRenewal, 0, len(invoices))
+
+	for _, invoice := range invoices {
+		state := ""
+
+		switch mode := modes[invoice.RecurringId]; {
+		case mode == models.RECURRING_INVOICE_MODE_DRAFT_AHEAD && invoice.SentUnixTime == 0:
+			state = models.INVOICE_RENEWAL_STATE_DUE
+		case mode == models.RECURRING_INVOICE_MODE_AUTO_SEND && invoice.SentUnixTime == 0:
+			state = models.INVOICE_RENEWAL_STATE_SEND_FAILED
+		case mode == models.RECURRING_INVOICE_MODE_AUTO_SEND:
+			state = models.INVOICE_RENEWAL_STATE_AUTO_SENT
+		}
+
+		if state != "" {
+			renewals = append(renewals, &models.InvoiceRenewal{State: state, RecurringId: invoice.RecurringId, Invoice: invoice})
+		}
+	}
+
+	return renewals, nil
+}
+
 // autoSendRecurringInvoice emails a just-created auto_send invoice to its bill-to address with the saved template.
 // A failure only logs: the invoice stays unsent and the home card offers to send it by hand.
 func (s *InvoiceService) autoSendRecurringInvoice(c core.Context, invoice *models.Invoice) {

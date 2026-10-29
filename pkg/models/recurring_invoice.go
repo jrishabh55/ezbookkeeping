@@ -20,6 +20,30 @@ func IsValidRecurringInvoiceMode(mode string) bool {
 	return mode == RECURRING_INVOICE_MODE_CREATE || mode == RECURRING_INVOICE_MODE_DRAFT_AHEAD || mode == RECURRING_INVOICE_MODE_AUTO_SEND
 }
 
+// Renewal states shown on the home card
+const (
+	INVOICE_RENEWAL_STATE_DUE         = "due"         // a draft_ahead invoice waiting to be sent
+	INVOICE_RENEWAL_STATE_SEND_FAILED = "send_failed" // an auto_send invoice that could not be emailed
+	INVOICE_RENEWAL_STATE_AUTO_SENT   = "auto_sent"   // an auto_send invoice emailed in the last few days
+)
+
+// InvoiceRenewalAutoSentVisibleSeconds is how long an auto-sent renewal stays on the home card (7 days)
+const InvoiceRenewalAutoSentVisibleSeconds = 7 * 24 * 3600
+
+// InvoiceRenewal is one generated invoice that needs (or recently got) attention
+type InvoiceRenewal struct {
+	State       string
+	RecurringId int64
+	Invoice     *Invoice
+}
+
+// InvoiceRenewalResponse represents a view-object of a renewal on the home card
+type InvoiceRenewalResponse struct {
+	State       string               `json:"state"`
+	RecurringId string               `json:"recurringId"`
+	Invoice     *InvoiceInfoResponse `json:"invoice"`
+}
+
 // RecurringInvoice repeats a source invoice every PeriodMonths months; the cron job creates the next invoice once NextDate (minus the draft days for draft_ahead) is reached
 type RecurringInvoice struct {
 	RecurringId     int64  `xorm:"PK"`

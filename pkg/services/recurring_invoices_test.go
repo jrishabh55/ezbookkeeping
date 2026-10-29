@@ -417,3 +417,45 @@ func TestAutoSendSmtpFailureKeepsTheUnsentInvoiceAndAdvances(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, int64(0), unsent.SentUnixTime)
 }
+
+func TestGetInvoiceRenewalsClassifiesGeneratedInvoices(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	customer := createTestCustomer(t, uid) // no email: auto-send fails
+	source := createTestInvoice(t, uid, customer.CustomerId, "INV/2026-27/01", 100)
+
+	draftAhead := createTestRenewal(t, uid, source.InvoiceId, "2026-12-15", 12, models.RECURRING_INVOICE_MODE_DRAFT_AHEAD)
+	autoSend := createTestRenewal(t, uid, source.InvoiceId, "2026-12-15", 12, models.RECURRING_INVOICE_MODE_AUTO_SEND)
+	createOnly := createTestRenewal(t, uid, source.InvoiceId, "2026-12-15", 12, models.RECURRING_INVOICE_MODE_CREATE)
+	assert.Nil(t, Invoices.CreateRecurringInvoices(ctx, "2026-12-15"))
+
+	now := time.Now().Unix()
+	renewals, err := Invoices.GetInvoiceRenewals(ctx, uid, now)
+	assert.Nil(t, err)
+	states := map[int64]string{}
+	for _, renewal := range renewals {
+		states[renewal.RecurringId] = renewal.State
+	}
+	assert.Equal(t, models.INVOICE_RENEWAL_STATE_DUE, states[draftAhead.RecurringId])
+	assert.Equal(t, models.INVOICE_RENEWAL_STATE_SEND_FAILED, states[autoSend.RecurringId])
+	_, listed := states[createOnly.RecurringId]
+	assert.False(t, listed)
+
+	// once the failed one is sent it shows as auto sent for 7 days, then disappears
+	reloaded, err := Invoices.GetRecurringInvoice(ctx, uid, autoSend.RecurringId)
+	assert.Nil(t, err)
+	_, err = Invoices.UserDataDB(uid).NewSession(ctx).Cols("sent_unix_time").Where("invoice_id=?", reloaded.LastInvoiceId).Update(&models.Invoice{SentUnixTime: now - 3600})
+	assert.Nil(t, err)
+	renewals, err = Invoices.GetInvoiceRenewals(ctx, uid, now)
+	assert.Nil(t, err)
+	states = map[int64]string{}
+	for _, renewal := range renewals {
+		states[renewal.RecurringId] = renewal.State
+	}
+	assert.Equal(t, models.INVOICE_RENEWAL_STATE_AUTO_SENT, states[autoSend.RecurringId])
+
+	renewals, err = Invoices.GetInvoiceRenewals(ctx, uid, now+8*24*3600)
+	assert.Nil(t, err)
+	for _, renewal := range renewals {
+		assert.NotEqual(t, autoSend.RecurringId, renewal.RecurringId)
+	}
+}
