@@ -80,6 +80,7 @@ func invoiceLinesFromRequest(lineReqs []*models.InvoiceLineRequest) []*models.In
 			Quantity:    lineReq.Quantity,
 			Rate:        lineReq.Rate,
 			Sac:         normalizeTaxId(lineReq.Sac),
+			ProductId:   lineReq.ProductId,
 		}
 	}
 

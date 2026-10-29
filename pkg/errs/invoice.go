@@ -29,4 +29,9 @@ var (
 	ErrRecurringInvoiceDayOfMonthInvalid = NewNormalError(NormalSubcategoryInvoice, 42, http.StatusBadRequest, "recurring invoice day of month must be between 1 and 28")
 	ErrRecurringInvoicePeriodInvalid     = NewNormalError(NormalSubcategoryInvoice, 43, http.StatusBadRequest, "recurring invoice period must be between 1 and 120 months")
 	ErrRecurringInvoiceModeInvalid       = NewNormalError(NormalSubcategoryInvoice, 44, http.StatusBadRequest, "recurring invoice mode is invalid")
+	// products start at 50
+	ErrProductIdInvalid          = NewNormalError(NormalSubcategoryInvoice, 50, http.StatusBadRequest, "product id is invalid")
+	ErrProductNotFound           = NewNormalError(NormalSubcategoryInvoice, 51, http.StatusBadRequest, "product not found")
+	ErrProductInUse              = NewNormalError(NormalSubcategoryInvoice, 52, http.StatusBadRequest, "product is used by invoices, archive it instead")
+	ErrInvoiceLineProductInvalid = NewNormalError(NormalSubcategoryInvoice, 53, http.StatusBadRequest, "invoice line product is invalid")
 )

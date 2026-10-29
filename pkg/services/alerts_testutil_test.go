@@ -58,7 +58,7 @@ func newAlertTestUser(t *testing.T, accountNames ...string) (core.Context, int64
 		}
 		for _, m := range []any{new(models.User), new(models.Account), new(models.Transaction), new(models.TransactionCategory), new(models.TransactionTag),
 			new(models.TransactionTagIndex), new(models.AlertMessage), new(models.TransactionPictureInfo),
-			new(models.InvoiceProfile), new(models.Customer), new(models.Invoice), new(models.InvoiceLine), new(models.InvoicePayment), new(models.InvoiceEmail), new(models.RecurringInvoice)} {
+			new(models.InvoiceProfile), new(models.Customer), new(models.Invoice), new(models.InvoiceLine), new(models.InvoicePayment), new(models.InvoiceEmail), new(models.RecurringInvoice), new(models.Product)} {
 			if err := datastore.Container.UserDataStore.SyncStructs(m); err != nil {
 				t.Fatal(err)
 			}

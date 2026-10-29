@@ -430,6 +430,10 @@ func (s *InvoiceService) prepareInvoice(c core.Context, invoice *models.Invoice,
 		return err
 	}
 
+	if err := s.checkInvoiceLineProducts(c, invoice.Uid, lines); err != nil {
+		return err
+	}
+
 	customer, err := s.GetCustomer(c, invoice.Uid, invoice.CustomerId)
 
 	if err != nil {

@@ -126,7 +126,7 @@ const InvoicePublicTokenLength = 43
 type InvoiceLine struct {
 	LineId       int64  `xorm:"PK"`
 	InvoiceId    int64  `xorm:"INDEX(IDX_invoice_line_invoice_id) NOT NULL"`
-	Uid          int64  `xorm:"NOT NULL"`
+	Uid          int64  `xorm:"INDEX(IDX_invoice_line_uid_product_id) NOT NULL"`
 	DisplayOrder int32  `xorm:"NOT NULL"`
 	ItemName     string `xorm:"VARCHAR(128) NOT NULL"`
 	Description  string `xorm:"VARCHAR(512) NOT NULL"`
@@ -134,6 +134,7 @@ type InvoiceLine struct {
 	Rate         int64  `xorm:"NOT NULL"`
 	Amount       int64  `xorm:"NOT NULL"`
 	Sac          string `xorm:"VARCHAR(8) NOT NULL DEFAULT ''"`
+	ProductId    int64  `xorm:"INDEX(IDX_invoice_line_uid_product_id) NOT NULL DEFAULT 0"`
 }
 
 // InvoicePayment links an existing income transaction to an invoice.
@@ -296,6 +297,7 @@ type InvoiceLineRequest struct {
 	Quantity    int64  `json:"quantity" binding:"required,min=1,max=1000000"` // hundredths: 0.01 to 10,000
 	Rate        int64  `json:"rate" binding:"required,min=1,max=10000000000"`
 	Sac         string `json:"sac" binding:"max=8"`
+	ProductId   int64  `json:"productId,string" binding:"min=0"`
 }
 
 // InvoiceCreateRequest represents all parameters of invoice creation request
@@ -398,6 +400,7 @@ type InvoiceLineResponse struct {
 	Rate        int64  `json:"rate"`
 	Amount      int64  `json:"amount"`
 	Sac         string `json:"sac"`
+	ProductId   string `json:"productId,omitempty"`
 }
 
 // InvoicePaymentResponse represents a view-object of a transaction linked (or suggested) as an invoice payment
@@ -574,6 +577,10 @@ func (i *Invoice) ToInvoiceInfoResponse(lines []*InvoiceLine, payments []*Invoic
 				Rate:        line.Rate,
 				Amount:      line.Amount,
 				Sac:         line.Sac,
+			}
+
+			if line.ProductId > 0 {
+				resp.Lines[idx].ProductId = utils.Int64ToString(line.ProductId)
 			}
 		}
 
