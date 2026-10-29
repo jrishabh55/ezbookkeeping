@@ -15,6 +15,9 @@
                             <v-list-item :title="tt('Billed')" :key="'billed-' + total.currency" v-for="total in billedTotals">
                                 <template #append>{{ formatAmount(total.amount, total.currency) }}</template>
                             </v-list-item>
+                            <v-list-item :title="tt('Paid')" :key="'paid-' + total.currency" v-for="total in paidTotals">
+                                <template #append>{{ formatAmount(total.amount, total.currency) }}</template>
+                            </v-list-item>
                             <v-list-item :title="tt('Outstanding')" :key="'due-' + total.currency" v-for="total in outstandingTotals">
                                 <template #append><span class="font-weight-bold">{{ formatAmount(total.amount, total.currency) }}</span></template>
                             </v-list-item>
@@ -30,6 +33,14 @@
 
                         <v-divider class="my-2" />
                         <div class="text-title-small px-4 py-2">{{ tt('Renewals') }}</div>
+                        <div class="d-flex align-center px-4 pb-2" v-if="invoices.length">
+                            <v-select density="compact" hide-details persistent-placeholder
+                                      item-title="number" item-value="id"
+                                      :label="tt('Invoice')" :placeholder="tt('Invoice')"
+                                      :items="invoices" v-model="invoiceIdToRepeat" />
+                            <v-btn class="ml-2" variant="tonal" :prepend-icon="mdiPlus"
+                                   :disabled="!invoiceIdToRepeat" @click="addRecurring">{{ tt('Add') }}</v-btn>
+                        </div>
                         <v-list density="compact" v-if="recurrings.length">
                             <v-list-item :key="recurring.id" v-for="recurring in recurrings" link
                                          :title="getScheduleText(recurring)"
@@ -74,6 +85,7 @@
 
 <script setup lang="ts">
 import { ref, useTemplateRef } from 'vue';
+import { mdiPlus } from '@mdi/js';
 
 import SnackBar from '@/components/desktop/SnackBar.vue';
 import InvoiceDetailDialog from './InvoiceDetailDialog.vue';
@@ -90,7 +102,7 @@ type InvoiceDetailDialogType = InstanceType<typeof InvoiceDetailDialog>;
 type RecurringInvoiceEditDialogType = InstanceType<typeof RecurringInvoiceEditDialog>;
 
 const { tt } = useI18n();
-const { loading, customer, overview, recurrings, billedTotals, outstandingTotals, load, formatAmount, formatDate, formatTime, getTimelineTitle } = useCustomerDetailPageBase();
+const { loading, customer, overview, invoices, recurrings, billedTotals, paidTotals, outstandingTotals, load, formatAmount, formatDate, formatTime, getTimelineTitle } = useCustomerDetailPageBase();
 const { getScheduleText } = useRecurringInvoiceListPageBase();
 
 const snackbar = useTemplateRef<SnackBarType>('snackbar');
@@ -98,10 +110,12 @@ const invoiceDetailDialog = useTemplateRef<InvoiceDetailDialogType>('invoiceDeta
 const recurringInvoiceEditDialog = useTemplateRef<RecurringInvoiceEditDialogType>('recurringInvoiceEditDialog');
 
 const showState = ref<boolean>(false);
+const invoiceIdToRepeat = ref<string | null>(null);
 let customerId = '';
 
 function open(options: { id: string }): void {
     customerId = options.id;
+    invoiceIdToRepeat.value = null;
     showState.value = true;
     reload();
 }
@@ -129,6 +143,25 @@ function viewInvoice(invoiceId: string): void {
 function editRecurring(recurring: RecurringInvoice): void {
     recurringInvoiceEditDialog.value?.open({ recurring }).then(result => {
         snackbar.value?.showMessage(result.message);
+    }).catch(error => {
+        if (error && !error.processed) {
+            snackbar.value?.showError(error);
+        }
+    });
+}
+
+// a renewal repeats one of this customer's invoices
+function addRecurring(): void {
+    const invoice = invoices.value.find(item => item.id === invoiceIdToRepeat.value);
+
+    if (!invoice) {
+        return;
+    }
+
+    recurringInvoiceEditDialog.value?.open({ invoice }).then(result => {
+        invoiceIdToRepeat.value = null;
+        snackbar.value?.showMessage(result.message);
+        reload();
     }).catch(error => {
         if (error && !error.processed) {
             snackbar.value?.showError(error);

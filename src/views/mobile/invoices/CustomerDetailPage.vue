@@ -13,8 +13,16 @@
         </f7-list>
 
         <template v-if="!loading && customer">
+            <f7-list strong inset dividers class="margin-top-half" v-if="customer.contactName || customer.email || customer.phone || customer.gstin">
+                <f7-list-item :title="tt('Contact Name')" :after="customer.contactName" v-if="customer.contactName"></f7-list-item>
+                <f7-list-item :title="tt('Email')" :after="customer.email" v-if="customer.email"></f7-list-item>
+                <f7-list-item :title="tt('Phone')" :after="customer.phone" v-if="customer.phone"></f7-list-item>
+                <f7-list-item :title="tt('GSTIN')" :after="customer.gstin" v-if="customer.gstin"></f7-list-item>
+            </f7-list>
+
             <f7-list strong inset dividers class="margin-top-half">
                 <f7-list-item :title="tt('Billed')" :after="formatAmount(total.amount, total.currency)" :key="'billed-' + total.currency" v-for="total in billedTotals"></f7-list-item>
+                <f7-list-item :title="tt('Paid')" :after="formatAmount(total.amount, total.currency)" :key="'paid-' + total.currency" v-for="total in paidTotals"></f7-list-item>
                 <f7-list-item :title="tt('Outstanding')" :after="formatAmount(total.amount, total.currency)" :key="'due-' + total.currency" v-for="total in outstandingTotals"></f7-list-item>
             </f7-list>
 
@@ -31,8 +39,22 @@
                 <f7-list-item link="#" :key="recurring.id" v-for="recurring in recurrings"
                               :title="getScheduleText(recurring)" :footer="`${tt('Next Date')}: ${formatDate(recurring.nextDate)}`"
                               :after="recurring.enabled ? '' : tt('Paused')"
-                              @click="recurringToEdit = recurring; showEditPopup = true"></f7-list-item>
+                              @click="editRecurring(recurring)"></f7-list-item>
+                <f7-list-item link="#" no-chevron :title="tt('Add')" @click="showInvoicePopup = true" v-if="invoices.length">
+                    <list-item-selection-popup value-type="item" key-field="id" value-field="id" title-field="number"
+                                               :title="tt('Invoice')" :enable-filter="true"
+                                               :filter-placeholder="tt('Invoice')" :filter-no-items-text="tt('No results')"
+                                               :items="invoices"
+                                               v-model:show="showInvoicePopup"
+                                               :model-value="''"
+                                               @update:model-value="addRecurring"></list-item-selection-popup>
+                </f7-list-item>
             </f7-list>
+
+            <template v-if="customer.notes">
+                <f7-block-title>{{ tt('Internal Notes') }}</f7-block-title>
+                <f7-block strong inset style="white-space: pre-line">{{ customer.notes }}</f7-block>
+            </template>
 
             <f7-block-title>{{ tt('Timeline') }}</f7-block-title>
             <f7-list strong inset dividers>
@@ -44,7 +66,7 @@
             </f7-list>
         </template>
 
-        <recurring-invoice-add-popup :invoice="null" :recurring="recurringToEdit" v-model:show="showEditPopup" />
+        <recurring-invoice-add-popup :invoice="invoiceToRepeat" :recurring="recurringToEdit" v-model:show="showEditPopup" @added="reload()" />
     </f7-page>
 </template>
 
@@ -59,7 +81,7 @@ import { useI18nUIComponents } from '@/lib/ui/mobile.ts';
 import { useCustomerDetailPageBase } from '@/views/base/invoices/CustomerDetailPageBase.ts';
 import { useRecurringInvoiceListPageBase } from '@/views/base/invoices/RecurringInvoiceListPageBase.ts';
 
-import type { RecurringInvoice } from '@/models/invoice.ts';
+import type { Invoice, RecurringInvoice } from '@/models/invoice.ts';
 
 const props = defineProps<{
     f7route: Router.Route;
@@ -68,13 +90,15 @@ const props = defineProps<{
 
 const { tt } = useI18n();
 const { showToast, routeBackOnError } = useI18nUIComponents();
-const { loading, customer, overview, recurrings, billedTotals, outstandingTotals, load, formatAmount, formatDate, formatTime, getTimelineTitle } = useCustomerDetailPageBase();
+const { loading, customer, overview, invoices, recurrings, billedTotals, paidTotals, outstandingTotals, load, formatAmount, formatDate, formatTime, getTimelineTitle } = useCustomerDetailPageBase();
 const { getScheduleText } = useRecurringInvoiceListPageBase();
 
 const customerId = props.f7route.query['id'] ?? '';
 const loadingError = ref<unknown | null>(null);
 const recurringToEdit = ref<RecurringInvoice | null>(null);
+const invoiceToRepeat = ref<Invoice | null>(null);
 const showEditPopup = ref<boolean>(false);
+const showInvoicePopup = ref<boolean>(false);
 
 function reload(done?: () => void): void {
     load(customerId).then(() => done?.()).catch(error => {
@@ -88,6 +112,25 @@ function reload(done?: () => void): void {
             showToast(error.message || error);
         }
     });
+}
+
+function editRecurring(recurring: RecurringInvoice): void {
+    invoiceToRepeat.value = null;
+    recurringToEdit.value = recurring;
+    showEditPopup.value = true;
+}
+
+// a renewal repeats one of this customer's invoices
+function addRecurring(invoiceId: unknown): void {
+    const invoice = invoices.value.find(item => item.id === invoiceId);
+
+    if (!invoice) {
+        return;
+    }
+
+    recurringToEdit.value = null;
+    invoiceToRepeat.value = invoice;
+    showEditPopup.value = true;
 }
 
 function onPageAfterIn(): void {

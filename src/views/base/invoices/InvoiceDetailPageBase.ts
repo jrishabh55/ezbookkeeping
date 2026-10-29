@@ -122,8 +122,9 @@ export function useInvoiceDetailPageBase() {
             return { id: '', to: '', subject: '', bodyHtml: '', message: '' };
         }
 
+        // pre-ticked only on the first send: re-sending an old invoice should not start a schedule unless asked to
         const option = renewalOption.value;
-        return { ...createInvoiceEmailSendRequest(invoice.value, profile.value), createRenewal: !!option && !option.mixedPeriods };
+        return { ...createInvoiceEmailSendRequest(invoice.value, profile.value), createRenewal: !!option && !option.mixedPeriods && invoice.value.sentUnixTime === 0 };
     }
 
     // Preserve the existing public-link creation flow before opening the actual-invoice preview.

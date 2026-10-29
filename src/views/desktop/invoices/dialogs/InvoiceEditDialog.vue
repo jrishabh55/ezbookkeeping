@@ -55,7 +55,15 @@
                                         :hint="getLinkedProductName(line) ? tt('Product') + ': ' + getLinkedProductName(line) : ''"
                                         :persistent-hint="!!getLinkedProductName(line)"
                                         :model-value="line.itemName"
-                                        @update:model-value="onItemChanged(line, $event)" />
+                                        @update:model-value="onItemChanged(line, $event)">
+                                <template #message="{ message }">
+                                    {{ message }}
+                                    <v-btn class="ml-1" density="compact" size="x-small" variant="text" :icon="mdiClose"
+                                           :aria-label="tt('Remove')" :disabled="loading || submitting"
+                                           v-if="getLinkedProductName(line)"
+                                           @click="line.productId = ''" />
+                                </template>
+                            </v-combobox>
                         </v-col>
                         <v-col cols="12" md="3">
                             <v-textarea type="text" autocomplete="off" persistent-placeholder rows="1" auto-grow
@@ -159,7 +167,7 @@
 <script setup lang="ts">
 import { ref, computed, useTemplateRef } from 'vue';
 
-import { mdiPlus, mdiDeleteOutline, mdiAccountPlusOutline } from '@mdi/js';
+import { mdiPlus, mdiClose, mdiDeleteOutline, mdiAccountPlusOutline } from '@mdi/js';
 
 import SnackBar from '@/components/desktop/SnackBar.vue';
 import CustomerEditDialog from './CustomerEditDialog.vue';

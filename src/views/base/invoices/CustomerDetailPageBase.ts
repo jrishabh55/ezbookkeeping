@@ -34,6 +34,17 @@ export function useCustomerDetailPageBase() {
         return [...totals.entries()].map(([currency, amount]) => ({ currency, amount }));
     });
 
+    // what was received against those invoices, one line per currency
+    const paidTotals = computed<InvoiceCurrencyAmount[]>(() => {
+        const totals = new Map<string, number>();
+
+        for (const invoice of invoices.value) {
+            totals.set(invoice.currency, (totals.get(invoice.currency) ?? 0) + invoice.received);
+        }
+
+        return [...totals.entries()].map(([currency, amount]) => ({ currency, amount }));
+    });
+
     const outstandingTotals = computed<InvoiceCurrencyAmount[]>(() => getInvoiceOutstandingByCurrency(invoices.value).filter(total => total.amount > 0));
 
     function load(customerId: string): Promise<void> {
@@ -87,6 +98,7 @@ export function useCustomerDetailPageBase() {
         invoices,
         recurrings,
         billedTotals,
+        paidTotals,
         outstandingTotals,
         // functions
         load,

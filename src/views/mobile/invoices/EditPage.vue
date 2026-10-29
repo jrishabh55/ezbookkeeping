@@ -128,7 +128,7 @@
             <list-item-selection-popup value-type="item" key-field="id" value-field="id" title-field="name"
                                        :title="tt('Product')" :enable-filter="true"
                                        :filter-placeholder="tt('Product')" :filter-no-items-text="tt('No results')"
-                                       :items="allProducts"
+                                       :items="productChoices"
                                        :show="productPopupLineIndex >= 0"
                                        @update:show="productPopupLineIndex = $event ? productPopupLineIndex : -1"
                                        :model-value="productPopupLineIndex >= 0 ? invoice.lines[productPopupLineIndex]?.productId ?? '' : ''"
@@ -237,6 +237,7 @@ const showDueDateSheet = ref<boolean>(false);
 const showTaxTypeSheet = ref<boolean>(false);
 const rateSheetLineIndex = ref<number>(-1);
 const productPopupLineIndex = ref<number>(-1);
+const productChoices = computed<{ id: string, name: string }[]>(() => [{ id: '', name: tt('None') }, ...allProducts.value]);
 const customerIdsBeforeAdding = ref<Set<string> | null>(null);
 
 const selectedCustomerName = computed<string>(() => invoicesStore.allCustomersMap[invoice.value.customerId]?.name ?? tt('None'));
@@ -254,7 +255,9 @@ function onProductPicked(productId: string): void {
     const line = invoice.value.lines[productPopupLineIndex.value];
     const product = invoicesStore.allProductsMap[productId];
 
-    if (line && product) {
+    if (line && !productId) {
+        line.productId = ''; // "None" removes the link and keeps the line as typed
+    } else if (line && product) {
         selectProduct(line, product);
     }
 
