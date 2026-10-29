@@ -115,6 +115,8 @@ type Invoice struct {
 	PublicToken string `xorm:"VARCHAR(43) INDEX(IDX_invoice_public_token) NOT NULL DEFAULT ''"`
 	// when the invoice was last emailed from the app; 0 = never sent
 	SentUnixTime int64 `xorm:"NOT NULL DEFAULT 0"`
+	// RecurringId is the recurring invoice that created this invoice; 0 for invoices made by hand
+	RecurringId int64 `xorm:"INDEX(IDX_invoice_uid_recurring_id) NOT NULL DEFAULT 0"`
 }
 
 // InvoicePublicTokenLength is the length of a public invoice token (32 random bytes, base64url without padding)

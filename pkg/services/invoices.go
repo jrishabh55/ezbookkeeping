@@ -534,6 +534,7 @@ func (s *InvoiceService) prepareNewInvoice(c core.Context, invoice *models.Invoi
 	invoice.ClosedManually = false
 	invoice.PublicToken = ""
 	invoice.SentUnixTime = 0
+	invoice.RecurringId = 0
 	invoice.CreatedUnixTime = time.Now().Unix()
 	invoice.UpdatedUnixTime = invoice.CreatedUnixTime
 	invoice.DeletedUnixTime = 0

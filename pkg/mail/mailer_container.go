@@ -32,6 +32,13 @@ func InitializeMailer(config *settings.Config) error {
 	return nil
 }
 
+// SetMailer replaces the current mailer and returns the previous one; tests use it to capture sent mail
+func (m *MailerContainer) SetMailer(mailer Mailer) Mailer {
+	previous := m.current
+	m.current = mailer
+	return previous
+}
+
 // SendMail sends an email according to argument
 func (m *MailerContainer) SendMail(message *MailMessage) error {
 	if m.current == nil {

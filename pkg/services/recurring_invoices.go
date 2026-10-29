@@ -196,24 +196,61 @@ func (s *InvoiceService) DeleteRecurringInvoice(c core.Context, uid int64, recur
 	})
 }
 
-// CreateRecurringInvoices creates the next invoice of every enabled recurring invoice whose next date is today or earlier.
-// A failing row is logged and left for the next run; it never fails the cron job.
+// CreateRecurringInvoices creates the next invoice of every enabled recurring invoice that is due: on the next date for create
+// and auto_send rows, and up to the profile's renewal draft days earlier for draft_ahead rows. auto_send invoices are emailed
+// to the customer right after they are created. A failing row is logged and left for the next run; it never fails the cron job.
 func (s *InvoiceService) CreateRecurringInvoices(c core.Context, today string) error {
-	if _, err := time.Parse(invoiceDateLayout, today); err != nil {
+	todayTime, err := time.Parse(invoiceDateLayout, today)
+
+	if err != nil {
 		return errs.ErrInvoiceDateInvalid
 	}
 
+	// draft_ahead rows are read up to the longest lead time any user may set, then filtered by their own profile
+	latestDraftDate := todayTime.AddDate(0, 0, models.InvoiceRenewalDraftDaysMax).Format(invoiceDateLayout)
+
 	for i := 0; i < s.UserDataDBCount(); i++ {
 		var recurrings []*models.RecurringInvoice
-		err := s.UserDataDBByIndex(i).NewSession(c).Where("deleted=? AND enabled=? AND next_date<=?", false, true, today).Find(&recurrings)
+		err := s.UserDataDBByIndex(i).NewSession(c).
+			Where("deleted=? AND enabled=? AND (next_date<=? OR (mode=? AND next_date<=?))", false, true, today, models.RECURRING_INVOICE_MODE_DRAFT_AHEAD, latestDraftDate).
+			Find(&recurrings)
 
 		if err != nil {
 			return err
 		}
 
+		draftDaysByUid := make(map[int64]int32)
+
 		for _, recurring := range recurrings {
-			if err := s.createRecurringInvoice(c, recurring); err != nil {
+			if recurring.NextDate > today {
+				draftDays, loaded := draftDaysByUid[recurring.Uid]
+
+				if !loaded {
+					profile, err := s.GetProfile(c, recurring.Uid)
+
+					if err != nil {
+						log.Errorf(c, "[recurring_invoices.CreateRecurringInvoices] failed to get invoice profile of user \"uid:%d\", because %s", recurring.Uid, err.Error())
+						continue
+					}
+
+					draftDays = profile.RenewalDraftDays
+					draftDaysByUid[recurring.Uid] = draftDays
+				}
+
+				if recurring.NextDate > todayTime.AddDate(0, 0, int(draftDays)).Format(invoiceDateLayout) {
+					continue
+				}
+			}
+
+			invoice, err := s.createRecurringInvoice(c, recurring)
+
+			if err != nil {
 				log.Errorf(c, "[recurring_invoices.CreateRecurringInvoices] failed to create invoice for recurring invoice \"id:%d\" of user \"uid:%d\", because %s", recurring.RecurringId, recurring.Uid, err.Error())
+				continue
+			}
+
+			if invoice != nil && recurring.Mode == models.RECURRING_INVOICE_MODE_AUTO_SEND {
+				s.autoSendRecurringInvoice(c, invoice)
 			}
 		}
 	}
@@ -221,15 +258,29 @@ func (s *InvoiceService) CreateRecurringInvoices(c core.Context, today string) e
 	return nil
 }
 
-// createRecurringInvoice creates one invoice from the recurring invoice's source and advances its next date
-func (s *InvoiceService) createRecurringInvoice(c core.Context, recurring *models.RecurringInvoice) error {
+// autoSendRecurringInvoice emails a just-created auto_send invoice to its bill-to address with the saved template.
+// A failure only logs: the invoice stays unsent and the home card offers to send it by hand.
+func (s *InvoiceService) autoSendRecurringInvoice(c core.Context, invoice *models.Invoice) {
+	if invoice.BillToEmail == "" {
+		log.Warnf(c, "[recurring_invoices.autoSendRecurringInvoice] invoice \"id:%d\" of user \"uid:%d\" was not sent, because the customer has no email", invoice.InvoiceId, invoice.Uid)
+		return
+	}
+
+	if err := s.SendInvoiceWithContent(c, invoice.Uid, invoice.InvoiceId, invoice.BillToEmail, "", nil, nil); err != nil {
+		log.Warnf(c, "[recurring_invoices.autoSendRecurringInvoice] failed to send invoice \"id:%d\" of user \"uid:%d\", because %s", invoice.InvoiceId, invoice.Uid, err.Error())
+	}
+}
+
+// createRecurringInvoice creates one invoice from the recurring invoice's source and advances its next date;
+// it returns nil when the source invoice has been deleted
+func (s *InvoiceService) createRecurringInvoice(c core.Context, recurring *models.RecurringInvoice) (*models.Invoice, error) {
 	source, sourceLines, err := s.GetInvoice(c, recurring.Uid, recurring.SourceInvoiceId)
 
 	if err == errs.ErrInvoiceNotFound {
 		log.Warnf(c, "[recurring_invoices.createRecurringInvoice] source invoice \"id:%d\" of recurring invoice \"id:%d\" of user \"uid:%d\" is deleted, skipped", recurring.SourceInvoiceId, recurring.RecurringId, recurring.Uid)
-		return nil
+		return nil, nil
 	} else if err != nil {
-		return err
+		return nil, err
 	}
 
 	// ponytail: CreateInvoice always re-reads the customer for the bill-to snapshot and fails when it is gone,
@@ -238,13 +289,13 @@ func (s *InvoiceService) createRecurringInvoice(c core.Context, recurring *model
 	customer, err := s.GetCustomer(c, recurring.Uid, source.CustomerId)
 
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	profile, err := s.GetProfile(c, recurring.Uid)
 
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	termsDays := profile.DefaultTermsDays
@@ -256,7 +307,7 @@ func (s *InvoiceService) createRecurringInvoice(c core.Context, recurring *model
 	number, err := s.NextInvoiceNumber(c, recurring.Uid, recurring.NextDate)
 
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	invoiceDate, _ := time.Parse(invoiceDateLayout, recurring.NextDate)
@@ -280,12 +331,14 @@ func (s *InvoiceService) createRecurringInvoice(c core.Context, recurring *model
 	nextDate, err := nextRecurringDate(recurring.NextDate, recurring.DayOfMonth, max(recurring.PeriodMonths, 1))
 
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if err := s.prepareNewInvoice(c, &invoice, lines); err != nil {
-		return err
+		return nil, err
 	}
+
+	invoice.RecurringId = recurring.RecurringId
 
 	recurring.LastInvoiceId = invoice.InvoiceId
 	recurring.LastRunUnixTime = time.Now().Unix()
@@ -304,9 +357,9 @@ func (s *InvoiceService) createRecurringInvoice(c core.Context, recurring *model
 	})
 
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	log.Infof(c, "[recurring_invoices.createRecurringInvoice] recurring invoice \"id:%d\" of user \"uid:%d\" has created invoice \"id:%d\" (%s), next date %s", recurring.RecurringId, recurring.Uid, invoice.InvoiceId, invoice.Number, recurring.NextDate)
-	return nil
+	return &invoice, nil
 }

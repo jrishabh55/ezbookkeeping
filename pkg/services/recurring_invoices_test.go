@@ -8,6 +8,7 @@ import (
 
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/errs"
+	"github.com/mayswind/ezbookkeeping/pkg/mail"
 	"github.com/mayswind/ezbookkeeping/pkg/models"
 )
 
@@ -260,4 +261,124 @@ func TestModifyRecurringInvoiceEnablingCatchesUpAStaleNextDate(t *testing.T) {
 	assert.Nil(t, err)
 	assert.True(t, reloaded.NextDate >= time.Now().Format(invoiceDateLayout), reloaded.NextDate)
 	assert.Equal(t, "15", reloaded.NextDate[8:])
+}
+
+type capturingMailer struct {
+	sent []*mail.MailMessage
+}
+
+func (m *capturingMailer) SendMail(message *mail.MailMessage) error {
+	m.sent = append(m.sent, message)
+	return nil
+}
+
+// withCapturingMailer enables SMTP for one test and records every sent mail instead of sending it
+func withCapturingMailer(t *testing.T) *capturingMailer {
+	t.Helper()
+	withSmtpEnabled(t)
+	mailer := &capturingMailer{}
+	previous := mail.Container.SetMailer(mailer)
+	t.Cleanup(func() { mail.Container.SetMailer(previous) })
+	return mailer
+}
+
+func createTestRenewal(t *testing.T, uid int64, sourceInvoiceId int64, nextDate string, periodMonths int32, mode string) *models.RecurringInvoice {
+	t.Helper()
+	recurring := &models.RecurringInvoice{Uid: uid, SourceInvoiceId: sourceInvoiceId, DayOfMonth: 15, NextDate: nextDate, PeriodMonths: periodMonths, Mode: mode, Enabled: true}
+	assert.Nil(t, Invoices.CreateRecurringInvoice(core.NewNullContext(), recurring))
+	return recurring
+}
+
+func TestDraftAheadCreatesOneDraftInsideTheWindow(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	customer := createTestCustomer(t, uid)
+	source := createTestInvoice(t, uid, customer.CustomerId, "INV/2026-27/01", 100)
+	recurring := createTestRenewal(t, uid, source.InvoiceId, "2026-12-15", 12, models.RECURRING_INVOICE_MODE_DRAFT_AHEAD)
+
+	// 16 days before: outside the default 15-day window
+	assert.Nil(t, Invoices.CreateRecurringInvoices(ctx, "2026-11-29"))
+	all, err := Invoices.GetAllInvoices(ctx, uid)
+	assert.Nil(t, err)
+	assert.Equal(t, 1, len(all))
+
+	// exactly 15 days before: the draft is created, dated on the renewal date, and not sent
+	assert.Nil(t, Invoices.CreateRecurringInvoices(ctx, "2026-11-30"))
+	reloaded, err := Invoices.GetRecurringInvoice(ctx, uid, recurring.RecurringId)
+	assert.Nil(t, err)
+	assert.Equal(t, "2027-12-15", reloaded.NextDate)
+
+	draft, _, err := Invoices.GetInvoice(ctx, uid, reloaded.LastInvoiceId)
+	assert.Nil(t, err)
+	assert.Equal(t, "2026-12-15", draft.InvoiceDate)
+	assert.Equal(t, int64(0), draft.SentUnixTime)
+	assert.Equal(t, recurring.RecurringId, draft.RecurringId)
+
+	// the next days of the window do not create another one
+	assert.Nil(t, Invoices.CreateRecurringInvoices(ctx, "2026-12-01"))
+	assert.Nil(t, Invoices.CreateRecurringInvoices(ctx, "2026-12-15"))
+	all, err = Invoices.GetAllInvoices(ctx, uid)
+	assert.Nil(t, err)
+	assert.Equal(t, 2, len(all))
+}
+
+func TestDraftAheadUsesTheProfileDraftDays(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	profile, err := Invoices.GetProfile(ctx, uid)
+	assert.Nil(t, err)
+	profile.RenewalDraftDays = 3
+	assert.Nil(t, Invoices.SaveProfile(ctx, profile))
+	customer := createTestCustomer(t, uid)
+	source := createTestInvoice(t, uid, customer.CustomerId, "INV/2026-27/01", 100)
+	createTestRenewal(t, uid, source.InvoiceId, "2026-12-15", 1, models.RECURRING_INVOICE_MODE_DRAFT_AHEAD)
+
+	assert.Nil(t, Invoices.CreateRecurringInvoices(ctx, "2026-12-11"))
+	all, err := Invoices.GetAllInvoices(ctx, uid)
+	assert.Nil(t, err)
+	assert.Equal(t, 1, len(all))
+
+	assert.Nil(t, Invoices.CreateRecurringInvoices(ctx, "2026-12-12"))
+	all, err = Invoices.GetAllInvoices(ctx, uid)
+	assert.Nil(t, err)
+	assert.Equal(t, 2, len(all))
+}
+
+func TestAutoSendEmailsTheCustomerOnTheDate(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	mailer := withCapturingMailer(t)
+	customer := createTestCustomer(t, uid)
+	customer.Email = "accounts@qubertech.com"
+	assert.Nil(t, Invoices.ModifyCustomer(ctx, customer))
+	source := createTestInvoice(t, uid, customer.CustomerId, "INV/2026-27/01", 100)
+	recurring := createTestRenewal(t, uid, source.InvoiceId, "2026-12-15", 6, models.RECURRING_INVOICE_MODE_AUTO_SEND)
+
+	assert.Nil(t, Invoices.CreateRecurringInvoices(ctx, "2026-12-14"))
+	assert.Equal(t, 0, len(mailer.sent))
+
+	assert.Nil(t, Invoices.CreateRecurringInvoices(ctx, "2026-12-15"))
+	assert.Equal(t, 1, len(mailer.sent))
+	assert.Equal(t, "accounts@qubertech.com", mailer.sent[0].To)
+
+	reloaded, err := Invoices.GetRecurringInvoice(ctx, uid, recurring.RecurringId)
+	assert.Nil(t, err)
+	assert.Equal(t, "2027-06-15", reloaded.NextDate)
+	sent, _, err := Invoices.GetInvoice(ctx, uid, reloaded.LastInvoiceId)
+	assert.Nil(t, err)
+	assert.True(t, sent.SentUnixTime > 0)
+}
+
+func TestAutoSendFailureKeepsTheUnsentInvoiceAndAdvances(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	withCapturingMailer(t)
+	customer := createTestCustomer(t, uid) // no email address
+	source := createTestInvoice(t, uid, customer.CustomerId, "INV/2026-27/01", 100)
+	recurring := createTestRenewal(t, uid, source.InvoiceId, "2026-12-15", 1, models.RECURRING_INVOICE_MODE_AUTO_SEND)
+
+	assert.Nil(t, Invoices.CreateRecurringInvoices(ctx, "2026-12-15"))
+
+	reloaded, err := Invoices.GetRecurringInvoice(ctx, uid, recurring.RecurringId)
+	assert.Nil(t, err)
+	assert.Equal(t, "2027-01-15", reloaded.NextDate)
+	unsent, _, err := Invoices.GetInvoice(ctx, uid, reloaded.LastInvoiceId)
+	assert.Nil(t, err)
+	assert.Equal(t, int64(0), unsent.SentUnixTime)
 }
