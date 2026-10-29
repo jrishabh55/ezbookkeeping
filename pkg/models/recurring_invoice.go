@@ -95,6 +95,7 @@ type RecurringInvoiceResponse struct {
 	Id                  string `json:"id"`
 	SourceInvoiceId     string `json:"sourceInvoiceId"`
 	SourceInvoiceNumber string `json:"sourceInvoiceNumber"`
+	CustomerId          string `json:"customerId"`
 	CustomerName        string `json:"customerName"`
 	DayOfMonth          int32  `json:"dayOfMonth"`
 	NextDate            string `json:"nextDate"`
@@ -121,6 +122,7 @@ func (r *RecurringInvoice) ToRecurringInvoiceResponse(source *Invoice) *Recurrin
 
 	if source != nil {
 		resp.SourceInvoiceNumber = source.Number
+		resp.CustomerId = utils.Int64ToString(source.CustomerId)
 		resp.CustomerName = source.BillToName
 	}
 

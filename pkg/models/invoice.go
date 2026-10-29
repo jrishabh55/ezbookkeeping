@@ -18,6 +18,43 @@ const (
 	INVOICE_TAX_TYPE_CGST_SGST = "cgst_sgst"
 )
 
+// Customer timeline entry kinds
+const (
+	CUSTOMER_TIMELINE_KIND_INVOICE = "invoice"
+	CUSTOMER_TIMELINE_KIND_EMAIL   = "email"
+	CUSTOMER_TIMELINE_KIND_PAYMENT = "payment"
+)
+
+// CustomerTimelineMaxItems is how many of the newest timeline entries the customer page shows
+const CustomerTimelineMaxItems = 200
+
+// CustomerProductResponse is a product the customer has bought, from the product-linked lines of their invoices
+type CustomerProductResponse struct {
+	ProductId      string `json:"productId"`
+	Name           string `json:"name"`
+	TimesBought    int    `json:"timesBought"` // invoices carrying the product
+	LastBoughtDate string `json:"lastBoughtDate"`
+	Archived       bool   `json:"archived"`
+}
+
+// CustomerTimelineItemResponse is one event on the customer page timeline
+type CustomerTimelineItemResponse struct {
+	Kind          string `json:"kind"`
+	UnixTime      int64  `json:"unixTime"`
+	InvoiceId     string `json:"invoiceId"`
+	InvoiceNumber string `json:"invoiceNumber"`
+	Amount        int64  `json:"amount"`
+	Currency      string `json:"currency"`
+	Text          string `json:"text"`    // the email subject for emails
+	Renewal       bool   `json:"renewal"` // the invoice was created by a recurring schedule
+}
+
+// CustomerOverviewResponse is what the customer page shows besides the customer, invoices and recurring invoices it already has
+type CustomerOverviewResponse struct {
+	Products []*CustomerProductResponse      `json:"products"`
+	Timeline []*CustomerTimelineItemResponse `json:"timeline"`
+}
+
 // INVOICE_TAX_RATE_MAX is the largest tax rate in basis points (100%)
 const INVOICE_TAX_RATE_MAX = 10000
 

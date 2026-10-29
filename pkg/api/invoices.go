@@ -239,6 +239,26 @@ func (a *InvoicesApi) CustomerDeleteHandler(c *core.WebContext) (any, *errs.Erro
 	return true, nil
 }
 
+// CustomerOverviewHandler returns the products bought and the timeline of a customer of current user
+func (a *InvoicesApi) CustomerOverviewHandler(c *core.WebContext) (any, *errs.Error) {
+	var req models.InvoiceIdRequest
+
+	if err := c.ShouldBindQuery(&req); err != nil {
+		log.Warnf(c, "[invoices.CustomerOverviewHandler] parse request failed, because %s", err.Error())
+		return nil, errs.NewIncompleteOrIncorrectSubmissionError(err)
+	}
+
+	uid := c.GetCurrentUid()
+	overview, err := a.invoices.GetCustomerOverview(c, uid, req.Id)
+
+	if err != nil {
+		log.Errorf(c, "[invoices.CustomerOverviewHandler] failed to get overview of customer \"id:%d\" for user \"uid:%d\", because %s", req.Id, uid, err.Error())
+		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+
+	return overview, nil
+}
+
 // InvoiceListHandler returns all invoices of current user with received amounts
 func (a *InvoicesApi) InvoiceListHandler(c *core.WebContext) (any, *errs.Error) {
 	uid := c.GetCurrentUid()
