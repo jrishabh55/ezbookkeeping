@@ -1,6 +1,7 @@
 <template>
     <main-page-layout no-navbar>
         <template #content>
+            <renewals-card ref="renewalsCard" />
             <overview-dashboard :layout="layout" :loading="loadingOverview" @refresh="reload" />
         </template>
     </main-page-layout>
@@ -11,6 +12,7 @@
 <script setup lang="ts">
 import SnackBar from '@/components/desktop/SnackBar.vue';
 import OverviewDashboard from './overview/OverviewDashboard.vue';
+import RenewalsCard from './invoices/RenewalsCard.vue';
 
 import { ref, computed, useTemplateRef } from 'vue';
 
@@ -38,6 +40,7 @@ import {
 import logger from '@/lib/logger.ts';
 
 type SnackBarType = InstanceType<typeof SnackBar>;
+type RenewalsCardType = InstanceType<typeof RenewalsCard>;
 
 const settingsStore = useSettingsStore();
 const accountsStore = useAccountsStore();
@@ -45,6 +48,7 @@ const transactionCategoriesStore = useTransactionCategoriesStore();
 const overviewStore = useOverviewStore();
 
 const snackbar = useTemplateRef<SnackBarType>('snackbar');
+const renewalsCard = useTemplateRef<RenewalsCardType>('renewalsCard');
 
 const loadingOverview = ref<boolean>(true);
 
@@ -71,7 +75,8 @@ function reload(force: boolean): void {
     const requirements: PartialRecord<OverviewWidgetDataRequirement, boolean> = getOverviewDataRequirements(layout.value, DESKTOP_OVERVIEW_WIDGET_DEFINITIONS);
     const promises: Promise<unknown>[] = [
         accountsStore.loadAllAccounts({ force: false }),
-        transactionCategoriesStore.loadAllCategories({ force: false })
+        transactionCategoriesStore.loadAllCategories({ force: false }),
+        renewalsCard.value?.load() ?? Promise.resolve()
     ];
 
     if (requirements[OverviewWidgetDataRequirement.TransactionOverview]) {

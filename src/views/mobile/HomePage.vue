@@ -4,6 +4,7 @@
             <f7-nav-title :title="tt('global.app.title')"></f7-nav-title>
         </f7-navbar>
 
+        <renewals-card ref="renewalsCard" />
         <overview-dashboard :layout="layout" :loading="loading" @navigate="onNavigate" />
 
         <f7-toolbar tabbar icons bottom class="main-tabbar">
@@ -70,6 +71,7 @@
 <script setup lang="ts">
 import AIImageRecognitionSheet, { type AIImageRecognitionResult } from '@/components/mobile/AIImageRecognitionSheet.vue';
 import OverviewDashboard from './overview/OverviewDashboard.vue';
+import RenewalsCard from './invoices/RenewalsCard.vue';
 
 import { ref, computed, useTemplateRef } from 'vue';
 import type { Router } from 'framework7/types';
@@ -114,6 +116,7 @@ import {
 import logger from '@/lib/logger.ts';
 
 type AIImageRecognitionSheetType = InstanceType<typeof AIImageRecognitionSheet>;
+type RenewalsCardType = InstanceType<typeof RenewalsCard>;
 
 const props = defineProps<{
     f7router: Router.Router;
@@ -129,6 +132,7 @@ const transactionTemplatesStore = useTransactionTemplatesStore();
 const overviewStore = useOverviewStore();
 
 const aiImageRecognitionSheet = useTemplateRef<AIImageRecognitionSheetType>('aiImageRecognitionSheet');
+const renewalsCard = useTemplateRef<RenewalsCardType>('renewalsCard');
 
 const loading = ref<boolean>(true);
 const showTransactionTemplatePopover = ref<boolean>(false);
@@ -188,6 +192,8 @@ function init(): void {
 function reload(done?: () => void): void {
     const force = !!done;
     const promises: Promise<unknown>[] = reloadOverviewData(force);
+
+    promises.push(renewalsCard.value?.load() ?? Promise.resolve());
 
     if (promises.length < 1) {
         done?.();
