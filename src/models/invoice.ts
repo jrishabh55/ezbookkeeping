@@ -12,6 +12,33 @@ export const INVOICE_TAX_TYPES: { readonly type: InvoiceTaxType, readonly name: 
     { type: 'cgst_sgst', name: 'CGST + SGST' }
 ];
 
+// mirrors models.RECURRING_INVOICE_MODE_* in pkg/models/recurring_invoice.go
+export type RecurringInvoiceMode = 'create' | 'draft_ahead' | 'auto_send';
+
+// the renewal modes with their locale keys, in menu order
+export const RECURRING_INVOICE_MODES: { readonly mode: RecurringInvoiceMode, readonly name: string }[] = [
+    { mode: 'draft_ahead', name: 'Draft ahead, I send it' },
+    { mode: 'auto_send', name: 'Create and send automatically' },
+    { mode: 'create', name: 'Create only' }
+];
+
+// the period choices offered in menus; any 1..120 is accepted by the server
+export const RECURRING_INVOICE_PERIODS: { readonly months: number, readonly name: string }[] = [
+    { months: 1, name: 'Every month' },
+    { months: 3, name: 'Every 3 months' },
+    { months: 6, name: 'Every 6 months' },
+    { months: 12, name: 'Every year' },
+    { months: 24, name: 'Every 2 years' }
+];
+
+// what sending an invoice can start (absent when it has no renewable product)
+export interface InvoiceRenewalOption {
+    readonly periodMonths: number;
+    readonly mode: RecurringInvoiceMode;
+    readonly mixedPeriods: boolean;
+    readonly scheduled: boolean;
+}
+
 export interface InvoiceProfileInfoResponse {
     readonly businessName: string;
     readonly addressLines: string;
@@ -27,6 +54,7 @@ export interface InvoiceProfileInfoResponse {
     readonly defaultCurrency: string; // empty from the server means INR
     readonly emailSubjectTemplate: string;
     readonly emailBodyTemplate: string;
+    readonly renewalDraftDays: number;
 }
 
 export type InvoiceProfileUpdateRequest = Omit<InvoiceProfileInfoResponse, 'emailSubjectTemplate' | 'emailBodyTemplate'> & Partial<Pick<InvoiceProfileInfoResponse, 'emailSubjectTemplate' | 'emailBodyTemplate'>>;
@@ -80,6 +108,7 @@ export interface InvoiceLine {
     rate: number;
     amount: number;
     sac: string;
+    productId: string; // '' = typed by hand
 }
 
 export interface InvoicePayment {
@@ -120,6 +149,7 @@ export interface InvoiceInfoResponse {
     readonly publicToken?: string;
     readonly sentUnixTime?: number; // when the invoice was last emailed; absent = never
     readonly emails?: InvoiceEmail[]; // newest first, without emailHtml
+    readonly renewalOption?: InvoiceRenewalOption | null;
 }
 
 // one email sent for an invoice; emailHtml is only filled when that email is fetched on its own
@@ -138,6 +168,7 @@ export interface InvoiceSendRequest {
     readonly subject: string;
     readonly message: string;
     readonly bodyHtml?: string;
+    readonly createRenewal?: boolean;
 }
 
 export interface InvoiceEmailVariable {
@@ -171,6 +202,7 @@ export interface InvoiceLineRequest {
     readonly quantity: number;
     readonly rate: number;
     readonly sac: string;
+    readonly productId: string;
 }
 
 export interface InvoiceCreateRequest {
@@ -242,6 +274,7 @@ export class InvoiceProfile implements InvoiceProfileInfoResponse {
     public defaultCurrency: string = INVOICE_DEFAULT_CURRENCY;
     public emailSubjectTemplate: string = '';
     public emailBodyTemplate: string = '';
+    public renewalDraftDays: number = 15;
 
     public fillFrom(other: InvoiceProfileInfoResponse): void {
         this.businessName = other.businessName;
@@ -258,6 +291,7 @@ export class InvoiceProfile implements InvoiceProfileInfoResponse {
         this.defaultCurrency = other.defaultCurrency || INVOICE_DEFAULT_CURRENCY; // profiles saved before multi-currency
         this.emailSubjectTemplate = other.emailSubjectTemplate ?? '';
         this.emailBodyTemplate = other.emailBodyTemplate ?? '';
+        this.renewalDraftDays = other.renewalDraftDays ?? 15;
     }
 
     public toUpdateRequest(): InvoiceProfileInfoResponse {
@@ -275,7 +309,8 @@ export class InvoiceProfile implements InvoiceProfileInfoResponse {
             defaultSac: this.defaultSac.trim(),
             defaultCurrency: this.defaultCurrency,
             emailSubjectTemplate: this.emailSubjectTemplate,
-            emailBodyTemplate: this.emailBodyTemplate
+            emailBodyTemplate: this.emailBodyTemplate,
+            renewalDraftDays: this.renewalDraftDays
         };
     }
 
@@ -416,6 +451,7 @@ export class Invoice implements InvoiceInfoResponse {
     public publicToken: string = ''; // empty = no public link
     public sentUnixTime: number = 0; // 0 = never emailed
     public emails: InvoiceEmail[] = [];
+    public renewalOption: InvoiceRenewalOption | null = null;
 
     public fillFrom(other: InvoiceInfoResponse): void {
         this.id = other.id;
@@ -440,11 +476,12 @@ export class Invoice implements InvoiceInfoResponse {
         this.taxAmount = other.taxAmount;
         this.received = other.received;
         this.closedManually = other.closedManually;
-        this.lines = (other.lines ?? []).map(line => ({ ...line }));
+        this.lines = (other.lines ?? []).map(line => ({ ...line, productId: line.productId ?? '' }));
         this.payments = (other.payments ?? []).map(payment => ({ ...payment }));
         this.publicToken = other.publicToken ?? '';
         this.sentUnixTime = other.sentUnixTime ?? 0;
         this.emails = [...(other.emails ?? [])];
+        this.renewalOption = other.renewalOption ?? null;
     }
 
     public toCreateRequest(): InvoiceCreateRequest {
@@ -461,7 +498,8 @@ export class Invoice implements InvoiceInfoResponse {
                 description: line.description,
                 quantity: line.quantity,
                 rate: line.rate,
-                sac: line.sac.trim()
+                sac: line.sac.trim(),
+                productId: line.productId || '0'
             })),
             currency: this.currency
         };
@@ -512,7 +550,7 @@ export class Invoice implements InvoiceInfoResponse {
     }
 
     public static createNewLine(sac: string = ''): InvoiceLine {
-        return { itemName: '', description: '', quantity: 100, rate: 0, amount: 0, sac }; // quantity in hundredths
+        return { itemName: '', description: '', quantity: 100, rate: 0, amount: 0, sac, productId: '' }; // quantity in hundredths
     }
 }
 
@@ -521,17 +559,22 @@ export interface RecurringInvoiceInfoResponse {
     readonly sourceInvoiceId: string;
     readonly sourceInvoiceNumber: string;
     readonly customerName: string;
+    readonly customerId: string;
     readonly dayOfMonth: number;
     readonly nextDate: TextualYearMonthDay;
     readonly enabled: boolean;
     readonly lastInvoiceId: string;
     readonly lastRunUnixTime: number;
+    readonly periodMonths: number;
+    readonly mode: RecurringInvoiceMode;
 }
 
 export interface RecurringInvoiceCreateRequest {
     readonly sourceInvoiceId: string;
     readonly dayOfMonth: number;
     readonly nextDate: string;
+    readonly periodMonths: number;
+    readonly mode: RecurringInvoiceMode;
 }
 
 export interface RecurringInvoiceModifyRequest {
@@ -539,6 +582,8 @@ export interface RecurringInvoiceModifyRequest {
     readonly dayOfMonth: number;
     readonly nextDate: string;
     readonly enabled: boolean;
+    readonly periodMonths: number;
+    readonly mode: RecurringInvoiceMode;
 }
 
 export class RecurringInvoice implements RecurringInvoiceInfoResponse {
@@ -546,29 +591,37 @@ export class RecurringInvoice implements RecurringInvoiceInfoResponse {
     public sourceInvoiceId: string = '';
     public sourceInvoiceNumber: string = '';
     public customerName: string = '';
+    public customerId: string = '';
     public dayOfMonth: number = 1;
     public nextDate: TextualYearMonthDay = '0-0-0';
     public enabled: boolean = true;
     public lastInvoiceId: string = '';
     public lastRunUnixTime: number = 0;
+    public periodMonths: number = 1;
+    public mode: RecurringInvoiceMode = 'create';
 
     public fillFrom(other: RecurringInvoiceInfoResponse): void {
         this.id = other.id;
         this.sourceInvoiceId = other.sourceInvoiceId;
         this.sourceInvoiceNumber = other.sourceInvoiceNumber;
         this.customerName = other.customerName;
+        this.customerId = other.customerId ?? '';
         this.dayOfMonth = other.dayOfMonth;
         this.nextDate = other.nextDate;
         this.enabled = other.enabled;
         this.lastInvoiceId = other.lastInvoiceId;
         this.lastRunUnixTime = other.lastRunUnixTime;
+        this.periodMonths = other.periodMonths || 1;
+        this.mode = other.mode || 'create';
     }
 
     public toCreateRequest(): RecurringInvoiceCreateRequest {
         return {
             sourceInvoiceId: this.sourceInvoiceId,
             dayOfMonth: this.dayOfMonth,
-            nextDate: this.nextDate
+            nextDate: this.nextDate,
+            periodMonths: this.periodMonths,
+            mode: this.mode
         };
     }
 
@@ -577,7 +630,9 @@ export class RecurringInvoice implements RecurringInvoiceInfoResponse {
             id: this.id,
             dayOfMonth: this.dayOfMonth,
             nextDate: this.nextDate,
-            enabled: this.enabled
+            enabled: this.enabled,
+            periodMonths: this.periodMonths,
+            mode: this.mode
         };
     }
 
@@ -603,4 +658,40 @@ export class RecurringInvoice implements RecurringInvoiceInfoResponse {
         recurring.nextDate = nextDate;
         return recurring;
     }
+}
+
+export interface InvoiceRenewalInfoResponse {
+    readonly state: 'due' | 'send_failed' | 'auto_sent';
+    readonly recurringId: string;
+    readonly invoice: InvoiceInfoResponse;
+}
+
+export interface InvoiceRenewal {
+    readonly state: 'due' | 'send_failed' | 'auto_sent';
+    readonly recurringId: string;
+    readonly invoice: Invoice;
+}
+
+export interface CustomerProduct {
+    readonly productId: string;
+    readonly name: string;
+    readonly timesBought: number;
+    readonly lastBoughtDate: TextualYearMonthDay;
+    readonly archived: boolean;
+}
+
+export interface CustomerTimelineItem {
+    readonly kind: 'invoice' | 'email' | 'payment';
+    readonly unixTime: number;
+    readonly invoiceId: string;
+    readonly invoiceNumber: string;
+    readonly amount: number;
+    readonly currency: string;
+    readonly text: string;
+    readonly renewal: boolean;
+}
+
+export interface CustomerOverview {
+    readonly products: CustomerProduct[];
+    readonly timeline: CustomerTimelineItem[];
 }

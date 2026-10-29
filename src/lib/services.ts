@@ -230,8 +230,16 @@ import type {
     RecurringInvoiceModifyRequest,
     InvoicePublicLinkResponse,
     PublicInvoiceResponse,
-    InvoiceSendRequest
+    InvoiceSendRequest,
+    InvoiceRenewalInfoResponse,
+    CustomerOverview
 } from '@/models/invoice.ts';
+import type {
+    ProductInfoResponse,
+    ProductCreateRequest,
+    ProductModifyRequest,
+    InvoiceLineGroup
+} from '@/models/product.ts';
 
 import {
     getCurrentToken,
@@ -1075,6 +1083,9 @@ export default {
     deleteCustomer: ({ id }: { id: string }): ApiResponsePromise<boolean> => {
         return axios.post<ApiResponse<boolean>>('v1/customers/delete.json', { id });
     },
+    getCustomerOverview: ({ id }: { id: string }): ApiResponsePromise<CustomerOverview> => {
+        return axios.get<ApiResponse<CustomerOverview>>('v1/customers/overview.json?id=' + id);
+    },
     getAllInvoices: (): ApiResponsePromise<InvoiceInfoResponse[]> => {
         return axios.get<ApiResponse<InvoiceInfoResponse[]>>('v1/invoices/list.json');
     },
@@ -1122,6 +1133,27 @@ export default {
     },
     deleteRecurringInvoice: ({ id }: { id: string }): ApiResponsePromise<boolean> => {
         return axios.post<ApiResponse<boolean>>('v1/recurring_invoices/delete.json', { id });
+    },
+    getAllProducts: (): ApiResponsePromise<ProductInfoResponse[]> => {
+        return axios.get<ApiResponse<ProductInfoResponse[]>>('v1/products/list.json');
+    },
+    addProduct: (req: ProductCreateRequest): ApiResponsePromise<ProductInfoResponse> => {
+        return axios.post<ApiResponse<ProductInfoResponse>>('v1/products/add.json', req);
+    },
+    modifyProduct: (req: ProductModifyRequest): ApiResponsePromise<ProductInfoResponse> => {
+        return axios.post<ApiResponse<ProductInfoResponse>>('v1/products/modify.json', req);
+    },
+    deleteProduct: ({ id }: { id: string }): ApiResponsePromise<boolean> => {
+        return axios.post<ApiResponse<boolean>>('v1/products/delete.json', { id });
+    },
+    getUnlinkedInvoiceLineGroups: (): ApiResponsePromise<InvoiceLineGroup[]> => {
+        return axios.get<ApiResponse<InvoiceLineGroup[]>>('v1/products/unlinked_lines.json');
+    },
+    linkInvoiceLinesToProduct: (req: { productId: string, itemName: string }): ApiResponsePromise<number> => {
+        return axios.post<ApiResponse<number>>('v1/products/link_lines.json', req);
+    },
+    getInvoiceRenewals: (): ApiResponsePromise<InvoiceRenewalInfoResponse[]> => {
+        return axios.get<ApiResponse<InvoiceRenewalInfoResponse[]>>('v1/invoices/renewals.json');
     },
     updateInvoicePublicLink: (req: { id: string, enabled: boolean }): ApiResponsePromise<InvoicePublicLinkResponse> => {
         return axios.post<ApiResponse<InvoicePublicLinkResponse>>('v1/invoices/public_link/update.json', req);

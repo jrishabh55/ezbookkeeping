@@ -8,11 +8,14 @@ import {
     type InvoiceEmailPreviewRequest,
     type InvoiceEmailPreviewResponse,
     type InvoiceEmailTemplateUpdateRequest,
+    type InvoiceRenewal,
+    type CustomerOverview,
     InvoiceProfile,
     Customer,
     Invoice,
     RecurringInvoice
 } from '@/models/invoice.ts';
+import { type InvoiceLineGroup, Product } from '@/models/product.ts';
 
 import { isEquals } from '@/lib/common.ts';
 import services, { type ApiResponsePromise } from '@/lib/services.ts';
@@ -27,6 +30,8 @@ export const useInvoicesStore = defineStore('invoices', () => {
     const customerListStateInvalid = ref<boolean>(true);
     const invoiceProfile = ref<InvoiceProfile | null>(null);
     const allRecurringInvoices = ref<RecurringInvoice[]>([]);
+    const allProducts = ref<Product[]>([]);
+    const allProductsMap = ref<Record<string, Product>>({});
 
     // unwraps the API envelope and normalises errors exactly like the other stores' inline handlers
     function request<T>(apiRequest: ApiResponsePromise<T>, failedMessage: string): Promise<T> {
@@ -90,6 +95,8 @@ export const useInvoicesStore = defineStore('invoices', () => {
         customerListStateInvalid.value = true;
         invoiceProfile.value = null;
         allRecurringInvoices.value = [];
+        allProducts.value = [];
+        allProductsMap.value = {};
     }
 
     // ponytail: the invoice list is never served from cache, because "received" depends on transactions edited on other pages
@@ -286,6 +293,64 @@ export const useInvoicesStore = defineStore('invoices', () => {
         });
     }
 
+    function loadProductList(products: Product[]): void {
+        allProducts.value = products;
+        allProductsMap.value = {};
+
+        for (const product of products) {
+            allProductsMap.value[product.id] = product;
+        }
+    }
+
+    // ponytail: never cached, the list is small and also changes from other devices
+    function loadAllProducts({ force }: { force?: boolean }): Promise<Product[]> {
+        return request(services.getAllProducts(), 'Unable to retrieve product list').then(result => {
+            const products = Product.ofMulti(result);
+
+            if (force && isEquals(allProducts.value, products)) {
+                return Promise.reject({ message: 'Product list is up to date', isUpToDate: true });
+            }
+
+            loadProductList(products);
+            return products;
+        });
+    }
+
+    function saveProduct({ product, isEdit }: { product: Product, isEdit: boolean }): Promise<Product> {
+        const apiRequest = isEdit ? services.modifyProduct(product.toModifyRequest()) : services.addProduct(product.toCreateRequest());
+
+        return request(apiRequest, isEdit ? 'Unable to save product' : 'Unable to add product').then(result => {
+            const saved = Product.of(result);
+            const others = allProducts.value.filter(item => item.id !== saved.id);
+            loadProductList([...others, saved].sort((a, b) => a.name.localeCompare(b.name)));
+            return saved;
+        });
+    }
+
+    function deleteProduct({ product }: { product: Product }): Promise<boolean> {
+        return request(services.deleteProduct({ id: product.id }), 'Unable to delete this product').then(result => {
+            loadProductList(allProducts.value.filter(item => item.id !== product.id));
+            return result;
+        });
+    }
+
+    function getUnlinkedInvoiceLineGroups(): Promise<InvoiceLineGroup[]> {
+        return request(services.getUnlinkedInvoiceLineGroups(), 'Unable to retrieve invoice lines');
+    }
+
+    function linkInvoiceLinesToProduct({ itemName, productId }: { itemName: string, productId: string }): Promise<number> {
+        return request(services.linkInvoiceLinesToProduct({ itemName, productId }), 'Unable to link invoice lines');
+    }
+
+    function loadInvoiceRenewals(): Promise<InvoiceRenewal[]> {
+        return request(services.getInvoiceRenewals(), 'Unable to retrieve renewals')
+            .then(result => result.map(item => ({ state: item.state, recurringId: item.recurringId, invoice: Invoice.of(item.invoice) })));
+    }
+
+    function getCustomerOverview({ customerId }: { customerId: string }): Promise<CustomerOverview> {
+        return request(services.getCustomerOverview({ id: customerId }), 'Unable to retrieve customer');
+    }
+
     async function getInvoicePdf(invoiceId: string): Promise<Blob> {
         try {
             const response = await services.getInvoicePdf(invoiceId);
@@ -305,6 +370,8 @@ export const useInvoicesStore = defineStore('invoices', () => {
         customerListStateInvalid,
         invoiceProfile,
         allRecurringInvoices,
+        allProducts,
+        allProductsMap,
         // functions
         resetInvoices,
         loadAllInvoices,
@@ -330,6 +397,13 @@ export const useInvoicesStore = defineStore('invoices', () => {
         loadAllRecurringInvoices,
         addRecurringInvoice,
         modifyRecurringInvoice,
-        deleteRecurringInvoice
+        deleteRecurringInvoice,
+        loadAllProducts,
+        saveProduct,
+        deleteProduct,
+        getUnlinkedInvoiceLineGroups,
+        linkInvoiceLinesToProduct,
+        loadInvoiceRenewals,
+        getCustomerOverview
     };
 });
