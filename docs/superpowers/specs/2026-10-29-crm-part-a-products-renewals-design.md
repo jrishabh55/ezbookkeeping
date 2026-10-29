@@ -1,7 +1,7 @@
 # CRM part A: products, renewals and customer view: design
 
 Date: 2026-10-29
-Status: draft, awaiting review
+Status: approved 2026-10-29
 Builds on: `docs/superpowers/specs/2026-10-26-invoicing-extensions-design.md` (recurring invoices, email send, deployed)
 
 ## Context
