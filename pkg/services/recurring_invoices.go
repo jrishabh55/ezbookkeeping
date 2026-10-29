@@ -118,6 +118,12 @@ func (s *InvoiceService) CreateRecurringInvoice(c core.Context, recurring *model
 		return err
 	}
 
+	// a schedule started today never back-fills: the daily job creates one period per run, so a past next date would
+	// produce (and, for auto_send, email) one back-dated invoice per night until it reached today
+	if recurring.Enabled {
+		recurring.NextDate = catchUpRecurringDate(recurring.NextDate, recurring.DayOfMonth, recurring.PeriodMonths, time.Now().Format(invoiceDateLayout))
+	}
+
 	recurring.RecurringId = s.GenerateUuid(uuid.UUID_TYPE_INVOICE)
 
 	if recurring.RecurringId < 1 {
@@ -144,6 +150,23 @@ func (s *InvoiceService) ModifyRecurringInvoice(c core.Context, recurring *model
 
 	if recurring.RecurringId <= 0 {
 		return errs.ErrRecurringInvoiceIdInvalid
+	}
+
+	// an older client sends no period or mode: keep the stored ones instead of resetting them to the create defaults
+	if recurring.PeriodMonths == 0 || recurring.Mode == "" {
+		stored, err := s.GetRecurringInvoice(c, recurring.Uid, recurring.RecurringId)
+
+		if err != nil {
+			return err
+		}
+
+		if recurring.PeriodMonths == 0 {
+			recurring.PeriodMonths = stored.PeriodMonths
+		}
+
+		if recurring.Mode == "" {
+			recurring.Mode = stored.Mode
+		}
 	}
 
 	if err := validateRecurringInvoice(recurring); err != nil {
@@ -336,7 +359,8 @@ func (s *InvoiceService) GetInvoiceRenewalOption(c core.Context, uid int64, invo
 }
 
 // CreateRenewalForInvoice starts the renewal schedule of a sent invoice: every period months on its day of month (capped at 28),
-// first one period after the invoice date. It returns nil when there is nothing to create (no renewable product, mixed periods, already scheduled).
+// first one period after the invoice date, or the first such date on or after today for an older invoice (CreateRecurringInvoice catches up).
+// It returns nil when there is nothing to create (no renewable product, mixed periods, already scheduled).
 func (s *InvoiceService) CreateRenewalForInvoice(c core.Context, uid int64, invoiceId int64) (*models.RecurringInvoice, error) {
 	option, err := s.GetInvoiceRenewalOption(c, uid, invoiceId)
 
@@ -372,8 +396,8 @@ func (s *InvoiceService) CreateRenewalForInvoice(c core.Context, uid int64, invo
 	return recurring, nil
 }
 
-// GetInvoiceRenewals returns the generated invoices the home card lists, soonest invoice date first: unsent draft_ahead
-// invoices (due), unsent auto_send invoices (send failed) and auto_send invoices sent in the last 7 days (auto sent).
+// GetInvoiceRenewals returns the generated invoices the home card lists, soonest invoice date first: unsent, unpaid draft_ahead
+// invoices (due), unsent, unpaid auto_send invoices (send failed) and auto_send invoices sent in the last 7 days (auto sent).
 // The schedule's current mode decides the state; create-mode invoices are never listed.
 func (s *InvoiceService) GetInvoiceRenewals(c core.Context, uid int64, nowUnixTime int64) ([]*models.InvoiceRenewal, error) {
 	if uid <= 0 {
@@ -408,6 +432,18 @@ func (s *InvoiceService) GetInvoiceRenewals(c core.Context, uid int64, nowUnixTi
 		modes[recurring.RecurringId] = recurring.Mode
 	}
 
+	invoiceIds := make([]int64, 0, len(invoices))
+
+	for _, invoice := range invoices {
+		invoiceIds = append(invoiceIds, invoice.InvoiceId)
+	}
+
+	payments, err := s.GetInvoicePayments(c, uid, invoiceIds)
+
+	if err != nil {
+		return nil, err
+	}
+
 	renewals := make([]*models.InvoiceRenewal, 0, len(invoices))
 
 	for _, invoice := range invoices {
@@ -420,6 +456,12 @@ func (s *InvoiceService) GetInvoiceRenewals(c core.Context, uid int64, nowUnixTi
 			state = models.INVOICE_RENEWAL_STATE_SEND_FAILED
 		case mode == models.RECURRING_INVOICE_MODE_AUTO_SEND:
 			state = models.INVOICE_RENEWAL_STATE_AUTO_SENT
+		}
+
+		// an unsent invoice that has been paid in full needs no sending (same paid rule as the rest of the app)
+		if (state == models.INVOICE_RENEWAL_STATE_DUE || state == models.INVOICE_RENEWAL_STATE_SEND_FAILED) &&
+			float64(invoice.Total-models.InvoiceReceivedAmount(payments[invoice.InvoiceId])) <= float64(invoice.Total)*models.InvoicePaidTolerance {
+			continue
 		}
 
 		if state != "" {

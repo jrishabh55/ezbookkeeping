@@ -85,8 +85,8 @@ type RecurringInvoiceModifyRequest struct {
 	DayOfMonth   int32  `json:"dayOfMonth" binding:"required,min=1,max=28"`
 	NextDate     string `json:"nextDate" binding:"required,len=10"`
 	Enabled      bool   `json:"enabled"`
-	PeriodMonths int32  `json:"periodMonths" binding:"min=0,max=120"` // 0 means 1 (clients before renewals)
-	Mode         string `json:"mode" binding:"max=16"`                // empty means create
+	PeriodMonths int32  `json:"periodMonths" binding:"min=0,max=120"` // 0 keeps the stored period (clients before renewals)
+	Mode         string `json:"mode" binding:"max=16"`                // empty keeps the stored mode
 }
 
 // RecurringInvoiceResponse represents a view-object of recurring invoice; the source number and customer name
