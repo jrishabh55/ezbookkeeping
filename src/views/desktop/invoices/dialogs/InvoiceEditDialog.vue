@@ -48,10 +48,14 @@
 
                     <v-row class="mt-2" :key="index" v-for="(line, index) in invoice.lines">
                         <v-col cols="12" md="3">
-                            <v-text-field type="text" autocomplete="off" persistent-placeholder
-                                          :disabled="loading || submitting"
-                                          :label="tt('Item')" :placeholder="tt('Item')"
-                                          v-model="line.itemName" />
+                            <v-combobox autocomplete="off" persistent-placeholder no-filter hide-no-data
+                                        :disabled="loading || submitting"
+                                        :label="tt('Item')" :placeholder="tt('Item')"
+                                        :items="getProductSuggestions(line.itemName)" item-title="name"
+                                        :hint="getLinkedProductName(line) ? tt('Product') + ': ' + getLinkedProductName(line) : ''"
+                                        :persistent-hint="!!getLinkedProductName(line)"
+                                        :model-value="line.itemName"
+                                        @update:model-value="onItemChanged(line, $event)" />
                         </v-col>
                         <v-col cols="12" md="3">
                             <v-textarea type="text" autocomplete="off" persistent-placeholder rows="1" auto-grow
@@ -166,7 +170,8 @@ import { useInvoiceEditPageBase } from '@/views/base/invoices/InvoiceEditPageBas
 import { useInvoicesStore } from '@/stores/invoice.ts';
 
 import type { TextualYearMonthDay } from '@/core/datetime.ts';
-import { type InvoiceProfile, Invoice } from '@/models/invoice.ts';
+import { type InvoiceProfile, type InvoiceLine, Invoice } from '@/models/invoice.ts';
+import type { Product } from '@/models/product.ts';
 
 import { isEquals } from '@/lib/common.ts';
 import { INVOICE_QUANTITY_SCALE } from '@/lib/invoice.ts';
@@ -195,6 +200,9 @@ const {
     allTaxTypes,
     taxRatePercent,
     addLine,
+    getProductSuggestions,
+    selectProduct,
+    getLinkedProductName,
     removeLine,
     setInvoice,
     prepareNewInvoice,
@@ -242,8 +250,9 @@ function open(options: { id?: string, currentInvoice?: Invoice, duplicateFrom?: 
     Promise.all([
         invoicesStore.loadAllCustomers({ force: false }),
         invoicesStore.loadInvoiceProfile({ force: false }),
+        invoicesStore.loadAllProducts({ force: false }).catch(() => []),
         options.id ? invoicesStore.getInvoice({ invoiceId: options.id }) : Promise.resolve(null)
-    ]).then(([, loadedProfile, loadedInvoice]) => {
+    ]).then(([, loadedProfile, , loadedInvoice]) => {
         profile.value = loadedProfile;
 
         if (loadedInvoice) {
@@ -279,6 +288,15 @@ function onInvoiceDateChanged(date: TextualYearMonthDay | ''): void {
 
     if (!editInvoiceId.value) {
         suggestNumber();
+    }
+}
+
+// a picked suggestion fills the line from the product; typing keeps any product link (the text may be edited freely)
+function onItemChanged(line: InvoiceLine, value: string | Product | null): void {
+    if (value && typeof value === 'object') {
+        selectProduct(line, value);
+    } else {
+        line.itemName = value ?? '';
     }
 }
 

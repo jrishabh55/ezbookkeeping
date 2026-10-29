@@ -5,10 +5,12 @@ import { useI18n } from '@/locales/helpers.ts';
 import { useInvoicesStore } from '@/stores/invoice.ts';
 
 import type { TextualYearMonthDay } from '@/core/datetime.ts';
-import { type Customer, type InvoiceProfile, type InvoiceTaxType, Invoice, INVOICE_TAX_TYPES } from '@/models/invoice.ts';
+import { type Customer, type InvoiceProfile, type InvoiceTaxType, type InvoiceLine, Invoice, INVOICE_TAX_TYPES } from '@/models/invoice.ts';
+import type { Product } from '@/models/product.ts';
 
 import { parseBigDecimal } from '@/lib/numeral.ts';
 import { type InvoiceTotals, INVOICE_DEFAULT_CURRENCY, computeInvoiceTotals, getInvoiceTaxRows, formatInvoiceTaxRate, addDaysToDate, getDaysBetweenDates, getTodayTextualDate } from '@/lib/invoice.ts';
+import { filterProductSuggestions, applyProductToLine } from '@/lib/product.ts';
 
 export function useInvoiceEditPageBase() {
     const { tt, formatAmountToLocalizedNumeralsWithCurrency, formatGregorianTextualYearMonthDayToLongDate } = useI18n();
@@ -24,6 +26,7 @@ export function useInvoiceEditPageBase() {
     const profileDefaultSac = ref<string>('');
 
     const allCustomers = computed<Customer[]>(() => invoicesStore.allCustomers);
+    const allProducts = computed<Product[]>(() => invoicesStore.allProducts.filter(product => !product.archived));
 
     const title = computed<string>(() => editInvoiceId.value ? 'Edit Invoice' : 'Add Invoice');
     const saveButtonTitle = computed<string>(() => editInvoiceId.value ? 'Save' : 'Add');
@@ -73,6 +76,19 @@ export function useInvoiceEditPageBase() {
 
     function addLine(): void {
         invoice.value.lines.push(Invoice.createNewLine(profileDefaultSac.value));
+    }
+
+    function getProductSuggestions(query: string): Product[] {
+        return filterProductSuggestions(invoicesStore.allProducts, query);
+    }
+
+    function selectProduct(line: InvoiceLine, product: Product): void {
+        applyProductToLine(line, product);
+    }
+
+    // the catalog name of a line's product, also for archived products; '' when typed by hand
+    function getLinkedProductName(line: InvoiceLine): string {
+        return line.productId ? invoicesStore.allProductsMap[line.productId]?.name ?? '' : '';
     }
 
     function setProfileDefaults(profile: InvoiceProfile): void {
@@ -178,6 +194,7 @@ export function useInvoiceEditPageBase() {
         invoice,
         // computed states
         allCustomers,
+        allProducts,
         title,
         saveButtonTitle,
         inputEmptyProblemMessage,
@@ -189,6 +206,9 @@ export function useInvoiceEditPageBase() {
         taxRatePercent,
         // functions
         addLine,
+        getProductSuggestions,
+        selectProduct,
+        getLinkedProductName,
         removeLine,
         setInvoice,
         prepareNewInvoice,

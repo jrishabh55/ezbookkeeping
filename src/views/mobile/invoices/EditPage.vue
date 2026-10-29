@@ -94,6 +94,12 @@
                         <f7-list-input type="text" autocomplete="off" clear-button
                                        :label="tt('Item')" :placeholder="tt('Item')"
                                        v-model:value="line.itemName"></f7-list-input>
+                        <f7-list-item link="#" no-chevron class="list-item-with-header-and-title"
+                                      :header="tt('Product')"
+                                      :title="getLinkedProductName(line) || tt('None')"
+                                      @click="productPopupLineIndex = index"
+                                      v-if="allProducts.length">
+                        </f7-list-item>
                         <f7-list-input type="textarea" style="height: auto" autocomplete="off"
                                        :label="tt('Description')" :placeholder="tt('Description (optional)')"
                                        v-textarea-auto-size v-model:value="line.description"></f7-list-input>
@@ -118,6 +124,16 @@
                     </template>
                 </f7-list>
             </f7-block>
+
+            <list-item-selection-popup value-type="item" key-field="id" value-field="id" title-field="name"
+                                       :title="tt('Product')" :enable-filter="true"
+                                       :filter-placeholder="tt('Product')" :filter-no-items-text="tt('No results')"
+                                       :items="allProducts"
+                                       :show="productPopupLineIndex >= 0"
+                                       @update:show="productPopupLineIndex = $event ? productPopupLineIndex : -1"
+                                       :model-value="productPopupLineIndex >= 0 ? invoice.lines[productPopupLineIndex]?.productId ?? '' : ''"
+                                       @update:model-value="onProductPicked">
+            </list-item-selection-popup>
 
             <f7-list strong inset dividers class="margin-vertical">
                 <template #list>
@@ -188,6 +204,7 @@ const {
     submitting,
     invoice,
     allCustomers,
+    allProducts,
     title,
     inputEmptyProblemMessage,
     inputIsEmpty,
@@ -197,6 +214,8 @@ const {
     selectedTaxTypeName,
     taxRatePercent,
     addLine,
+    selectProduct,
+    getLinkedProductName,
     removeLine,
     setInvoice,
     prepareNewInvoice,
@@ -217,6 +236,7 @@ const showInvoiceDateSheet = ref<boolean>(false);
 const showDueDateSheet = ref<boolean>(false);
 const showTaxTypeSheet = ref<boolean>(false);
 const rateSheetLineIndex = ref<number>(-1);
+const productPopupLineIndex = ref<number>(-1);
 const customerIdsBeforeAdding = ref<Set<string> | null>(null);
 
 const selectedCustomerName = computed<string>(() => invoicesStore.allCustomersMap[invoice.value.customerId]?.name ?? tt('None'));
@@ -230,6 +250,17 @@ function suggestNumber(): void {
     });
 }
 
+function onProductPicked(productId: string): void {
+    const line = invoice.value.lines[productPopupLineIndex.value];
+    const product = invoicesStore.allProductsMap[productId];
+
+    if (line && product) {
+        selectProduct(line, product);
+    }
+
+    productPopupLineIndex.value = -1;
+}
+
 function init(): void {
     const query = props.f7route.query;
     loading.value = true;
@@ -238,9 +269,10 @@ function init(): void {
     Promise.all([
         invoicesStore.loadAllCustomers({ force: false }),
         invoicesStore.loadInvoiceProfile({ force: false }),
+        invoicesStore.loadAllProducts({ force: false }).catch(() => []),
         query['id'] ? invoicesStore.getInvoice({ invoiceId: query['id'] }) : Promise.resolve(null),
         query['duplicateFrom'] ? invoicesStore.getInvoice({ invoiceId: query['duplicateFrom'] }) : Promise.resolve(null)
-    ]).then(([, loadedProfile, loadedInvoice, duplicateFrom]) => {
+    ]).then(([, loadedProfile, , loadedInvoice, duplicateFrom]) => {
         profile.value = loadedProfile;
 
         if (loadedInvoice) {
