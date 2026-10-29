@@ -298,6 +298,12 @@ func (a *InvoicesApi) getInvoiceResponse(c *core.WebContext, uid int64, invoiceI
 		resp.Emails[idx] = email.ToInvoiceEmailResponse()
 	}
 
+	resp.RenewalOption, err = a.invoices.GetInvoiceRenewalOption(c, uid, invoiceId)
+
+	if err != nil {
+		return nil, err
+	}
+
 	return resp, nil
 }
 
@@ -631,6 +637,13 @@ func (a *InvoicesApi) InvoiceSendHandler(c *core.WebContext) (any, *errs.Error) 
 	if err := a.invoices.SendInvoiceWithContent(c, uid, req.Id, req.To, req.Subject, req.Message, req.BodyHtml); err != nil {
 		log.Errorf(c, "[invoices.InvoiceSendHandler] failed to send invoice \"id:%d\" for user \"uid:%d\", because %s", req.Id, uid, err.Error())
 		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+
+	// the email is out; a failure to start the renewal is logged, never reported as a failed send
+	if req.CreateRenewal {
+		if _, err := a.invoices.CreateRenewalForInvoice(c, uid, req.Id); err != nil {
+			log.Errorf(c, "[invoices.InvoiceSendHandler] failed to create renewal for invoice \"id:%d\" for user \"uid:%d\", because %s", req.Id, uid, err.Error())
+		}
 	}
 
 	resp, err := a.getInvoiceResponse(c, uid, req.Id)

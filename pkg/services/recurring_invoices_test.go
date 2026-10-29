@@ -459,3 +459,77 @@ func TestGetInvoiceRenewalsClassifiesGeneratedInvoices(t *testing.T) {
 		assert.NotEqual(t, autoSend.RecurringId, renewal.RecurringId)
 	}
 }
+
+func TestRenewalOptionForLines(t *testing.T) {
+	products := map[int64]*models.Product{
+		1: {ProductId: 1, RenewalMonths: 12, DefaultRenewalMode: models.RECURRING_INVOICE_MODE_AUTO_SEND},
+		2: {ProductId: 2, RenewalMonths: 12, DefaultRenewalMode: models.RECURRING_INVOICE_MODE_DRAFT_AHEAD},
+		3: {ProductId: 3, RenewalMonths: 6, DefaultRenewalMode: models.RECURRING_INVOICE_MODE_CREATE},
+		4: {ProductId: 4},
+	}
+
+	assert.Nil(t, renewalOptionForLines([]*models.InvoiceLine{{ProductId: 4}, {ProductId: 0}}, products))
+
+	option := renewalOptionForLines([]*models.InvoiceLine{{ProductId: 1}, {ProductId: 2}, {ProductId: 4}}, products)
+	assert.Equal(t, int32(12), option.PeriodMonths)
+	assert.Equal(t, models.RECURRING_INVOICE_MODE_DRAFT_AHEAD, option.Mode) // the most hands-on mode wins
+	assert.False(t, option.MixedPeriods)
+
+	option = renewalOptionForLines([]*models.InvoiceLine{{ProductId: 1}, {ProductId: 3}}, products)
+	assert.True(t, option.MixedPeriods)
+}
+
+func TestCreateRenewalForInvoiceOnce(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	customer := createTestCustomer(t, uid)
+	domain := createTestProduct(t, uid, "Domain", 12, models.RECURRING_INVOICE_MODE_AUTO_SEND)
+	invoice := &models.Invoice{Uid: uid, Number: "INV/2026-27/01", CustomerId: customer.CustomerId, InvoiceDate: "2026-10-31", DueDate: "2026-11-07"}
+	assert.Nil(t, Invoices.CreateInvoice(ctx, invoice, []*models.InvoiceLine{{ItemName: "codeation.io", ProductId: domain.ProductId, Quantity: 100, Rate: 150000}}))
+
+	option, err := Invoices.GetInvoiceRenewalOption(ctx, uid, invoice.InvoiceId)
+	assert.Nil(t, err)
+	assert.False(t, option.Scheduled)
+
+	recurring, err := Invoices.CreateRenewalForInvoice(ctx, uid, invoice.InvoiceId)
+	assert.Nil(t, err)
+	assert.Equal(t, int32(12), recurring.PeriodMonths)
+	assert.Equal(t, models.RECURRING_INVOICE_MODE_AUTO_SEND, recurring.Mode)
+	assert.Equal(t, int32(28), recurring.DayOfMonth)
+	assert.Equal(t, "2027-10-28", recurring.NextDate)
+
+	option, err = Invoices.GetInvoiceRenewalOption(ctx, uid, invoice.InvoiceId)
+	assert.Nil(t, err)
+	assert.True(t, option.Scheduled)
+
+	again, err := Invoices.CreateRenewalForInvoice(ctx, uid, invoice.InvoiceId)
+	assert.Nil(t, err)
+	assert.Nil(t, again)
+}
+
+func TestCreateRenewalForInvoiceSkipsMixedPeriodsAndGeneratedInvoices(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	customer := createTestCustomer(t, uid)
+	domain := createTestProduct(t, uid, "Domain", 12, models.RECURRING_INVOICE_MODE_DRAFT_AHEAD)
+	amc := createTestProduct(t, uid, "AMC", 6, models.RECURRING_INVOICE_MODE_AUTO_SEND)
+
+	mixed := createTestInvoiceWithLines(t, uid, customer.CustomerId, "INV/2026-27/01", []*models.InvoiceLine{
+		{ItemName: "codeation.io", ProductId: domain.ProductId, Quantity: 100, Rate: 1},
+		{ItemName: "AMC", ProductId: amc.ProductId, Quantity: 100, Rate: 1},
+	})
+	recurring, err := Invoices.CreateRenewalForInvoice(ctx, uid, mixed.InvoiceId)
+	assert.Nil(t, err)
+	assert.Nil(t, recurring)
+
+	// an invoice the scheduler generated is renewed by its own schedule
+	single := createTestInvoiceWithLines(t, uid, customer.CustomerId, "INV/2026-27/02", []*models.InvoiceLine{
+		{ItemName: "codeation.io", ProductId: domain.ProductId, Quantity: 100, Rate: 1},
+	})
+	_, err = Invoices.UserDataDB(uid).NewSession(ctx).Cols("recurring_id").Where("invoice_id=?", single.InvoiceId).Update(&models.Invoice{RecurringId: 42})
+	assert.Nil(t, err)
+	option, err := Invoices.GetInvoiceRenewalOption(ctx, uid, single.InvoiceId)
+	assert.Nil(t, err)
+	assert.True(t, option.Scheduled)
+	recurring, err = Invoices.CreateRenewalForInvoice(ctx, uid, single.InvoiceId)
+	assert.Nil(t, err)
+	assert.Nil(t, recurring)
+}

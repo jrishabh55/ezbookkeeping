@@ -30,6 +30,14 @@ const (
 // InvoiceRenewalAutoSentVisibleSeconds is how long an auto-sent renewal stays on the home card (7 days)
 const InvoiceRenewalAutoSentVisibleSeconds = 7 * 24 * 3600
 
+// InvoiceRenewalOption is the renewal schedule sending an invoice can start, from the renewable products on its lines
+type InvoiceRenewalOption struct {
+	PeriodMonths int32  `json:"periodMonths"`
+	Mode         string `json:"mode"`
+	MixedPeriods bool   `json:"mixedPeriods"` // renewable products with different periods: split the invoice to track them
+	Scheduled    bool   `json:"scheduled"`    // a schedule already renews this invoice
+}
+
 // InvoiceRenewal is one generated invoice that needs (or recently got) attention
 type InvoiceRenewal struct {
 	State       string

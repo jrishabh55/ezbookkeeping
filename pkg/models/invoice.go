@@ -361,11 +361,12 @@ type InvoicePublicViewRequest struct {
 
 // InvoiceSendRequest supports saved templates, rich overrides and the legacy plain text message.
 type InvoiceSendRequest struct {
-	Id       int64   `json:"id,string" binding:"required,min=1"`
-	To       string  `json:"to" binding:"required,notBlank,max=128,validEmail"`
-	Subject  string  `json:"subject" binding:"max=256"`
-	Message  *string `json:"message" binding:"omitempty,max=2048"`
-	BodyHtml *string `json:"bodyHtml" binding:"omitempty,max=32000"`
+	Id            int64   `json:"id,string" binding:"required,min=1"`
+	To            string  `json:"to" binding:"required,notBlank,max=128,validEmail"`
+	Subject       string  `json:"subject" binding:"max=256"`
+	Message       *string `json:"message" binding:"omitempty,max=2048"`
+	BodyHtml      *string `json:"bodyHtml" binding:"omitempty,max=32000"`
+	CreateRenewal bool    `json:"createRenewal"`
 }
 
 // InvoiceEmailTemplateUpdateRequest saves a standalone template draft; an empty body must be explicit.
@@ -443,6 +444,7 @@ type InvoiceInfoResponse struct {
 	PublicToken        string                    `json:"publicToken,omitempty"`
 	SentUnixTime       int64                     `json:"sentUnixTime,omitempty"`
 	Emails             []*InvoiceEmailResponse   `json:"emails,omitempty"`
+	RenewalOption      *InvoiceRenewalOption     `json:"renewalOption,omitempty"`
 }
 
 // PublicInvoiceProfileResponse is the part of the invoice profile a recipient of a public link may see

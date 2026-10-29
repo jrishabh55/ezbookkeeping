@@ -258,6 +258,120 @@ func (s *InvoiceService) CreateRecurringInvoices(c core.Context, today string) e
 	return nil
 }
 
+// renewalModeRank orders modes from least to most hands-on; when products disagree, the most hands-on one wins
+var renewalModeRank = map[string]int{
+	models.RECURRING_INVOICE_MODE_AUTO_SEND:   1,
+	models.RECURRING_INVOICE_MODE_CREATE:      2,
+	models.RECURRING_INVOICE_MODE_DRAFT_AHEAD: 3,
+}
+
+// renewalOptionForLines returns the renewal the lines' renewable products ask for, or nil when none is renewable
+func renewalOptionForLines(lines []*models.InvoiceLine, products map[int64]*models.Product) *models.InvoiceRenewalOption {
+	var option *models.InvoiceRenewalOption
+
+	for _, line := range lines {
+		product := products[line.ProductId]
+
+		if product == nil || product.RenewalMonths < 1 {
+			continue
+		}
+
+		if option == nil {
+			option = &models.InvoiceRenewalOption{PeriodMonths: product.RenewalMonths, Mode: product.DefaultRenewalMode}
+			continue
+		}
+
+		if product.RenewalMonths != option.PeriodMonths {
+			option.MixedPeriods = true
+		}
+
+		if renewalModeRank[product.DefaultRenewalMode] > renewalModeRank[option.Mode] {
+			option.Mode = product.DefaultRenewalMode
+		}
+	}
+
+	return option
+}
+
+// GetInvoiceRenewalOption returns the renewal sending this invoice can start, or nil when it has no renewable product
+func (s *InvoiceService) GetInvoiceRenewalOption(c core.Context, uid int64, invoiceId int64) (*models.InvoiceRenewalOption, error) {
+	invoice, lines, err := s.GetInvoice(c, uid, invoiceId)
+
+	if err != nil {
+		return nil, err
+	}
+
+	productIds := make([]int64, 0, len(lines))
+
+	for _, line := range lines {
+		if line.ProductId > 0 {
+			productIds = append(productIds, line.ProductId)
+		}
+	}
+
+	products, err := s.GetProductsByIds(c, uid, productIds)
+
+	if err != nil {
+		return nil, err
+	}
+
+	option := renewalOptionForLines(lines, products)
+
+	if option == nil {
+		return nil, nil
+	}
+
+	scheduled := invoice.RecurringId > 0
+
+	if !scheduled {
+		scheduled, err = s.UserDataDB(uid).NewSession(c).Where("uid=? AND deleted=? AND source_invoice_id=?", uid, false, invoiceId).Exist(&models.RecurringInvoice{})
+
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	option.Scheduled = scheduled
+	return option, nil
+}
+
+// CreateRenewalForInvoice starts the renewal schedule of a sent invoice: every period months on its day of month (capped at 28),
+// first one period after the invoice date. It returns nil when there is nothing to create (no renewable product, mixed periods, already scheduled).
+func (s *InvoiceService) CreateRenewalForInvoice(c core.Context, uid int64, invoiceId int64) (*models.RecurringInvoice, error) {
+	option, err := s.GetInvoiceRenewalOption(c, uid, invoiceId)
+
+	if err != nil || option == nil || option.MixedPeriods || option.Scheduled {
+		return nil, err
+	}
+
+	invoice, err := s.getInvoiceHeader(c, uid, invoiceId)
+
+	if err != nil {
+		return nil, err
+	}
+
+	invoiceDate, err := time.Parse(invoiceDateLayout, invoice.InvoiceDate)
+
+	if err != nil {
+		return nil, errs.ErrInvoiceDateInvalid
+	}
+
+	dayOfMonth := int32(min(invoiceDate.Day(), models.RecurringInvoiceMaxDayOfMonth))
+	nextDate, err := nextRecurringDate(invoice.InvoiceDate, dayOfMonth, option.PeriodMonths)
+
+	if err != nil {
+		return nil, err
+	}
+
+	recurring := &models.RecurringInvoice{Uid: uid, SourceInvoiceId: invoiceId, DayOfMonth: dayOfMonth, NextDate: nextDate, PeriodMonths: option.PeriodMonths, Mode: option.Mode, Enabled: true}
+
+	if err := s.CreateRecurringInvoice(c, recurring); err != nil {
+		return nil, err
+	}
+
+	return recurring, nil
+}
+
 // GetInvoiceRenewals returns the generated invoices the home card lists, soonest invoice date first: unsent draft_ahead
 // invoices (due), unsent auto_send invoices (send failed) and auto_send invoices sent in the last 7 days (auto sent).
 // The schedule's current mode decides the state; create-mode invoices are never listed.
