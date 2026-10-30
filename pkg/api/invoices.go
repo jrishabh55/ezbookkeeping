@@ -87,6 +87,16 @@ func invoiceLinesFromRequest(lineReqs []*models.InvoiceLineRequest) []*models.In
 	return lines
 }
 
+func estimateMilestonesFromRequest(milestoneReqs []*models.EstimateMilestoneRequest) []*models.EstimateMilestone {
+	milestones := make([]*models.EstimateMilestone, len(milestoneReqs))
+
+	for idx, milestoneReq := range milestoneReqs {
+		milestones[idx] = &models.EstimateMilestone{Label: strings.TrimSpace(milestoneReq.Label), Percent: milestoneReq.Percent}
+	}
+
+	return milestones
+}
+
 // InvoiceProfileGetHandler returns the invoice profile of current user
 func (a *InvoicesApi) InvoiceProfileGetHandler(c *core.WebContext) (any, *errs.Error) {
 	uid := c.GetCurrentUid()
@@ -121,20 +131,22 @@ func (a *InvoicesApi) InvoiceProfileUpdateHandler(c *core.WebContext) (any, *err
 
 	uid := c.GetCurrentUid()
 	profile := &models.InvoiceProfile{
-		Uid:              uid,
-		BusinessName:     req.BusinessName,
-		AddressLines:     req.AddressLines,
-		Phone:            req.Phone,
-		Website:          req.Website,
-		LogoDataUrl:      req.LogoDataUrl,
-		HideLogo:         req.HideLogo,
-		DefaultNotes:     req.DefaultNotes,
-		NumberPrefix:     strings.TrimSpace(req.NumberPrefix),
-		DefaultTermsDays: req.DefaultTermsDays,
-		Gstin:            normalizeTaxId(req.Gstin),
-		DefaultSac:       normalizeTaxId(req.DefaultSac),
-		DefaultCurrency:  defaultCurrency,
-		RenewalDraftDays: req.RenewalDraftDays,
+		Uid:                  uid,
+		BusinessName:         req.BusinessName,
+		AddressLines:         req.AddressLines,
+		Phone:                req.Phone,
+		Website:              req.Website,
+		LogoDataUrl:          req.LogoDataUrl,
+		HideLogo:             req.HideLogo,
+		DefaultNotes:         req.DefaultNotes,
+		NumberPrefix:         strings.TrimSpace(req.NumberPrefix),
+		DefaultTermsDays:     req.DefaultTermsDays,
+		Gstin:                normalizeTaxId(req.Gstin),
+		DefaultSac:           normalizeTaxId(req.DefaultSac),
+		DefaultCurrency:      defaultCurrency,
+		RenewalDraftDays:     req.RenewalDraftDays,
+		EstimateNumberPrefix: strings.TrimSpace(req.EstimateNumberPrefix),
+		EstimateValidDays:    req.EstimateValidDays,
 	}
 
 	if err := a.invoices.SaveBusinessProfile(c, profile); err != nil {
@@ -259,10 +271,25 @@ func (a *InvoicesApi) CustomerOverviewHandler(c *core.WebContext) (any, *errs.Er
 	return overview, nil
 }
 
-// InvoiceListHandler returns all invoices of current user with received amounts
+// InvoiceListHandler returns all invoices (or, with kind=estimate, all estimates) of current user with received amounts
 func (a *InvoicesApi) InvoiceListHandler(c *core.WebContext) (any, *errs.Error) {
+	var req models.InvoiceListRequest
+
+	if err := c.ShouldBindQuery(&req); err != nil {
+		log.Warnf(c, "[invoices.InvoiceListHandler] parse request failed, because %s", err.Error())
+		return nil, errs.NewIncompleteOrIncorrectSubmissionError(err)
+	}
+
 	uid := c.GetCurrentUid()
-	invoices, err := a.invoices.GetAllInvoices(c, uid)
+
+	var invoices []*models.Invoice
+	var err error
+
+	if req.Kind == models.INVOICE_KIND_ESTIMATE {
+		invoices, err = a.invoices.GetAllEstimates(c, uid)
+	} else {
+		invoices, err = a.invoices.GetAllInvoices(c, uid)
+	}
 
 	if err != nil {
 		log.Errorf(c, "[invoices.InvoiceListHandler] failed to get invoices for user \"uid:%d\", because %s", uid, err.Error())
@@ -392,7 +419,17 @@ func (a *InvoicesApi) InvoiceCreateHandler(c *core.WebContext) (any, *errs.Error
 	invoice := &models.Invoice{Uid: uid, Number: strings.TrimSpace(req.Number), CustomerId: req.CustomerId, InvoiceDate: req.InvoiceDate, DueDate: req.DueDate, Notes: req.Notes,
 		TaxType: taxType, TaxRate: req.TaxRate, Currency: currency}
 
-	if err := a.invoices.CreateInvoice(c, invoice, invoiceLinesFromRequest(req.Lines)); err != nil {
+	lines := invoiceLinesFromRequest(req.Lines)
+
+	if req.Kind == models.INVOICE_KIND_ESTIMATE {
+		err = a.invoices.CreateEstimate(c, invoice, lines, estimateMilestonesFromRequest(req.Milestones))
+	} else if len(req.Milestones) > 0 {
+		err = errs.ErrEstimateMilestonesInvalid // only an estimate has payment terms
+	} else {
+		err = a.invoices.CreateInvoice(c, invoice, lines)
+	}
+
+	if err != nil {
 		log.Errorf(c, "[invoices.InvoiceCreateHandler] failed to create invoice for user \"uid:%d\", because %s", uid, err.Error())
 		return nil, errs.Or(err, errs.ErrOperationFailed)
 	}
@@ -491,7 +528,15 @@ func (a *InvoicesApi) InvoiceNextNumberHandler(c *core.WebContext) (any, *errs.E
 	}
 
 	uid := c.GetCurrentUid()
-	number, err := a.invoices.NextInvoiceNumber(c, uid, req.InvoiceDate)
+
+	var number string
+	var err error
+
+	if req.Kind == models.INVOICE_KIND_ESTIMATE {
+		number, err = a.invoices.NextEstimateNumber(c, uid, req.InvoiceDate)
+	} else {
+		number, err = a.invoices.NextInvoiceNumber(c, uid, req.InvoiceDate)
+	}
 
 	if err != nil {
 		log.Errorf(c, "[invoices.InvoiceNextNumberHandler] failed to get next invoice number for user \"uid:%d\", because %s", uid, err.Error())

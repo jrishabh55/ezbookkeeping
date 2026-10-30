@@ -5,8 +5,11 @@ import (
 	"github.com/mayswind/ezbookkeeping/pkg/utils"
 )
 
-// INVOICE_KIND_INVOICE is the only invoice kind for now; quotes and credit notes can be added later
-const INVOICE_KIND_INVOICE = "invoice"
+// Invoice kinds: an invoice, or an estimate (quote) that can be converted into invoices; estimates share the table and the editor
+const (
+	INVOICE_KIND_INVOICE  = "invoice"
+	INVOICE_KIND_ESTIMATE = "estimate"
+)
 
 // INVOICE_DEFAULT_CURRENCY is the only invoice currency for now
 const INVOICE_DEFAULT_CURRENCY = "INR"
@@ -94,6 +97,8 @@ type InvoiceProfile struct {
 	UpdatedUnixTime      int64
 	DefaultCurrency      string `xorm:"VARCHAR(3) NOT NULL DEFAULT ''"` // empty means INVOICE_DEFAULT_CURRENCY
 	RenewalDraftDays     int32  `xorm:"NOT NULL DEFAULT 15"`
+	EstimateNumberPrefix string `xorm:"VARCHAR(16) NOT NULL DEFAULT 'EST'"`
+	EstimateValidDays    int32  `xorm:"NOT NULL DEFAULT 30"`
 }
 
 // Customer represents an invoice customer stored in database
@@ -122,7 +127,7 @@ type Customer struct {
 // Invoice represents an invoice stored in database
 type Invoice struct {
 	InvoiceId          int64  `xorm:"PK"`
-	Uid                int64  `xorm:"INDEX(IDX_invoice_uid_deleted) INDEX(IDX_invoice_uid_recurring_id) NOT NULL"`
+	Uid                int64  `xorm:"INDEX(IDX_invoice_uid_deleted) INDEX(IDX_invoice_uid_recurring_id) INDEX(IDX_invoice_uid_estimate_id) NOT NULL"`
 	Deleted            bool   `xorm:"INDEX(IDX_invoice_uid_deleted) NOT NULL"`
 	Kind               string `xorm:"VARCHAR(16) NOT NULL"`
 	Number             string `xorm:"VARCHAR(64) NOT NULL"`
@@ -154,6 +159,16 @@ type Invoice struct {
 	SentUnixTime int64 `xorm:"NOT NULL DEFAULT 0"`
 	// RecurringId is the recurring invoice that created this invoice; 0 for invoices made by hand
 	RecurringId int64 `xorm:"INDEX(IDX_invoice_uid_recurring_id) NOT NULL DEFAULT 0"`
+	// EstimateStatus is draft, sent, accepted or declined on an estimate and empty on an invoice
+	EstimateStatus string `xorm:"VARCHAR(16) NOT NULL DEFAULT ''"`
+	// RespondedUnixTime is when an estimate was accepted or declined; 0 otherwise
+	RespondedUnixTime int64 `xorm:"NOT NULL DEFAULT 0"`
+	// RespondedByClient is true when the client answered through the public link
+	RespondedByClient bool `xorm:"NOT NULL DEFAULT false"`
+	// ResponseNote is the client's optional decline note, plain text, at most 500 characters
+	ResponseNote string `xorm:"VARCHAR(512) NOT NULL DEFAULT ''"`
+	// EstimateId is the estimate this invoice was created from; 0 otherwise
+	EstimateId int64 `xorm:"INDEX(IDX_invoice_uid_estimate_id) NOT NULL DEFAULT 0"`
 }
 
 // InvoicePublicTokenLength is the length of a public invoice token (32 random bytes, base64url without padding)
@@ -240,19 +255,21 @@ func InvoiceReceivedAmount(payments []*InvoicePaymentInfo) int64 {
 
 // InvoiceProfileUpdateRequest represents all parameters of invoice profile update request
 type InvoiceProfileUpdateRequest struct {
-	BusinessName     string `json:"businessName" binding:"max=128"`
-	AddressLines     string `json:"addressLines" binding:"max=512"`
-	Phone            string `json:"phone" binding:"max=32"`
-	Website          string `json:"website" binding:"max=128"`
-	LogoDataUrl      string `json:"logoDataUrl" binding:"max=350000"`
-	HideLogo         bool   `json:"hideLogo"`
-	DefaultNotes     string `json:"defaultNotes" binding:"max=2048"`
-	NumberPrefix     string `json:"numberPrefix" binding:"required,notBlank,max=16"`
-	DefaultTermsDays int32  `json:"defaultTermsDays" binding:"min=0,max=365"`
-	Gstin            string `json:"gstin" binding:"max=15"`
-	DefaultSac       string `json:"defaultSac" binding:"max=8"`
-	DefaultCurrency  string `json:"defaultCurrency" binding:"max=3"` // empty means INR; checked against the known currencies by the handler
-	RenewalDraftDays int32  `json:"renewalDraftDays" binding:"min=0,max=90"`
+	BusinessName         string `json:"businessName" binding:"max=128"`
+	AddressLines         string `json:"addressLines" binding:"max=512"`
+	Phone                string `json:"phone" binding:"max=32"`
+	Website              string `json:"website" binding:"max=128"`
+	LogoDataUrl          string `json:"logoDataUrl" binding:"max=350000"`
+	HideLogo             bool   `json:"hideLogo"`
+	DefaultNotes         string `json:"defaultNotes" binding:"max=2048"`
+	NumberPrefix         string `json:"numberPrefix" binding:"required,notBlank,max=16"`
+	DefaultTermsDays     int32  `json:"defaultTermsDays" binding:"min=0,max=365"`
+	Gstin                string `json:"gstin" binding:"max=15"`
+	DefaultSac           string `json:"defaultSac" binding:"max=8"`
+	DefaultCurrency      string `json:"defaultCurrency" binding:"max=3"` // empty means INR; checked against the known currencies by the handler
+	RenewalDraftDays     int32  `json:"renewalDraftDays" binding:"min=0,max=90"`
+	EstimateNumberPrefix string `json:"estimateNumberPrefix" binding:"max=16"`     // empty means EST
+	EstimateValidDays    int32  `json:"estimateValidDays" binding:"min=0,max=365"` // 0 means 30
 }
 
 // InvoiceProfileResponse represents a view-object of invoice profile
@@ -272,6 +289,8 @@ type InvoiceProfileResponse struct {
 	DefaultSac           string `json:"defaultSac"`
 	DefaultCurrency      string `json:"defaultCurrency"`
 	RenewalDraftDays     int32  `json:"renewalDraftDays"`
+	EstimateNumberPrefix string `json:"estimateNumberPrefix"`
+	EstimateValidDays    int32  `json:"estimateValidDays"`
 }
 
 // CustomerCreateRequest represents all parameters of customer creation request
@@ -339,15 +358,17 @@ type InvoiceLineRequest struct {
 
 // InvoiceCreateRequest represents all parameters of invoice creation request
 type InvoiceCreateRequest struct {
-	Number      string                `json:"number" binding:"required,notBlank,max=64"`
-	CustomerId  int64                 `json:"customerId,string" binding:"required,min=1"`
-	InvoiceDate string                `json:"invoiceDate" binding:"required,len=10"`
-	DueDate     string                `json:"dueDate" binding:"required,len=10"`
-	Notes       string                `json:"notes" binding:"max=2048"`
-	TaxType     string                `json:"taxType" binding:"max=16"`
-	TaxRate     int32                 `json:"taxRate" binding:"min=0,max=10000"`
-	Lines       []*InvoiceLineRequest `json:"lines" binding:"required,min=1,max=100,dive"`
-	Currency    string                `json:"currency" binding:"max=3"` // empty means the profile's default currency; not editable afterwards
+	Number      string                      `json:"number" binding:"required,notBlank,max=64"`
+	CustomerId  int64                       `json:"customerId,string" binding:"required,min=1"`
+	InvoiceDate string                      `json:"invoiceDate" binding:"required,len=10"`
+	DueDate     string                      `json:"dueDate" binding:"required,len=10"`
+	Notes       string                      `json:"notes" binding:"max=2048"`
+	TaxType     string                      `json:"taxType" binding:"max=16"`
+	TaxRate     int32                       `json:"taxRate" binding:"min=0,max=10000"`
+	Lines       []*InvoiceLineRequest       `json:"lines" binding:"required,min=1,max=100,dive"`
+	Currency    string                      `json:"currency" binding:"max=3"`                        // empty means the profile's default currency; not editable afterwards
+	Kind        string                      `json:"kind" binding:"omitempty,oneof=invoice estimate"` // empty means invoice
+	Milestones  []*EstimateMilestoneRequest `json:"milestones" binding:"omitempty,max=10,dive"`      // estimates only
 }
 
 // InvoiceModifyRequest represents all parameters of invoice modification request
@@ -368,9 +389,15 @@ type InvoiceIdRequest struct {
 	Id int64 `json:"id,string" form:"id,string" binding:"required,min=1"`
 }
 
+// InvoiceListRequest picks invoices (default) or estimates for the list
+type InvoiceListRequest struct {
+	Kind string `form:"kind" binding:"omitempty,oneof=invoice estimate"`
+}
+
 // InvoiceNextNumberRequest represents all parameters of next invoice number request
 type InvoiceNextNumberRequest struct {
 	InvoiceDate string `form:"invoice_date" binding:"required,len=10"`
+	Kind        string `form:"kind" binding:"omitempty,oneof=invoice estimate"`
 }
 
 // InvoicePaymentLinkRequest represents all parameters of invoice payment link / unlink request
@@ -482,6 +509,11 @@ type InvoiceInfoResponse struct {
 	SentUnixTime       int64                     `json:"sentUnixTime,omitempty"`
 	Emails             []*InvoiceEmailResponse   `json:"emails,omitempty"`
 	RenewalOption      *InvoiceRenewalOption     `json:"renewalOption,omitempty"`
+	EstimateStatus     string                    `json:"estimateStatus,omitempty"`
+	RespondedUnixTime  int64                     `json:"respondedUnixTime,omitempty"`
+	RespondedByClient  bool                      `json:"respondedByClient,omitempty"`
+	ResponseNote       string                    `json:"responseNote,omitempty"`
+	EstimateId         string                    `json:"estimateId,omitempty"` // invoices made from an estimate
 }
 
 // PublicInvoiceProfileResponse is the part of the invoice profile a recipient of a public link may see
@@ -539,6 +571,8 @@ func (p *InvoiceProfile) ToInvoiceProfileResponse() *InvoiceProfileResponse {
 		DefaultSac:           p.DefaultSac,
 		DefaultCurrency:      p.DefaultCurrency,
 		RenewalDraftDays:     p.RenewalDraftDays,
+		EstimateNumberPrefix: p.EstimateNumberPrefix,
+		EstimateValidDays:    p.EstimateValidDays,
 	}
 }
 
@@ -603,6 +637,14 @@ func (i *Invoice) ToInvoiceInfoResponse(lines []*InvoiceLine, payments []*Invoic
 		ClosedManually:     i.ClosedManually,
 		SentUnixTime:       i.SentUnixTime,
 		Received:           InvoiceReceivedAmount(payments),
+		EstimateStatus:     i.EstimateStatus,
+		RespondedUnixTime:  i.RespondedUnixTime,
+		RespondedByClient:  i.RespondedByClient,
+		ResponseNote:       i.ResponseNote,
+	}
+
+	if i.EstimateId > 0 {
+		resp.EstimateId = utils.Int64ToString(i.EstimateId)
 	}
 
 	if lines != nil {

@@ -34,4 +34,6 @@ var (
 	ErrProductNotFound           = NewNormalError(NormalSubcategoryInvoice, 51, http.StatusBadRequest, "product not found")
 	ErrProductInUse              = NewNormalError(NormalSubcategoryInvoice, 52, http.StatusBadRequest, "product is used by invoices, archive it instead")
 	ErrInvoiceLineProductInvalid = NewNormalError(NormalSubcategoryInvoice, 53, http.StatusBadRequest, "invoice line product is invalid")
+	// estimates start at 60
+	ErrEstimateMilestonesInvalid = NewNormalError(NormalSubcategoryInvoice, 60, http.StatusBadRequest, "estimate milestones must be 1 to 10 with labels and add up to 100%")
 )

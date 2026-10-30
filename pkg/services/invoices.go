@@ -94,7 +94,8 @@ func (s *InvoiceService) GetProfile(c core.Context, uid int64) (*models.InvoiceP
 }
 
 func defaultInvoiceProfile(uid int64) *models.InvoiceProfile {
-	return &models.InvoiceProfile{Uid: uid, NumberPrefix: "INV", DefaultTermsDays: 7, RenewalDraftDays: models.InvoiceRenewalDraftDaysDefault}
+	return &models.InvoiceProfile{Uid: uid, NumberPrefix: "INV", DefaultTermsDays: 7, RenewalDraftDays: models.InvoiceRenewalDraftDaysDefault,
+		EstimateNumberPrefix: models.EstimateNumberPrefixDefault, EstimateValidDays: models.EstimateValidDaysDefault}
 }
 
 // SaveProfile creates or updates the invoice profile of user
@@ -106,6 +107,15 @@ func (s *InvoiceService) SaveProfile(c core.Context, profile *models.InvoiceProf
 func (s *InvoiceService) saveProfile(c core.Context, profile *models.InvoiceProfile, preserveEmailTemplates bool) error {
 	if profile.Uid <= 0 {
 		return errs.ErrUserIdInvalid
+	}
+
+	// a client from before estimates sends neither field
+	if strings.TrimSpace(profile.EstimateNumberPrefix) == "" {
+		profile.EstimateNumberPrefix = models.EstimateNumberPrefixDefault
+	}
+
+	if profile.EstimateValidDays <= 0 {
+		profile.EstimateValidDays = models.EstimateValidDaysDefault
 	}
 
 	if !preserveEmailTemplates && profile.EmailSubjectTemplate != "" {
@@ -372,14 +382,23 @@ func validateInvoiceDates(invoice *models.Invoice) error {
 	return nil
 }
 
-// GetAllInvoices returns all invoices of user, newest invoice date first
+// GetAllInvoices returns all invoices of user (never estimates), newest invoice date first
 func (s *InvoiceService) GetAllInvoices(c core.Context, uid int64) ([]*models.Invoice, error) {
+	return s.getAllOfKind(c, uid, models.INVOICE_KIND_INVOICE)
+}
+
+// GetAllEstimates returns all estimates of user, newest estimate date first
+func (s *InvoiceService) GetAllEstimates(c core.Context, uid int64) ([]*models.Invoice, error) {
+	return s.getAllOfKind(c, uid, models.INVOICE_KIND_ESTIMATE)
+}
+
+func (s *InvoiceService) getAllOfKind(c core.Context, uid int64, kind string) ([]*models.Invoice, error) {
 	if uid <= 0 {
 		return nil, errs.ErrUserIdInvalid
 	}
 
 	var invoices []*models.Invoice
-	err := s.UserDataDB(uid).NewSession(c).Where("uid=? AND deleted=?", uid, false).OrderBy("invoice_date desc, number desc").Find(&invoices)
+	err := s.UserDataDB(uid).NewSession(c).Where("uid=? AND deleted=? AND kind=?", uid, false, kind).OrderBy("invoice_date desc, number desc").Find(&invoices)
 
 	return invoices, err
 }
@@ -473,9 +492,9 @@ func (s *InvoiceService) prepareInvoice(c core.Context, invoice *models.Invoice,
 	return nil
 }
 
-// checkInvoiceNumberUnique returns ErrInvoiceNumberAlreadyExists if another non-deleted invoice uses the number
+// checkInvoiceNumberUnique returns ErrInvoiceNumberAlreadyExists if another non-deleted row of the same kind uses the number
 func checkInvoiceNumberUnique(sess *xorm.Session, invoice *models.Invoice) error {
-	exists, err := sess.Where("uid=? AND deleted=? AND number=? AND invoice_id<>?", invoice.Uid, false, invoice.Number, invoice.InvoiceId).Exist(&models.Invoice{})
+	exists, err := sess.Where("uid=? AND deleted=? AND kind=? AND number=? AND invoice_id<>?", invoice.Uid, false, invoice.Kind, invoice.Number, invoice.InvoiceId).Exist(&models.Invoice{})
 
 	if err != nil {
 		return err
@@ -539,6 +558,11 @@ func (s *InvoiceService) prepareNewInvoice(c core.Context, invoice *models.Invoi
 	invoice.PublicToken = ""
 	invoice.SentUnixTime = 0
 	invoice.RecurringId = 0
+	invoice.EstimateStatus = ""
+	invoice.RespondedUnixTime = 0
+	invoice.RespondedByClient = false
+	invoice.ResponseNote = ""
+	invoice.EstimateId = 0
 	invoice.CreatedUnixTime = time.Now().Unix()
 	invoice.UpdatedUnixTime = invoice.CreatedUnixTime
 	invoice.DeletedUnixTime = 0
@@ -573,6 +597,10 @@ func (s *InvoiceService) ModifyInvoice(c core.Context, invoice *models.Invoice, 
 	if err := s.prepareInvoice(c, invoice, lines); err != nil {
 		return err
 	}
+
+	// ModifyInvoice only ever modifies a plain invoice (an estimate has its own modify path later);
+	// this is never persisted (kind is not in the Cols list below), it only scopes the uniqueness check
+	invoice.Kind = models.INVOICE_KIND_INVOICE
 
 	invoice.UpdatedUnixTime = time.Now().Unix()
 
@@ -651,9 +679,18 @@ func (s *InvoiceService) SetInvoiceClosed(c core.Context, uid int64, invoiceId i
 	})
 }
 
-// NextInvoiceNumber suggests "{prefix}/{financial year}/{sequence}" for an invoice dated invoiceDate
+// NextInvoiceNumber suggests "{prefix}/{financial year}/{sequence}" for an invoice dated invoiceDate; estimates never count
 func (s *InvoiceService) NextInvoiceNumber(c core.Context, uid int64, invoiceDate string) (string, error) {
-	financialYear, err := invoiceFinancialYear(invoiceDate)
+	return s.nextDocumentNumber(c, uid, invoiceDate, models.INVOICE_KIND_INVOICE)
+}
+
+// NextEstimateNumber suggests "{estimate prefix}/{financial year}/{sequence}" for an estimate, a series of its own
+func (s *InvoiceService) NextEstimateNumber(c core.Context, uid int64, estimateDate string) (string, error) {
+	return s.nextDocumentNumber(c, uid, estimateDate, models.INVOICE_KIND_ESTIMATE)
+}
+
+func (s *InvoiceService) nextDocumentNumber(c core.Context, uid int64, date string, kind string) (string, error) {
+	financialYear, err := invoiceFinancialYear(date)
 
 	if err != nil {
 		return "", err
@@ -665,10 +702,20 @@ func (s *InvoiceService) NextInvoiceNumber(c core.Context, uid int64, invoiceDat
 		return "", err
 	}
 
-	base := profile.NumberPrefix + "/" + financialYear + "/"
+	prefix := profile.NumberPrefix
+
+	if kind == models.INVOICE_KIND_ESTIMATE {
+		prefix = profile.EstimateNumberPrefix
+
+		if prefix == "" {
+			prefix = models.EstimateNumberPrefixDefault
+		}
+	}
+
+	base := prefix + "/" + financialYear + "/"
 
 	var numbers []string
-	err = s.UserDataDB(uid).NewSession(c).Table(&models.Invoice{}).Where("uid=? AND deleted=? AND number LIKE ?", uid, false, base+"%").Cols("number").Find(&numbers)
+	err = s.UserDataDB(uid).NewSession(c).Table(&models.Invoice{}).Where("uid=? AND deleted=? AND kind=? AND number LIKE ?", uid, false, kind, base+"%").Cols("number").Find(&numbers)
 
 	if err != nil {
 		return "", err
