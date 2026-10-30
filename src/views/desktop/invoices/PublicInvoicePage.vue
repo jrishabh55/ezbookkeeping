@@ -7,6 +7,7 @@
             <span class="public-invoice-status" :class="{ 'public-invoice-status-paid': isPaid }" v-else>
                 {{ isPaid ? tt('Paid') : tt('Amount Due') + ': ' + formatInvoiceDocumentAmount(balanceDue, invoice.currency) }}
             </span>
+            <a class="public-invoice-latest-link" :href="latestVersionUrl" v-if="latestVersionUrl">{{ tt('View the latest version') }}</a>
             <v-spacer />
             <template v-if="canAnswer">
                 <v-btn color="success" :loading="answering" :disabled="answering" @click="answer(true)">{{ tt('Accept') }}</v-btn>
@@ -57,7 +58,16 @@ import { Invoice, InvoiceProfile } from '@/models/invoice.ts';
 import services from '@/lib/services.ts';
 import { readInvoicePdf } from '@/lib/invoicePdf.ts';
 import { startDownloadFile } from '@/lib/ui/common.ts';
-import { formatInvoiceDocumentAmount, formatInvoiceDocumentDate, getInvoicePdfFileName, getInvoiceDisplayBalanceDue, getInvoiceDisplayStatus, getTodayTextualDate, printInvoiceDocument } from '@/lib/invoice.ts';
+import {
+    formatInvoiceDocumentAmount,
+    formatInvoiceDocumentDate,
+    getInvoicePdfFileName,
+    getInvoiceDisplayBalanceDue,
+    getInvoiceDisplayStatus,
+    getInvoicePublicLinkUrl,
+    getTodayTextualDate,
+    printInvoiceDocument
+} from '@/lib/invoice.ts';
 import { canAnswerEstimate, getEstimateDisplayStatus, unixTimeToTextualDate } from '@/lib/estimate.ts';
 
 // A recipient's view of one invoice: no app chrome, no stores, no login. The data comes from the
@@ -79,6 +89,9 @@ const answering = ref<boolean>(false);
 const answerError = ref<boolean>(false);
 const showDeclineDialog = ref<boolean>(false);
 const declineNote = ref<string>('');
+// a superseded version: the public token of the latest version that was sent, empty when there is none to show
+const supersededBy = ref<string>('');
+const latestVersionUrl = computed<string>(() => supersededBy.value ? getInvoicePublicLinkUrl(supersededBy.value) : '');
 
 const isPaid = computed<boolean>(() => !!invoice.value && getInvoiceDisplayStatus(invoice.value, getTodayTextualDate()) === 'paid');
 const balanceDue = computed<number>(() => invoice.value ? getInvoiceDisplayBalanceDue(invoice.value) : 0);
@@ -92,6 +105,10 @@ const estimateStatusText = computed<string>(() => {
 
     if (!current || !isEstimate.value) {
         return '';
+    }
+
+    if (current.estimateStatus === 'superseded') {
+        return tt('This estimate has been revised.');
     }
 
     if ((current.estimateStatus === 'accepted' || current.estimateStatus === 'declined') && current.respondedUnixTime) {
@@ -138,6 +155,7 @@ function load(): Promise<void> {
         if (data && data.success && data.result) {
             invoice.value = Invoice.ofPublic(data.result);
             profile.value = InvoiceProfile.ofPublic(data.result.profile);
+            supersededBy.value = data.result.supersededBy ?? '';
             document.title = data.result.number;
         }
     }).catch(() => {
@@ -192,6 +210,11 @@ load();
 
 .public-invoice-status-paid {
     color: #15803d;
+}
+
+.public-invoice-latest-link {
+    color: #1d4ed8;
+    font-weight: 600;
 }
 
 .public-invoice-paper {

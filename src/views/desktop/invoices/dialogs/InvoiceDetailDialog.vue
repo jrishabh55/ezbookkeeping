@@ -14,8 +14,16 @@
             </template>
 
             <template #toolbar>
+                <!-- a sent or answered estimate is never edited in place: Revise makes the next version as a new draft -->
                 <v-btn density="comfortable" color="default" variant="text" class="ms-1" :icon="true"
-                       :aria-label="tt('Edit')" :disabled="!invoice || loading || updating || !canEdit" @click="edit">
+                       :aria-label="tt('Revise')" :disabled="loading || updating" @click="revise"
+                       v-if="canRevise">
+                    <v-icon :icon="mdiFileDocumentEditOutline" />
+                    <v-tooltip activator="parent">{{ tt('Revise') }}</v-tooltip>
+                </v-btn>
+                <v-btn density="comfortable" color="default" variant="text" class="ms-1" :icon="true"
+                       :aria-label="tt('Edit')" :disabled="!invoice || loading || updating || !canEdit" @click="edit"
+                       v-else>
                     <v-icon :icon="mdiPencilOutline" />
                     <v-tooltip activator="parent">{{ tt('Edit') }}</v-tooltip>
                 </v-btn>
@@ -38,7 +46,7 @@
                     <v-tooltip activator="parent">{{ invoice?.closedManually ? tt('Reopen') : tt('Mark as Paid') }}</v-tooltip>
                 </v-btn>
                 <v-btn density="comfortable" color="default" variant="text" class="ms-1" :icon="true"
-                       :aria-label="tt('Delete')" :disabled="!invoice || loading || updating" @click="remove">
+                       :aria-label="tt('Delete')" :disabled="!invoice || loading || updating || !canDelete" @click="remove">
                     <v-icon :icon="mdiDeleteOutline" />
                     <v-tooltip activator="parent">{{ tt('Delete') }}</v-tooltip>
                 </v-btn>
@@ -62,7 +70,7 @@
                        :prepend-icon="mdiDownloadOutline" :loading="downloadingPdf" :disabled="!invoice || loading"
                        @click="downloadPdf">{{ tt('Download PDF') }}</v-btn>
                 <v-btn density="comfortable" color="default" variant="text" class="ms-1" :icon="true"
-                       :aria-label="tt('Send')" :disabled="!invoice || !profile || loading || updating" @click="openSend">
+                       :aria-label="tt('Send')" :disabled="!invoice || !profile || loading || updating || !canSend" @click="openSend">
                     <v-icon :icon="mdiEmailOutline" />
                     <v-tooltip activator="parent">{{ tt('Send') }}</v-tooltip>
                 </v-btn>
@@ -89,6 +97,9 @@
                             <div class="text-title-small px-4 py-2">{{ tt('Status') }}</div>
                             <div class="text-body-medium px-4 pb-2">{{ estimateResponseText || tt('No response yet') }}</div>
                             <div class="text-body-medium px-4 pb-2" style="white-space: pre-line" v-if="invoice.responseNote">{{ tt("Client's note") }}: {{ invoice.responseNote }}</div>
+                            <div class="text-body-medium px-4 pb-2" v-if="supersededBy">
+                                <a class="cursor-pointer" @click="openOther(supersededBy.id)">{{ tt('format.misc.supersededBy', { number: supersededBy.number }) }}</a>
+                            </div>
                             <div class="px-4 pb-2" v-if="canMarkResponse || canReopenEstimate">
                                 <v-btn class="me-2" color="success" variant="tonal" size="small" :disabled="updating"
                                        v-if="canMarkResponse" @click="markResponse('accepted')">{{ tt('Mark Accepted') }}</v-btn>
@@ -97,6 +108,20 @@
                                 <v-btn color="default" variant="tonal" size="small" :disabled="updating"
                                        v-if="canReopenEstimate" @click="reopen">{{ tt('Reopen') }}</v-btn>
                             </div>
+
+                            <template v-if="hasRevisions">
+                                <v-divider class="my-2" />
+                                <div class="text-title-small px-4 py-2">{{ tt('Revisions') }}</div>
+                                <v-list density="compact">
+                                    <v-list-item :key="revision.id" v-for="revision in invoice.revisions" link
+                                                 :active="revision.id === invoice.id"
+                                                 :title="revision.number"
+                                                 :subtitle="`${getRevisionLabel(revision)} · ${formatDate(revision.invoiceDate)} · ${tt(getRevisionStatusName(revision))}`"
+                                                 @click="openOther(revision.id)">
+                                        <template #append><span>{{ formatAmount(revision.total, revision.currency) }}</span></template>
+                                    </v-list-item>
+                                </v-list>
+                            </template>
 
                             <v-divider class="my-2" />
                             <template v-if="invoice.milestones.length">
@@ -281,7 +306,8 @@ import {
     mdiLinkOff,
     mdiRepeat,
     mdiShareVariantOutline,
-    mdiEmailOutline
+    mdiEmailOutline,
+    mdiFileDocumentEditOutline
 } from '@mdi/js';
 
 import ConfirmDialog from '@/components/desktop/ConfirmDialog.vue';
@@ -346,6 +372,14 @@ const {
     canConvert,
     convertNeedsConfirm,
     milestoneAmounts,
+    canRevise,
+    canDelete,
+    canSend,
+    supersededBy,
+    hasRevisions,
+    getRevisionLabel,
+    getRevisionStatusName,
+    reviseEstimate,
     setEstimateResponse,
     reopenEstimate,
     needsSettledAmount,
@@ -684,6 +718,32 @@ function markResponse(status: 'accepted' | 'declined'): void {
 
 function reopen(): void {
     runAndReload(() => reopenEstimate());
+}
+
+// creates the next version as a new draft, shows it here and opens it in the editor; the version the client saw stays as it was
+function revise(): void {
+    updating.value = true;
+
+    reviseEstimate().then(revised => {
+        updating.value = false;
+        changed.value = true;
+        openOther(revised.id);
+
+        invoiceEditDialog.value?.open({ id: revised.id, currentInvoice: revised }).then(result => {
+            snackbar.value?.showMessage(result.message);
+            load();
+        }).catch(error => {
+            if (error && !error.processed) {
+                snackbar.value?.showError(error);
+            }
+        });
+    }).catch(error => {
+        updating.value = false;
+
+        if (!error.processed) {
+            snackbar.value?.showError(error);
+        }
+    });
 }
 
 // opens the editor with the invoice the estimate (milestoneId '') or a milestone turns into; saving it opens the new invoice here
