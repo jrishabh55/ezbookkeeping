@@ -593,6 +593,10 @@ func TestModifyInvoiceKeepsTheCustomerOfAnEstimateConversion(t *testing.T) {
 	reloaded, _, err := Invoices.GetInvoice(ctx, uid, invoice.InvoiceId)
 	assert.Nil(t, err)
 	assert.Equal(t, customer.CustomerId, reloaded.CustomerId) // the tampered customer is ignored
+	// and so is its bill-to: the printed name and address stay the original customer's
+	assert.Equal(t, "Quber Tech", reloaded.BillToName)
+	assert.Equal(t, customer.AddressLines, reloaded.BillToAddressLines)
+	assert.Equal(t, customer.ContactName, reloaded.BillToContactName)
 }
 
 func TestLinkPaymentRejectsOtherUsersTransaction(t *testing.T) {

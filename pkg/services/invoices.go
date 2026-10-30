@@ -614,6 +614,21 @@ func (s *InvoiceService) ModifyInvoice(c core.Context, invoice *models.Invoice, 
 		return errs.ErrInvoiceIdInvalid
 	}
 
+	// the editor disables the customer field on an invoice made from an estimate; a tampered value is ignored before the bill-to
+	// snapshot is taken, so neither the customer nor the printed bill-to changes. An invoice's estimate link never changes after
+	// it is created, so reading it before the transaction is safe.
+	current := &models.Invoice{}
+	has, err := s.UserDataDB(invoice.Uid).NewSession(c).Cols("estimate_id", "customer_id").
+		Where("uid=? AND deleted=? AND kind=? AND invoice_id=?", invoice.Uid, false, models.INVOICE_KIND_INVOICE, invoice.InvoiceId).Get(current)
+
+	if err != nil {
+		return err
+	} else if !has {
+		return errs.ErrInvoiceNotFound
+	} else if current.EstimateId > 0 {
+		invoice.CustomerId = current.CustomerId
+	}
+
 	if err := s.prepareInvoice(c, invoice, lines); err != nil {
 		return err
 	}
@@ -636,8 +651,10 @@ func (s *InvoiceService) ModifyInvoice(c core.Context, invoice *models.Invoice, 
 				return err
 			}
 
-			// the editor disables the customer field on an invoice made from an estimate; a tampered value is ignored
-			invoice.CustomerId = stored.CustomerId
+			// already applied before prepareInvoice (see above); a mismatch would mean the bill-to snapshot is someone else's
+			if invoice.CustomerId != stored.CustomerId {
+				return errs.ErrCustomerIdInvalid
+			}
 		}
 
 		if err := checkInvoiceNumberUnique(sess, invoice); err != nil {

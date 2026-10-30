@@ -47,7 +47,9 @@ Server-side lock: `ModifyEstimate` refuses anything but `draft` (previously `dra
 ## Deleting
 
 - A draft revision (the latest version, `RevisionNumber > 0`) can be deleted; in the same transaction the previous version returns from `superseded` to the status it had before (stored on the superseded row as `SupersededFromStatus`, a VARCHAR(16) column set in step 3 of Revise).
-- A superseded version cannot be deleted. Deleting a first-version draft works as today.
+- Deleting the latest version when it is not a draft revision (a first version that was never revised, or a sent / accepted / declined revision) deletes the whole chain: every non-deleted version is soft-deleted in one transaction (estimate rows locked in ascending `RevisionNumber`), so the customer and products can be deleted afterwards. It is refused with `ErrEstimateHasInvoices` when a non-deleted invoice was made from any version. The Delete confirmation on a sent / answered revision reads "Delete this estimate and all its revisions?".
+- A superseded version cannot be deleted on its own (`ErrEstimateStatusInvalid`).
+- Cancelling the editor opened by Revise (desktop dialog dismissed, mobile Back on `/invoice/edit?…&revision=1`) deletes the unsaved draft revision, which restores the previous version ("Revision discarded").
 
 ## Public link
 
