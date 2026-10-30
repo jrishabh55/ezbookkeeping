@@ -181,3 +181,30 @@ func parseRupees(s string) (int64, bool) {
 
 	return int64(math.Round(v * 100)), true
 }
+
+var (
+	// reNeftRtgs gates TransferReference: a UTR-shaped token only counts in a NEFT / RTGS SMS
+	reNeftRtgs = regexp.MustCompile(`(?i)\b(?:neft|rtgs)\b`)
+	// reUtr reads a NEFT UTR (4-letter bank code, a channel character, then 11 digits, e.g.
+	// PUNBY26303389748) or an RTGS UTR (bank code, "R", a channel character, then 16 digits, e.g.
+	// SCBLR12026100800953867); case-sensitive, so ordinary words never match, and an 11-character
+	// IFSC (PUNB0042800) is too short to
+	reUtr = regexp.MustCompile(`\b([A-Z]{4}[A-Z0-9]\d{11}|[A-Z]{4}R[A-Z0-9]\d{16})\b`)
+)
+
+// TransferReference returns the NEFT / RTGS UTR an SMS carries, or "" when it has none. Both
+// banks' SMS for one NEFT / RTGS transfer quote the same UTR, so it links the two halves of a
+// transfer between the user's own accounts when neither SMS names the other account. It is kept
+// apart from ParsedAlert.Reference, which deduplicates repeats of one SMS: the two halves are
+// different SMS and must never be dropped as duplicates of each other.
+func TransferReference(text string) string {
+	if !reNeftRtgs.MatchString(text) {
+		return ""
+	}
+
+	if m := reUtr.FindStringSubmatch(text); m != nil {
+		return m[1]
+	}
+
+	return ""
+}

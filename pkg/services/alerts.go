@@ -265,6 +265,21 @@ func (s *AlertService) Ingest(c core.Context, uid int64, sender string, text str
 		return nil, s.failAfterStore(c, uid, message.AlertId, err)
 	}
 
+	// A NEFT / RTGS transfer between two own accounts arrives as two SMS that never name each
+	// other's account, only the same UTR: pair this one with the other half recorded earlier
+	if !classification.IsTransfer {
+		otherAccountId, isDuplicate, err := s.pairByTransferReference(c, uid, account.AccountId, parsed, alerts.TransferReference(text), receivedAt)
+
+		if err != nil {
+			return nil, s.failAfterStore(c, uid, message.AlertId, err)
+		} else if isDuplicate {
+			_ = s.updateMessageOutcome(c, uid, message.AlertId, "duplicate", 0)
+			return &AlertIngestResult{Outcome: "duplicate"}, nil
+		} else if otherAccountId > 0 {
+			classification = alerts.Classification{IsTransfer: true, OtherAccountId: otherAccountId}
+		}
+	}
+
 	// A card bill paid through CRED arrives as two SMS that each name only one end: the bank's
 	// "to CRED" debit and the card's "payment received" credit. They become one bank → card
 	// transfer; whichever arrives first is held as a pending expense / income until its pair does.
@@ -715,6 +730,89 @@ func (s *AlertService) replaceEarlierTransferSide(c core.Context, uid int64, src
 	}
 
 	return conflict, nil
+}
+
+// transferReferenceWindow is how far apart the two SMS of one NEFT / RTGS transfer may arrive
+const transferReferenceWindow = 48 * time.Hour
+
+// pairByTransferReference looks for this user's added alert within 48 hours either side that
+// carries the same NEFT / RTGS UTR (utr) and the same amount. The stored alert text is matched
+// rather than the transaction comment: it is the full SMS, while the comment is cut to 255
+// characters and may have been edited by the user. The same UTR on the same account in the same
+// direction is a repeat of this SMS (duplicate). The opposite direction on a different own
+// account B is the other half of a transfer when its transaction is still the plain expense /
+// income it created, or a transfer between this account and B: B is returned, and the caller
+// records the transfer (replaceEarlierTransferSide then deals with the plain half, and
+// isDuplicateOwnTransfer with an existing transfer). Amount and time alone never pair.
+func (s *AlertService) pairByTransferReference(c core.Context, uid int64, accountId int64, parsed alerts.ParsedAlert, utr string, receivedAt time.Time) (int64, bool, error) {
+	if utr == "" {
+		return 0, false, nil
+	}
+
+	var messages []*models.AlertMessage
+	err := s.UserDataDB(uid).NewSession(c).Where("uid=? AND outcome=? AND transaction_id>? AND received_unix_time>=? AND received_unix_time<=? AND text LIKE ?",
+		uid, "added", 0, receivedAt.Add(-transferReferenceWindow).Unix(), receivedAt.Add(transferReferenceWindow).Unix(), "%"+utr+"%").OrderBy("received_unix_time desc").Find(&messages)
+
+	if err != nil || len(messages) == 0 {
+		return 0, false, err
+	}
+
+	accounts, err := Accounts.GetAllAccountsByUid(c, uid)
+
+	if err != nil {
+		return 0, false, err
+	}
+
+	otherAccountId := int64(0)
+
+	for i := 0; i < len(messages); i++ {
+		candidate := alerts.Parse(messages[i].Sender, messages[i].Text)
+
+		if candidate.Outcome != alerts.OutcomeParsed || candidate.Amount != parsed.Amount || alerts.TransferReference(messages[i].Text) != utr {
+			continue
+		}
+
+		if candidate.Direction == parsed.Direction {
+			if candidate.Last4 == parsed.Last4 {
+				return 0, true, nil
+			}
+
+			continue
+		}
+
+		if otherAccountId > 0 || candidate.Last4 == parsed.Last4 {
+			continue
+		}
+
+		other := uniqueAccountByLast4(accounts, candidate.Last4)
+
+		if other == nil || other.AccountId == accountId {
+			continue
+		}
+
+		transaction, err := Transactions.GetTransactionByTransactionId(c, uid, messages[i].TransactionId)
+
+		if err == errs.ErrTransactionNotFound {
+			continue
+		} else if err != nil {
+			return 0, false, err
+		}
+
+		plainType := models.TRANSACTION_DB_TYPE_EXPENSE
+
+		if candidate.Direction == alerts.Credit {
+			plainType = models.TRANSACTION_DB_TYPE_INCOME
+		}
+
+		isPlain := transaction.Type == plainType && transaction.AccountId == other.AccountId
+		isTransfer := transaction.Type == models.TRANSACTION_DB_TYPE_TRANSFER_OUT && ((transaction.AccountId == accountId && transaction.RelatedAccountId == other.AccountId) || (transaction.AccountId == other.AccountId && transaction.RelatedAccountId == accountId))
+
+		if isPlain || isTransfer {
+			otherAccountId = other.AccountId
+		}
+	}
+
+	return otherAccountId, false, nil
 }
 
 // pairCardPayment matches one half of a card bill paid through CRED with the other half recorded

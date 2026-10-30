@@ -460,3 +460,122 @@ func TestIngestNeverCreatesBusinessTag(t *testing.T) {
 		assert.NotEqual(t, "Business", tag.Name)
 	}
 }
+
+const (
+	neftPnbDebit   = "Ac XX4215 debited Rs.200000.00 on 30-10-2026 16:36:10 for NEFT thru MBS reqid 793227839 from PUNBY26303389748/0793227839/Ri. Bal Rs.170137.51 CR.Helpline 18001800/18002021. Not u? Fwd this SMS to 9264092640 to block MBS-PNB"
+	neftHdfcCredit = "Update! INR 2,00,000.00 deposited in HDFC Bank A/c XX7731 on 30-OCT-26 for NEFT Cr-PUNB0042800-RISHABH JAIN S O HARISH KUMAR-Rishabh jain-PUNBY26303389748.Avl bal INR 2,90,168.45. Cheque deposits in A/C are subject to clearing"
+	neftHdfcOther  = "Update! INR 2,00,000.00 deposited in HDFC Bank A/c XX7731 on 30-OCT-26 for NEFT Cr-PUNB0042800-RISHABH JAIN S O HARISH KUMAR-Rishabh jain-PUNBX26302969498.Avl bal INR 2,90,168.45. Cheque deposits in A/C are subject to clearing"
+)
+
+func assertNeftTransfer(t *testing.T, ctx core.Context, uid int64) *models.Transaction {
+	t.Helper()
+	tx := onlyTransfer(t, ctx, uid)
+	assert.Equal(t, accountIdByName(t, ctx, uid, "PNB 4215"), tx.AccountId)
+	assert.Equal(t, accountIdByName(t, ctx, uid, "HDFC Bank 7731"), tx.RelatedAccountId)
+	assert.Equal(t, int64(20000000), tx.Amount)
+	return tx
+}
+
+func TestIngestNeftOwnTransferDebitThenCreditPairsByUtr(t *testing.T) {
+	ctx, uid := newAlertTestUser(t, "PNB 4215", "HDFC Bank 7731")
+	at := time.Now().Add(-time.Hour)
+	r1, err := Alerts.Ingest(ctx, uid, "XX-PNBSMS", neftPnbDebit, at)
+	assert.Nil(t, err)
+	assert.Equal(t, "added", r1.Outcome)
+	r2, err := Alerts.Ingest(ctx, uid, "XX-HDFCBK", neftHdfcCredit, at.Add(43*time.Minute))
+	assert.Nil(t, err)
+	assert.Equal(t, "added", r2.Outcome)
+	tx := assertNeftTransfer(t, ctx, uid)
+	assert.Equal(t, r2.TransactionId, tx.TransactionId)
+	assert.NotContains(t, tagNamesOf(t, ctx, uid, tx.TransactionId), "Needs review")
+}
+
+func TestIngestNeftOwnTransferCreditThenDebitPairsByUtr(t *testing.T) {
+	ctx, uid := newAlertTestUser(t, "PNB 4215", "HDFC Bank 7731")
+	at := time.Now().Add(-time.Hour)
+	r1, err := Alerts.Ingest(ctx, uid, "XX-HDFCBK", neftHdfcCredit, at)
+	assert.Nil(t, err)
+	assert.Equal(t, "added", r1.Outcome)
+	r2, err := Alerts.Ingest(ctx, uid, "XX-PNBSMS", neftPnbDebit, at.Add(20*time.Minute))
+	assert.Nil(t, err)
+	assert.Equal(t, "added", r2.Outcome)
+	assert.Equal(t, r2.TransactionId, assertNeftTransfer(t, ctx, uid).TransactionId)
+}
+
+func TestIngestNeftDifferentUtrsDoNotPair(t *testing.T) {
+	ctx, uid := newAlertTestUser(t, "PNB 4215", "HDFC Bank 7731")
+	at := time.Now().Add(-time.Hour)
+	r1, _ := Alerts.Ingest(ctx, uid, "XX-PNBSMS", neftPnbDebit, at)
+	r2, _ := Alerts.Ingest(ctx, uid, "XX-HDFCBK", neftHdfcOther, at.Add(10*time.Minute))
+	assert.Equal(t, "added", r1.Outcome)
+	assert.Equal(t, "added", r2.Outcome)
+	assert.Equal(t, 2, countTransactions(t, ctx, uid))
+	tx1, _ := Transactions.GetTransactionByTransactionId(ctx, uid, r1.TransactionId)
+	tx2, _ := Transactions.GetTransactionByTransactionId(ctx, uid, r2.TransactionId)
+	assert.Equal(t, models.TRANSACTION_DB_TYPE_EXPENSE, tx1.Type)
+	assert.Equal(t, models.TRANSACTION_DB_TYPE_INCOME, tx2.Type)
+}
+
+func TestIngestNeftCategorisedEarlierHalfIsKeptAndTransferReviewed(t *testing.T) {
+	ctx, uid := newAlertTestUser(t, "PNB 4215", "HDFC Bank 7731")
+	at := time.Now().Add(-time.Hour)
+	r1, _ := Alerts.Ingest(ctx, uid, "XX-PNBSMS", neftPnbDebit, at)
+	assert.Equal(t, "added", r1.Outcome)
+
+	// the user reviews the expense: "Needs review" is removed
+	tagIds, err := TransactionTags.GetAllTagIdsOfTransactions(ctx, uid, []int64{r1.TransactionId})
+	assert.Nil(t, err)
+	tags, err := TransactionTags.GetTagsByTagIds(ctx, uid, tagIds[r1.TransactionId])
+	assert.Nil(t, err)
+	var needsReviewId int64
+	for _, tg := range tags {
+		if tg.Name == "Needs review" {
+			needsReviewId = tg.TagId
+		}
+	}
+	assert.NotZero(t, needsReviewId)
+	tx, err := Transactions.GetTransactionByTransactionId(ctx, uid, r1.TransactionId)
+	assert.Nil(t, err)
+	reviewed := *tx
+	assert.Nil(t, Transactions.ModifyTransaction(ctx, &reviewed, false, len(tags), nil, []int64{needsReviewId}, nil, nil))
+	assert.NotContains(t, tagNamesOf(t, ctx, uid, r1.TransactionId), "Needs review")
+
+	r2, err := Alerts.Ingest(ctx, uid, "XX-HDFCBK", neftHdfcCredit, at.Add(43*time.Minute))
+	assert.Nil(t, err)
+	assert.Equal(t, "added", r2.Outcome)
+	assert.Equal(t, 2, countTransactions(t, ctx, uid))
+	transfer, err := Transactions.GetTransactionByTransactionId(ctx, uid, r2.TransactionId)
+	assert.Nil(t, err)
+	assert.Equal(t, models.TRANSACTION_DB_TYPE_TRANSFER_OUT, transfer.Type)
+	assert.Equal(t, accountIdByName(t, ctx, uid, "PNB 4215"), transfer.AccountId)
+	assert.Contains(t, tagNamesOf(t, ctx, uid, r2.TransactionId), "Needs review")
+	kept, err := Transactions.GetTransactionByTransactionId(ctx, uid, r1.TransactionId)
+	assert.Nil(t, err)
+	assert.Equal(t, models.TRANSACTION_DB_TYPE_EXPENSE, kept.Type)
+}
+
+func TestIngestNeftRepeatedSmsAddsNoExtraTransfer(t *testing.T) {
+	ctx, uid := newAlertTestUser(t, "PNB 4215", "HDFC Bank 7731")
+	at := time.Now().Add(-2 * time.Hour)
+	_, _ = Alerts.Ingest(ctx, uid, "XX-PNBSMS", neftPnbDebit, at)
+	_, _ = Alerts.Ingest(ctx, uid, "XX-HDFCBK", neftHdfcCredit, at.Add(43*time.Minute))
+	r3, err := Alerts.Ingest(ctx, uid, "XX-HDFCBK", neftHdfcCredit, at.Add(50*time.Minute))
+	assert.Nil(t, err)
+	assert.Equal(t, "duplicate", r3.Outcome)
+	r4, err := Alerts.Ingest(ctx, uid, "XX-PNBSMS", neftPnbDebit, at.Add(60*time.Minute))
+	assert.Nil(t, err)
+	assert.Equal(t, "duplicate", r4.Outcome)
+	assertNeftTransfer(t, ctx, uid)
+}
+
+func TestIngestNeftRepeatedFirstHalfIsDuplicate(t *testing.T) {
+	ctx, uid := newAlertTestUser(t, "PNB 4215", "HDFC Bank 7731")
+	at := time.Now().Add(-2 * time.Hour)
+	_, _ = Alerts.Ingest(ctx, uid, "XX-PNBSMS", neftPnbDebit, at)
+	r2, err := Alerts.Ingest(ctx, uid, "XX-PNBSMS", neftPnbDebit, at.Add(10*time.Minute))
+	assert.Nil(t, err)
+	assert.Equal(t, "duplicate", r2.Outcome)
+	r3, _ := Alerts.Ingest(ctx, uid, "XX-HDFCBK", neftHdfcCredit, at.Add(43*time.Minute))
+	assert.Equal(t, "added", r3.Outcome)
+	assertNeftTransfer(t, ctx, uid)
+}
