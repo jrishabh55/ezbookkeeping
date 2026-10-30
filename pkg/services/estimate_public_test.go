@@ -64,7 +64,7 @@ func TestConcurrentPublicAnswersRecordOnlyOne(t *testing.T) {
 
 	assert.Nil(t, Invoices.RespondToEstimateByPublicToken(ctx, token, models.ESTIMATE_STATUS_ACCEPTED, "", "2026-10-30"))
 
-	recorded, err := Invoices.recordEstimateClientResponse(ctx, stale, token, models.ESTIMATE_STATUS_DECLINED, "too late")
+	recorded, err := Invoices.recordEstimateClientResponse(ctx, stale, token, models.ESTIMATE_STATUS_DECLINED, "too late", "2026-10-30")
 	assert.Nil(t, err)
 	assert.False(t, recorded)
 

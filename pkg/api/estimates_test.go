@@ -28,8 +28,15 @@ func TestEstimatePublicAnswerHandlersRefuseBadRequestsWithoutTheDatabase(t *test
 	assert.Nil(t, result)
 	assert.Equal(t, errs.ErrInvoiceNotFound, err)
 
+	// the request model only guards against an outsized body (max=4000); the real 500-rune limit is the service's, after trimming
 	_, err = Invoices.EstimatePublicDeclineHandler(newTestJsonWebContext("/api/public/estimates/decline.json", `{"token":"unknown","note":"`+strings.Repeat("x", 501)+`"}`))
-	assert.NotNil(t, err) // the 500-character limit is checked when the body is bound
+	assert.Equal(t, errs.ErrEstimateResponseNoteTooLong, err)
+
+	// a 500-rune note padded with whitespace is accepted (trimmed first): it reaches the token check, not a note error
+	paddedNote := "  " + strings.Repeat("x", 500) + "  "
+	result, err = Invoices.EstimatePublicDeclineHandler(newTestJsonWebContext("/api/public/estimates/decline.json", `{"token":"unknown","note":"`+paddedNote+`"}`))
+	assert.Nil(t, result)
+	assert.Equal(t, errs.ErrInvoiceNotFound, err)
 
 	_, err = Invoices.EstimatePublicDeclineHandler(newTestJsonWebContext("/api/public/estimates/decline.json", `{}`))
 	assert.NotNil(t, err)

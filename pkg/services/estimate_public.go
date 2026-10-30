@@ -53,7 +53,7 @@ func (s *InvoiceService) RespondToEstimateByPublicToken(c core.Context, token st
 		return errs.ErrEstimateCannotBeAnswered
 	}
 
-	recorded, err := s.recordEstimateClientResponse(c, estimate, token, status, note)
+	recorded, err := s.recordEstimateClientResponse(c, estimate, token, status, note, today)
 
 	if err != nil {
 		return err
@@ -65,12 +65,13 @@ func (s *InvoiceService) RespondToEstimateByPublicToken(c core.Context, token st
 	return nil
 }
 
-// recordEstimateClientResponse writes the answer only while the stored estimate is still sent and its link unchanged, so of two
-// concurrent clicks exactly one is recorded; it reports whether this one was. The estimate is updated in memory when recorded.
-// Like SetEstimateResponse, it locks the estimate's own row first (lock order: an invoice's row before its estimate, never the
-// reverse - this path only ever locks the estimate) and refuses a decline once a non-deleted invoice references the estimate;
-// an accept is always fine.
-func (s *InvoiceService) recordEstimateClientResponse(c core.Context, estimate *models.Invoice, token string, status string, note string) (bool, error) {
+// recordEstimateClientResponse writes the answer only while the stored estimate is still sent, still valid today and its link
+// unchanged, so of two concurrent clicks exactly one is recorded, and an owner who shortens the valid-until date while a click is
+// in flight cannot let an expired answer through; it reports whether this one was. The estimate is updated in memory when
+// recorded. Like SetEstimateResponse, it locks the estimate's own row first (lock order: an invoice's row before its estimate,
+// never the reverse - this path only ever locks the estimate) and refuses a decline once a non-deleted invoice references the
+// estimate; an accept is always fine.
+func (s *InvoiceService) recordEstimateClientResponse(c core.Context, estimate *models.Invoice, token string, status string, note string, today string) (bool, error) {
 	now := time.Now().Unix()
 	recorded := false
 
@@ -90,8 +91,8 @@ func (s *InvoiceService) recordEstimateClientResponse(c core.Context, estimate *
 		}
 
 		updatedRows, err := sess.Cols("estimate_status", "responded_unix_time", "responded_by_client", "response_note", "updated_unix_time").
-			Where("uid=? AND deleted=? AND kind=? AND invoice_id=? AND public_token=? AND estimate_status=?",
-				estimate.Uid, false, models.INVOICE_KIND_ESTIMATE, estimate.InvoiceId, token, models.ESTIMATE_STATUS_SENT).
+			Where("uid=? AND deleted=? AND kind=? AND invoice_id=? AND public_token=? AND estimate_status=? AND due_date>=?",
+				estimate.Uid, false, models.INVOICE_KIND_ESTIMATE, estimate.InvoiceId, token, models.ESTIMATE_STATUS_SENT, today).
 			Update(&models.Invoice{EstimateStatus: status, RespondedUnixTime: now, RespondedByClient: true, ResponseNote: note, UpdatedUnixTime: now})
 
 		recorded = updatedRows > 0

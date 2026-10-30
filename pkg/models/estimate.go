@@ -82,5 +82,7 @@ type EstimateInvoiceDraftRequest struct {
 // EstimatePublicRespondRequest is the client's answer through a public estimate link: the token is the only key
 type EstimatePublicRespondRequest struct {
 	Token string `json:"token" binding:"required,max=64"`
-	Note  string `json:"note" binding:"max=500"` // decline only; plain text
+	Note  string `json:"note" binding:"max=4000"` // decline only; plain text. A generous request-size guard: the service trims then
+	// enforces the real 500-rune limit (EstimateResponseNoteMaxLength), so an over-long note gets ErrEstimateResponseNoteTooLong
+	// rather than the generic submission error, and a 500-rune note padded with whitespace is still accepted.
 }
