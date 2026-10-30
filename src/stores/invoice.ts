@@ -389,6 +389,11 @@ export const useInvoicesStore = defineStore('invoices', () => {
         return request(services.reopenEstimate({ id: estimateId }), 'Unable to save estimate').then(result => Invoice.of(result));
     }
 
+    // the next version of a sent or answered estimate, created as a new draft; the old version is superseded
+    function reviseEstimate({ estimateId }: { estimateId: string }): Promise<Invoice> {
+        return request(services.reviseEstimate({ id: estimateId }), 'Unable to revise estimate').then(result => Invoice.of(result));
+    }
+
     // the unsaved invoice an estimate (milestoneId '') or one of its milestones turns into, for the editor
     function getEstimateInvoiceDraft({ estimateId, milestoneId }: { estimateId: string, milestoneId: string }): Promise<Invoice> {
         return request(services.getEstimateInvoiceDraft({ id: estimateId, milestoneId }), 'Unable to convert estimate').then(result => Invoice.of(result));
@@ -456,6 +461,7 @@ export const useInvoicesStore = defineStore('invoices', () => {
         loadAllEstimates,
         setEstimateResponse,
         reopenEstimate,
+        reviseEstimate,
         getEstimateInvoiceDraft,
         loadEstimatesToInvoice
     };

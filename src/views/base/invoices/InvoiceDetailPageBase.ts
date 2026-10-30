@@ -10,7 +10,7 @@ import { createInvoiceEmailSendRequest } from '@/lib/invoiceEmail.ts';
 import { startDownloadFile } from '@/lib/ui/common.ts';
 
 import type { TextualYearMonthDay } from '@/core/datetime.ts';
-import type { Invoice, InvoiceEmail, InvoicePayment, InvoiceProfile, InvoiceSendRequest, InvoiceRenewalOption } from '@/models/invoice.ts';
+import type { Invoice, InvoiceEmail, InvoicePayment, InvoiceProfile, InvoiceSendRequest, InvoiceRenewalOption, EstimateRevision } from '@/models/invoice.ts';
 import { RECURRING_INVOICE_MODES, RECURRING_INVOICE_PERIODS } from '@/models/invoice.ts';
 
 import { parseBigDecimal } from '@/lib/numeral.ts';
@@ -26,7 +26,17 @@ import {
     getTodayTextualDate,
     printInvoiceDocument
 } from '@/lib/invoice.ts';
-import { type EstimateDisplayStatus, ESTIMATE_DISPLAY_STATUS_NAMES, getEstimateDisplayStatus, isEstimateLocked, getMilestoneAmounts } from '@/lib/estimate.ts';
+import {
+    type EstimateDisplayStatus,
+    ESTIMATE_DISPLAY_STATUS_NAMES,
+    getEstimateDisplayStatus,
+    isEstimateLocked,
+    canReviseEstimate,
+    canDeleteEstimate,
+    getEstimateRevisionLabel,
+    getSupersedingRevision,
+    getMilestoneAmounts
+} from '@/lib/estimate.ts';
 
 import { getInvoiceDisplayStatusName } from './InvoiceListPageBase.ts';
 
@@ -67,8 +77,18 @@ export function useInvoiceDetailPageBase() {
     const isEstimate = computed<boolean>(() => invoice.value?.kind === 'estimate');
     const estimateStatus = computed<EstimateDisplayStatus | null>(() => invoice.value && isEstimate.value ? getEstimateDisplayStatus(invoice.value, getTodayTextualDate()) : null);
     const estimateStatusName = computed<string>(() => estimateStatus.value ? ESTIMATE_DISPLAY_STATUS_NAMES[estimateStatus.value] : '');
-    // an estimate is edited only while draft or sent and nothing is invoiced from it; Duplicate always works
+    // an estimate is edited in place only while a draft with nothing invoiced from it; Duplicate always works
     const canEdit = computed<boolean>(() => !!invoice.value && (!isEstimate.value || !isEstimateLocked(invoice.value)));
+    // a sent (or expired), declined or accepted-not-invoiced estimate is changed by revising it into a new draft version
+    const canRevise = computed<boolean>(() => isEstimate.value && !!invoice.value && canReviseEstimate(invoice.value));
+    const isSuperseded = computed<boolean>(() => isEstimate.value && invoice.value?.estimateStatus === 'superseded');
+    // a superseded version, or a revision that was sent, is never deleted; invoices and first versions are
+    const canDelete = computed<boolean>(() => !!invoice.value && (!isEstimate.value || canDeleteEstimate(invoice.value)));
+    // emailing a superseded version would send terms that no longer stand
+    const canSend = computed<boolean>(() => !!invoice.value && !isSuperseded.value);
+    const supersededBy = computed<EstimateRevision | null>(() => invoice.value && isSuperseded.value ? getSupersedingRevision(invoice.value.revisions, invoice.value.revisionNumber) : null);
+    // the Revisions section appears once the estimate has more than one version
+    const hasRevisions = computed<boolean>(() => isEstimate.value && (invoice.value?.revisions.length ?? 0) > 1);
     // Mark accepted / declined from draft, sent or expired; Reopen an answered estimate while nothing is invoiced
     const canMarkResponse = computed<boolean>(() => isEstimate.value && (invoice.value?.estimateStatus === 'draft' || invoice.value?.estimateStatus === 'sent'));
     // an estimate something was invoiced from can still be accepted, never declined
@@ -228,6 +248,27 @@ export function useInvoiceDetailPageBase() {
         });
     }
 
+    // creates the next version as a new draft and resolves with it; the page then shows it and opens it in the editor
+    function reviseEstimate(): Promise<Invoice> {
+        const current = invoice.value;
+
+        if (!current) {
+            return Promise.reject({ message: 'Unable to revise estimate' });
+        }
+
+        return invoicesStore.reviseEstimate({ estimateId: current.id });
+    }
+
+    // "Original" / "Revision 2"
+    function getRevisionLabel(revision: EstimateRevision): string {
+        const label = getEstimateRevisionLabel(revision.revisionNumber);
+        return tt(label.key, label.params);
+    }
+
+    function getRevisionStatusName(revision: EstimateRevision): string {
+        return ESTIMATE_DISPLAY_STATUS_NAMES[getEstimateDisplayStatus(revision, getTodayTextualDate())];
+    }
+
     function printInvoice(): void {
         if (invoice.value) {
             printInvoiceDocument(invoice.value);
@@ -309,6 +350,12 @@ export function useInvoiceDetailPageBase() {
         canConvert,
         convertNeedsConfirm,
         milestoneAmounts,
+        canRevise,
+        isSuperseded,
+        canDelete,
+        canSend,
+        supersededBy,
+        hasRevisions,
         // functions
         formatAmount,
         formatDate,
@@ -325,6 +372,9 @@ export function useInvoiceDetailPageBase() {
         prepareSendRequest,
         sendInvoice,
         setEstimateResponse,
-        reopenEstimate
+        reopenEstimate,
+        reviseEstimate,
+        getRevisionLabel,
+        getRevisionStatusName
     };
 }

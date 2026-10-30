@@ -18,10 +18,11 @@ export const ESTIMATE_STATUS_COLORS: Record<EstimateDisplayStatus, string> = {
     accepted: 'success',
     declined: 'error',
     expired: 'warning',
-    invoiced: 'secondary'
+    invoiced: 'secondary',
+    superseded: 'grey'
 };
 
-// the estimate list: open estimates by default, declined and fully invoiced ones behind "Show closed"
+// the estimate list: the latest version of each open estimate by default; declined, fully invoiced and superseded ones behind "Show closed"
 export function useEstimateListPageBase() {
     const { formatAmountToLocalizedNumeralsWithCurrency, formatGregorianTextualYearMonthDayToLongDate } = useI18n();
 

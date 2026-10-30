@@ -1155,14 +1155,18 @@ export default {
     getInvoiceRenewals: (): ApiResponsePromise<InvoiceRenewalInfoResponse[]> => {
         return axios.get<ApiResponse<InvoiceRenewalInfoResponse[]>>('v1/invoices/renewals.json');
     },
+    // every version: superseded ones are hidden on the client side unless "Show closed", like declined and invoiced estimates
     getAllEstimates: (): ApiResponsePromise<InvoiceInfoResponse[]> => {
-        return axios.get<ApiResponse<InvoiceInfoResponse[]>>('v1/invoices/list.json?kind=estimate');
+        return axios.get<ApiResponse<InvoiceInfoResponse[]>>('v1/invoices/list.json?kind=estimate&include_superseded=true');
     },
     setEstimateResponse: (req: { id: string, status: 'accepted' | 'declined' }): ApiResponsePromise<InvoiceInfoResponse> => {
         return axios.post<ApiResponse<InvoiceInfoResponse>>('v1/estimates/respond.json', req);
     },
     reopenEstimate: ({ id }: { id: string }): ApiResponsePromise<InvoiceInfoResponse> => {
         return axios.post<ApiResponse<InvoiceInfoResponse>>('v1/estimates/reopen.json', { id });
+    },
+    reviseEstimate: ({ id }: { id: string }): ApiResponsePromise<InvoiceInfoResponse> => {
+        return axios.post<ApiResponse<InvoiceInfoResponse>>('v1/estimates/revise.json', { id });
     },
     getEstimateInvoiceDraft: ({ id, milestoneId }: { id: string, milestoneId: string }): ApiResponsePromise<InvoiceInfoResponse> => {
         return axios.get<ApiResponse<InvoiceInfoResponse>>('v1/estimates/invoice_draft.json?id=' + id + (milestoneId ? '&milestone_id=' + milestoneId : ''));

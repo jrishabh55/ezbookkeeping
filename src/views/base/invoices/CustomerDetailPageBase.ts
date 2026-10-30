@@ -90,6 +90,8 @@ export function useCustomerDetailPageBase() {
                 return tt(item.byClient ? 'format.misc.timelineEstimateAcceptedByClient' : 'format.misc.timelineEstimateAccepted', { number: item.invoiceNumber });
             case 'estimate_declined':
                 return tt(item.byClient ? 'format.misc.timelineEstimateDeclinedByClient' : 'format.misc.timelineEstimateDeclined', { number: item.invoiceNumber });
+            case 'estimate_revised':
+                return tt('format.misc.timelineEstimateRevised', { estimate: item.estimateNumber ?? '', number: item.invoiceNumber });
             default:
                 if (item.estimateNumber) {
                     return tt('format.misc.timelineInvoiceFromEstimate', { number: item.invoiceNumber, estimate: item.estimateNumber });

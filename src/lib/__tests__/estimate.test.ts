@@ -1,10 +1,16 @@
 import { describe, expect, test } from 'vitest';
 
 import {
+    type EstimateStatus,
+    ESTIMATE_DISPLAY_STATUS_NAMES,
     getEstimateDisplayStatus,
     isEstimateClosed,
     isEstimateLocked,
     canAnswerEstimate,
+    canReviseEstimate,
+    canDeleteEstimate,
+    getEstimateRevisionLabel,
+    getSupersedingRevision,
     getMilestoneAmounts,
     getMilestonePercentTotal,
     getMilestonesProblem,
@@ -12,11 +18,11 @@ import {
     formatMilestonePercent,
     unixTimeToTextualDate
 } from '@/lib/estimate.ts';
-import { Invoice } from '@/models/invoice.ts';
+import { type EstimateRevision, Invoice } from '@/models/invoice.ts';
 import type { TextualYearMonthDay } from '@/core/datetime.ts';
 
-const estimate = (estimateStatus: '' | 'draft' | 'sent' | 'accepted' | 'declined', dueDate: TextualYearMonthDay, fullyInvoiced = false) =>
-    ({ kind: 'estimate', estimateStatus, dueDate, fullyInvoiced, convertedInvoices: [] as { id: string, number: string }[] });
+const estimate = (estimateStatus: '' | EstimateStatus, dueDate: TextualYearMonthDay, fullyInvoiced = false) =>
+    ({ kind: 'estimate', estimateStatus, dueDate, fullyInvoiced, revisionNumber: 0, convertedInvoices: [] as { id: string, number: string }[] });
 
 describe('getMilestoneAmounts', () => {
     test('rounds each share half up and gives the last one the remainder', () => {
@@ -83,10 +89,13 @@ describe('getEstimateDisplayStatus', () => {
 });
 
 describe('isEstimateLocked and canAnswerEstimate', () => {
-    test('editable while draft or sent and nothing invoiced', () => {
-        expect(isEstimateLocked(estimate('sent', '2099-01-01'))).toBe(false);
+    test('edited in place only while a draft with nothing invoiced', () => {
+        expect(isEstimateLocked(estimate('draft', '2099-01-01'))).toBe(false);
+        expect(isEstimateLocked(estimate('', '2099-01-01'))).toBe(false);
+        expect(isEstimateLocked(estimate('sent', '2099-01-01'))).toBe(true);
         expect(isEstimateLocked(estimate('accepted', '2099-01-01'))).toBe(true);
-        expect(isEstimateLocked({ ...estimate('sent', '2099-01-01'), convertedInvoices: [{ id: '1', number: 'INV/2026-27/01' }] })).toBe(true);
+        expect(isEstimateLocked(estimate('superseded', '2099-01-01'))).toBe(true);
+        expect(isEstimateLocked({ ...estimate('draft', '2099-01-01'), convertedInvoices: [{ id: '1', number: 'INV/2026-27/01' }] })).toBe(true);
     });
 
     test('the client can answer only a sent, still valid estimate', () => {
@@ -124,5 +133,59 @@ describe('estimate models', () => {
 
     test('unixTimeToTextualDate is the local calendar date', () => {
         expect(unixTimeToTextualDate(new Date(2026, 9, 30, 12, 0, 0).getTime() / 1000)).toBe('2026-10-30');
+    });
+});
+
+describe('estimate revisions', () => {
+    test('a superseded version shows as superseded, whatever its dates, and is closed', () => {
+        expect(getEstimateDisplayStatus(estimate('superseded', '2026-01-01'), '2026-10-30')).toBe('superseded');
+        expect(getEstimateDisplayStatus(estimate('superseded', '2099-01-01'), '2026-10-30')).toBe('superseded');
+        expect(ESTIMATE_DISPLAY_STATUS_NAMES.superseded).toBe('Superseded');
+        expect(isEstimateClosed(estimate('superseded', '2099-01-01'))).toBe(true);
+        expect(canAnswerEstimate(estimate('superseded', '2099-01-01'), '2026-10-30')).toBe(false);
+    });
+
+    test('Revise is offered on sent (also expired), declined and accepted-not-invoiced versions', () => {
+        expect(canReviseEstimate(estimate('sent', '2099-01-01'))).toBe(true);
+        expect(canReviseEstimate(estimate('sent', '2026-01-01'))).toBe(true);
+        expect(canReviseEstimate(estimate('declined', '2099-01-01'))).toBe(true);
+        expect(canReviseEstimate(estimate('accepted', '2099-01-01'))).toBe(true);
+        expect(canReviseEstimate({ ...estimate('accepted', '2099-01-01'), convertedInvoices: [{ id: '1', number: 'INV/2026-27/01' }] })).toBe(false);
+        expect(canReviseEstimate(estimate('draft', '2099-01-01'))).toBe(false);
+        expect(canReviseEstimate(estimate('superseded', '2099-01-01'))).toBe(false);
+    });
+
+    test('a superseded version or a revision that was sent cannot be deleted', () => {
+        expect(canDeleteEstimate({ estimateStatus: 'sent', revisionNumber: 0 })).toBe(true);
+        expect(canDeleteEstimate({ estimateStatus: 'draft', revisionNumber: 2 })).toBe(true);
+        expect(canDeleteEstimate({ estimateStatus: 'sent', revisionNumber: 2 })).toBe(false);
+        expect(canDeleteEstimate({ estimateStatus: 'superseded', revisionNumber: 0 })).toBe(false);
+    });
+
+    test('revision labels', () => {
+        expect(getEstimateRevisionLabel(0)).toEqual({ key: 'Original', params: { number: 0 } });
+        expect(getEstimateRevisionLabel(2)).toEqual({ key: 'format.misc.estimateRevision', params: { number: 2 } });
+    });
+
+    test('a version is superseded by the next version still in the chain', () => {
+        const revisions = [{ id: 'c', revisionNumber: 3 }, { id: 'a', revisionNumber: 0 }]; // R1 and R2 were deleted drafts
+        expect(getSupersedingRevision(revisions, 0)?.id).toBe('c');
+        expect(getSupersedingRevision(revisions, 3)).toBeNull();
+        expect(getSupersedingRevision([], 0)).toBeNull();
+    });
+
+    test('the detail response carries the revision number and every version of the chain', () => {
+        const revisions: EstimateRevision[] = [
+            { id: '9', number: 'EST/2026-27/01-R1', revisionNumber: 1, invoiceDate: '2026-10-30', dueDate: '2026-11-29', estimateStatus: 'draft', total: 100, currency: 'INR', fullyInvoiced: false },
+            { id: '7', number: 'EST/2026-27/01', revisionNumber: 0, invoiceDate: '2026-04-23', dueDate: '2099-12-31', estimateStatus: 'superseded', total: 100, currency: 'INR', fullyInvoiced: false }
+        ];
+        const old = Invoice.of({ ...Invoice.createNewEstimate(), id: '7', estimateStatus: 'superseded', revisions });
+
+        expect(old.revisionNumber).toBe(0);
+        expect(old.revisions.map(revision => revision.number)).toEqual(['EST/2026-27/01-R1', 'EST/2026-27/01']);
+        expect(getSupersedingRevision(old.revisions, old.revisionNumber)?.number).toBe('EST/2026-27/01-R1');
+        expect(old.clone().revisions).toEqual(revisions);
+        expect(old.duplicate().revisions).toEqual([]); // a duplicate is a new first version
+        expect(Invoice.of({ ...Invoice.createNewEstimate(), id: '9', revisionNumber: 1 }).revisionNumber).toBe(1);
     });
 });

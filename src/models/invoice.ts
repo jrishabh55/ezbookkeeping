@@ -46,6 +46,19 @@ export interface EstimateConvertedInvoice {
     readonly number: string;
 }
 
+// one version of an estimate's revision chain, as the detail response lists it (newest first)
+export interface EstimateRevision {
+    readonly id: string;
+    readonly number: string;
+    readonly revisionNumber: number; // 0 = the first version
+    readonly invoiceDate: TextualYearMonthDay;
+    readonly dueDate: TextualYearMonthDay;
+    readonly estimateStatus: EstimateStatus;
+    readonly total: number;
+    readonly currency: string;
+    readonly fullyInvoiced: boolean;
+}
+
 export interface PublicEstimateMilestone {
     readonly label: string;
     readonly percent: number;
@@ -198,6 +211,8 @@ export interface InvoiceInfoResponse {
     readonly milestones?: EstimateMilestoneInfoResponse[];
     readonly convertedInvoices?: EstimateConvertedInvoice[];
     readonly fullyInvoiced?: boolean;
+    readonly revisionNumber?: number; // estimates: absent on a first version
+    readonly revisions?: EstimateRevision[]; // estimate detail: every version of the chain, newest first
 }
 
 // one email sent for an invoice; emailHtml is only filled when that email is fetched on its own
@@ -314,6 +329,7 @@ export interface PublicInvoiceResponse {
     readonly estimateStatus?: EstimateStatus;
     readonly respondedUnixTime?: number;
     readonly milestones?: PublicEstimateMilestone[];
+    readonly supersededBy?: string; // a superseded version: the public token of the latest version that was sent
 }
 
 export class InvoiceProfile implements InvoiceProfileInfoResponse {
@@ -525,6 +541,8 @@ export class Invoice implements InvoiceInfoResponse {
     public milestones: EstimateMilestone[] = [];
     public convertedInvoices: EstimateConvertedInvoice[] = [];
     public fullyInvoiced: boolean = false;
+    public revisionNumber: number = 0; // estimates: 0 on the first version
+    public revisions: EstimateRevision[] = []; // estimate detail only
 
     public fillFrom(other: InvoiceInfoResponse): void {
         this.id = other.id;
@@ -541,6 +559,8 @@ export class Invoice implements InvoiceInfoResponse {
         }));
         this.convertedInvoices = [...(other.convertedInvoices ?? [])];
         this.fullyInvoiced = other.fullyInvoiced ?? false;
+        this.revisionNumber = other.revisionNumber ?? 0;
+        this.revisions = [...(other.revisions ?? [])];
         this.number = other.number;
         this.customerId = other.customerId;
         this.billToName = other.billToName;
@@ -785,7 +805,7 @@ export interface CustomerProduct {
 }
 
 export interface CustomerTimelineItem {
-    readonly kind: 'invoice' | 'email' | 'payment' | 'estimate' | 'estimate_accepted' | 'estimate_declined';
+    readonly kind: 'invoice' | 'email' | 'payment' | 'estimate' | 'estimate_accepted' | 'estimate_declined' | 'estimate_revised';
     readonly unixTime: number;
     readonly invoiceId: string;
     readonly invoiceNumber: string;

@@ -5,8 +5,8 @@ export const ESTIMATE_MILESTONE_PERCENT_TOTAL = 10000;
 export const ESTIMATE_MAX_MILESTONES = 10;
 export const ESTIMATE_MILESTONE_LABEL_MAX_LENGTH = 128;
 
-// mirrors models.ESTIMATE_STATUS_*; expired and invoiced are only ever displayed
-export type EstimateStatus = 'draft' | 'sent' | 'accepted' | 'declined';
+// mirrors models.ESTIMATE_STATUS_*; expired and invoiced are only ever displayed; superseded is a version a revision replaced
+export type EstimateStatus = 'draft' | 'sent' | 'accepted' | 'declined' | 'superseded';
 export type EstimateDisplayStatus = EstimateStatus | 'expired' | 'invoiced';
 
 export const ESTIMATE_DISPLAY_STATUS_NAMES: Record<EstimateDisplayStatus, string> = {
@@ -14,6 +14,7 @@ export const ESTIMATE_DISPLAY_STATUS_NAMES: Record<EstimateDisplayStatus, string
     sent: 'Sent',
     accepted: 'Accepted',
     declined: 'Declined',
+    superseded: 'Superseded',
     expired: 'Expired',
     invoiced: 'Invoiced'
 };
@@ -24,8 +25,13 @@ interface EstimateState {
     readonly fullyInvoiced: boolean;
 }
 
-// expired: a draft or sent estimate whose valid-until date (dueDate) is before today; extending the date revives it
+// expired: a draft or sent estimate whose valid-until date (dueDate) is before today; extending the date revives it.
+// A superseded version is history: it never shows as expired or invoiced
 export function getEstimateDisplayStatus(estimate: EstimateState, today: string): EstimateDisplayStatus {
+    if (estimate.estimateStatus === 'superseded') {
+        return 'superseded';
+    }
+
     if (estimate.fullyInvoiced) {
         return 'invoiced';
     }
@@ -39,15 +45,50 @@ export function getEstimateDisplayStatus(estimate: EstimateState, today: string)
     return status;
 }
 
-// hidden from the list unless "Show closed": declined, or fully invoiced
+// hidden from the list unless "Show closed": declined, fully invoiced, or superseded by a newer version
 export function isEstimateClosed(estimate: EstimateState): boolean {
-    return estimate.estimateStatus === 'declined' || estimate.fullyInvoiced;
+    return estimate.estimateStatus === 'declined' || estimate.estimateStatus === 'superseded' || estimate.fullyInvoiced;
 }
 
-// read-only once answered or once anything was invoiced from it, mirroring checkEstimateEditable in pkg/services/estimate_lifecycle.go
+// read-only unless a draft with nothing invoiced from it, mirroring checkEstimateEditable in pkg/services/estimate_lifecycle.go;
+// once sent it is changed through Revise
 export function isEstimateLocked(estimate: { readonly estimateStatus: EstimateStatus | '', readonly convertedInvoices: readonly unknown[] }): boolean {
-    const answered = estimate.estimateStatus === 'accepted' || estimate.estimateStatus === 'declined';
-    return answered || estimate.convertedInvoices.length > 0;
+    return (estimate.estimateStatus || 'draft') !== 'draft' || estimate.convertedInvoices.length > 0;
+}
+
+// Revise is offered on a version that is sent (expired too), declined, or accepted with nothing invoiced from it; a superseded version is
+// never the latest, so this is also "latest only". Mirrors checkEstimateRevisable in pkg/services/estimate_revisions.go
+export function canReviseEstimate(estimate: { readonly estimateStatus: EstimateStatus | '', readonly convertedInvoices: readonly unknown[] }): boolean {
+    const status = estimate.estimateStatus;
+    return (status === 'sent' || status === 'declined' || status === 'accepted') && !estimate.convertedInvoices.length;
+}
+
+// a superseded version is history and a revision that was sent stays (answer or revise it); a first version or a draft revision can be
+// deleted. Mirrors checkEstimateDeletable in pkg/services/estimate_revisions.go
+export function canDeleteEstimate(estimate: { readonly estimateStatus: EstimateStatus | '', readonly revisionNumber: number }): boolean {
+    if (estimate.estimateStatus === 'superseded') {
+        return false;
+    }
+
+    return estimate.revisionNumber === 0 || (estimate.estimateStatus || 'draft') === 'draft';
+}
+
+// a version's name in the Revisions list as a locale key and its parameters: "Original", then "Revision 1", "Revision 2", …
+export function getEstimateRevisionLabel(revisionNumber: number): { key: string, params: { number: number } } {
+    return revisionNumber > 0 ? { key: 'format.misc.estimateRevision', params: { number: revisionNumber } } : { key: 'Original', params: { number: 0 } };
+}
+
+// the version that replaced this one: the lowest higher revision number still in the chain; null for the latest version
+export function getSupersedingRevision<T extends { readonly revisionNumber: number }>(revisions: readonly T[], revisionNumber: number): T | null {
+    let next: T | null = null;
+
+    for (const revision of revisions) {
+        if (revision.revisionNumber > revisionNumber && (!next || revision.revisionNumber < next.revisionNumber)) {
+            next = revision;
+        }
+    }
+
+    return next;
 }
 
 // the public page offers Accept / Decline only while the server would take the answer
