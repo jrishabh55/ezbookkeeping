@@ -373,15 +373,17 @@ type InvoiceCreateRequest struct {
 
 // InvoiceModifyRequest represents all parameters of invoice modification request
 type InvoiceModifyRequest struct {
-	Id          int64                 `json:"id,string" binding:"required,min=1"`
-	Number      string                `json:"number" binding:"required,notBlank,max=64"`
-	CustomerId  int64                 `json:"customerId,string" binding:"required,min=1"`
-	InvoiceDate string                `json:"invoiceDate" binding:"required,len=10"`
-	DueDate     string                `json:"dueDate" binding:"required,len=10"`
-	Notes       string                `json:"notes" binding:"max=2048"`
-	TaxType     string                `json:"taxType" binding:"max=16"`
-	TaxRate     int32                 `json:"taxRate" binding:"min=0,max=10000"`
-	Lines       []*InvoiceLineRequest `json:"lines" binding:"required,min=1,max=100,dive"`
+	Id          int64                       `json:"id,string" binding:"required,min=1"`
+	Number      string                      `json:"number" binding:"required,notBlank,max=64"`
+	CustomerId  int64                       `json:"customerId,string" binding:"required,min=1"`
+	InvoiceDate string                      `json:"invoiceDate" binding:"required,len=10"`
+	DueDate     string                      `json:"dueDate" binding:"required,len=10"`
+	Notes       string                      `json:"notes" binding:"max=2048"`
+	TaxType     string                      `json:"taxType" binding:"max=16"`
+	TaxRate     int32                       `json:"taxRate" binding:"min=0,max=10000"`
+	Lines       []*InvoiceLineRequest       `json:"lines" binding:"required,min=1,max=100,dive"`
+	Kind        string                      `json:"kind" binding:"omitempty,oneof=invoice estimate"` // empty means invoice
+	Milestones  []*EstimateMilestoneRequest `json:"milestones" binding:"omitempty,max=10,dive"`      // estimates only; replaces the stored ones
 }
 
 // InvoiceIdRequest represents a request that only carries an invoice / customer id (get, delete, close, reopen)
@@ -481,39 +483,43 @@ type InvoicePaymentResponse struct {
 
 // InvoiceInfoResponse represents a view-object of invoice
 type InvoiceInfoResponse struct {
-	Id                 string                    `json:"id"`
-	Kind               string                    `json:"kind"`
-	Number             string                    `json:"number"`
-	CustomerId         string                    `json:"customerId"`
-	BillToName         string                    `json:"billToName"`
-	BillToContactName  string                    `json:"billToContactName"`
-	BillToAddressLines string                    `json:"billToAddressLines"`
-	BillToEmail        string                    `json:"billToEmail"`
-	BillToPhone        string                    `json:"billToPhone"`
-	BillToPan          string                    `json:"billToPan"`
-	BillToGstin        string                    `json:"billToGstin"`
-	Currency           string                    `json:"currency"`
-	InvoiceDate        string                    `json:"invoiceDate"`
-	DueDate            string                    `json:"dueDate"`
-	Notes              string                    `json:"notes"`
-	Total              int64                     `json:"total"`
-	TaxType            string                    `json:"taxType"`
-	TaxRate            int32                     `json:"taxRate"`
-	Subtotal           int64                     `json:"subtotal"`
-	TaxAmount          int64                     `json:"taxAmount"`
-	Received           int64                     `json:"received"`
-	ClosedManually     bool                      `json:"closedManually"`
-	Lines              []*InvoiceLineResponse    `json:"lines,omitempty"`
-	Payments           []*InvoicePaymentResponse `json:"payments,omitempty"`
-	PublicToken        string                    `json:"publicToken,omitempty"`
-	SentUnixTime       int64                     `json:"sentUnixTime,omitempty"`
-	Emails             []*InvoiceEmailResponse   `json:"emails,omitempty"`
-	RenewalOption      *InvoiceRenewalOption     `json:"renewalOption,omitempty"`
-	EstimateStatus     string                    `json:"estimateStatus,omitempty"`
-	RespondedUnixTime  int64                     `json:"respondedUnixTime,omitempty"`
-	RespondedByClient  bool                      `json:"respondedByClient,omitempty"`
-	ResponseNote       string                    `json:"responseNote,omitempty"`
-	EstimateId         string                    `json:"estimateId,omitempty"` // invoices made from an estimate
+	Id                 string                              `json:"id"`
+	Kind               string                              `json:"kind"`
+	Number             string                              `json:"number"`
+	CustomerId         string                              `json:"customerId"`
+	BillToName         string                              `json:"billToName"`
+	BillToContactName  string                              `json:"billToContactName"`
+	BillToAddressLines string                              `json:"billToAddressLines"`
+	BillToEmail        string                              `json:"billToEmail"`
+	BillToPhone        string                              `json:"billToPhone"`
+	BillToPan          string                              `json:"billToPan"`
+	BillToGstin        string                              `json:"billToGstin"`
+	Currency           string                              `json:"currency"`
+	InvoiceDate        string                              `json:"invoiceDate"`
+	DueDate            string                              `json:"dueDate"`
+	Notes              string                              `json:"notes"`
+	Total              int64                               `json:"total"`
+	TaxType            string                              `json:"taxType"`
+	TaxRate            int32                               `json:"taxRate"`
+	Subtotal           int64                               `json:"subtotal"`
+	TaxAmount          int64                               `json:"taxAmount"`
+	Received           int64                               `json:"received"`
+	ClosedManually     bool                                `json:"closedManually"`
+	Lines              []*InvoiceLineResponse              `json:"lines,omitempty"`
+	Payments           []*InvoicePaymentResponse           `json:"payments,omitempty"`
+	PublicToken        string                              `json:"publicToken,omitempty"`
+	SentUnixTime       int64                               `json:"sentUnixTime,omitempty"`
+	Emails             []*InvoiceEmailResponse             `json:"emails,omitempty"`
+	RenewalOption      *InvoiceRenewalOption               `json:"renewalOption,omitempty"`
+	EstimateStatus     string                              `json:"estimateStatus,omitempty"`
+	RespondedUnixTime  int64                               `json:"respondedUnixTime,omitempty"`
+	RespondedByClient  bool                                `json:"respondedByClient,omitempty"`
+	ResponseNote       string                              `json:"responseNote,omitempty"`
+	EstimateId         string                              `json:"estimateId,omitempty"`        // invoices made from an estimate
+	Milestones         []*EstimateMilestoneResponse        `json:"milestones,omitempty"`        // estimates
+	ConvertedInvoices  []*EstimateConvertedInvoiceResponse `json:"convertedInvoices,omitempty"` // estimates: invoices made from it
+	FullyInvoiced      bool                                `json:"fullyInvoiced,omitempty"`     // estimates
+	EstimateNumber     string                              `json:"estimateNumber,omitempty"`    // invoices made from an estimate
 }
 
 // PublicInvoiceProfileResponse is the part of the invoice profile a recipient of a public link may see
@@ -726,4 +732,32 @@ func (i *Invoice) ToPublicInvoiceResponse(lines []*InvoiceLine, received int64, 
 	}
 
 	return resp
+}
+
+// SetEstimateProgress fills an estimate's milestones and the invoices made from it; nil (an invoice) changes nothing
+func (r *InvoiceInfoResponse) SetEstimateProgress(progress *EstimateProgress) {
+	if progress == nil {
+		return
+	}
+
+	numbers := make(map[int64]string, len(progress.Invoices))
+	r.ConvertedInvoices = make([]*EstimateConvertedInvoiceResponse, len(progress.Invoices))
+
+	for idx, invoice := range progress.Invoices {
+		numbers[invoice.InvoiceId] = invoice.Number
+		r.ConvertedInvoices[idx] = &EstimateConvertedInvoiceResponse{Id: utils.Int64ToString(invoice.InvoiceId), Number: invoice.Number}
+	}
+
+	r.Milestones = make([]*EstimateMilestoneResponse, len(progress.Milestones))
+
+	for idx, milestone := range progress.Milestones {
+		r.Milestones[idx] = &EstimateMilestoneResponse{Id: utils.Int64ToString(milestone.MilestoneId), Label: milestone.Label, Percent: milestone.Percent}
+
+		if milestone.InvoiceId > 0 {
+			r.Milestones[idx].InvoiceId = utils.Int64ToString(milestone.InvoiceId)
+			r.Milestones[idx].InvoiceNumber = numbers[milestone.InvoiceId]
+		}
+	}
+
+	r.FullyInvoiced = progress.FullyInvoiced
 }

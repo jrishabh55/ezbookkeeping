@@ -594,6 +594,8 @@ func startWebServer(c *core.CliContext) error {
 			apiV1Route.POST("/recurring_invoices/delete.json", bindApi(api.Invoices.RecurringInvoiceDeleteHandler, config))
 			apiV1Route.POST("/invoices/public_link/update.json", bindApi(api.Invoices.InvoicePublicLinkUpdateHandler, config))
 			apiV1Route.POST("/invoices/send.json", bindApi(api.Invoices.InvoiceSendHandler, config))
+			apiV1Route.POST("/estimates/respond.json", bindApi(api.Invoices.EstimateRespondHandler, config))
+			apiV1Route.POST("/estimates/reopen.json", bindApi(api.Invoices.EstimateReopenHandler, config))
 
 			// System
 			apiV1Route.GET("/systems/version.json", bindApi(api.Systems.VersionHandler, config))

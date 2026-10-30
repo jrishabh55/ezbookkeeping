@@ -36,4 +36,7 @@ var (
 	ErrInvoiceLineProductInvalid = NewNormalError(NormalSubcategoryInvoice, 53, http.StatusBadRequest, "invoice line product is invalid")
 	// estimates start at 60
 	ErrEstimateMilestonesInvalid = NewNormalError(NormalSubcategoryInvoice, 60, http.StatusBadRequest, "estimate milestones must be 1 to 10 with labels and add up to 100%")
+	ErrEstimateLocked            = NewNormalError(NormalSubcategoryInvoice, 61, http.StatusBadRequest, "estimate is accepted, declined or invoiced and cannot be edited")
+	ErrEstimateHasInvoices       = NewNormalError(NormalSubcategoryInvoice, 62, http.StatusBadRequest, "estimate has invoices created from it")
+	ErrEstimateStatusInvalid     = NewNormalError(NormalSubcategoryInvoice, 63, http.StatusBadRequest, "estimate status does not allow this action")
 )

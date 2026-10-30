@@ -52,3 +52,23 @@ type EstimateMilestoneResponse struct {
 	InvoiceId     string `json:"invoiceId,omitempty"`
 	InvoiceNumber string `json:"invoiceNumber,omitempty"`
 }
+
+// EstimateProgress is what has been invoiced from an estimate: its milestones (with their invoice ids) and every
+// non-deleted invoice made from it, ordered by number
+type EstimateProgress struct {
+	Milestones    []*EstimateMilestone
+	Invoices      []*Invoice
+	FullyInvoiced bool // every milestone is invoiced or, without milestones, an invoice exists
+}
+
+// EstimateConvertedInvoiceResponse is an invoice made from an estimate
+type EstimateConvertedInvoiceResponse struct {
+	Id     string `json:"id"`
+	Number string `json:"number"`
+}
+
+// EstimateRespondRequest records your own answer for an estimate (Mark accepted / Mark declined)
+type EstimateRespondRequest struct {
+	Id     int64  `json:"id,string" binding:"required,min=1"`
+	Status string `json:"status" binding:"required,oneof=accepted declined"`
+}

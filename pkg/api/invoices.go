@@ -309,10 +309,22 @@ func (a *InvoicesApi) InvoiceListHandler(c *core.WebContext) (any, *errs.Error) 
 		return nil, errs.Or(err, errs.ErrOperationFailed)
 	}
 
+	var progress map[int64]*models.EstimateProgress
+
+	if req.Kind == models.INVOICE_KIND_ESTIMATE {
+		progress, err = a.invoices.GetEstimateProgress(c, uid, invoiceIds)
+
+		if err != nil {
+			log.Errorf(c, "[invoices.InvoiceListHandler] failed to get estimate progress for user \"uid:%d\", because %s", uid, err.Error())
+			return nil, errs.Or(err, errs.ErrOperationFailed)
+		}
+	}
+
 	resps := make([]*models.InvoiceInfoResponse, len(invoices))
 
 	for idx, invoice := range invoices {
 		resps[idx] = invoice.ToInvoiceInfoResponse(nil, payments[invoice.InvoiceId])
+		resps[idx].SetEstimateProgress(progress[invoice.InvoiceId])
 	}
 
 	return resps, nil
@@ -349,6 +361,25 @@ func (a *InvoicesApi) getInvoiceResponse(c *core.WebContext, uid int64, invoiceI
 
 	if err != nil {
 		return nil, err
+	}
+
+	if invoice.Kind == models.INVOICE_KIND_ESTIMATE {
+		progress, err := a.invoices.GetEstimateProgress(c, uid, []int64{invoiceId})
+
+		if err != nil {
+			return nil, err
+		}
+
+		resp.SetEstimateProgress(progress[invoiceId])
+	} else if invoice.EstimateId > 0 {
+		// an estimate cannot be deleted while this invoice exists, so it is always there
+		estimate, _, err := a.invoices.GetInvoice(c, uid, invoice.EstimateId)
+
+		if err != nil {
+			return nil, err
+		}
+
+		resp.EstimateNumber = estimate.Number
 	}
 
 	return resp, nil
@@ -463,7 +494,17 @@ func (a *InvoicesApi) InvoiceModifyHandler(c *core.WebContext) (any, *errs.Error
 	invoice := &models.Invoice{InvoiceId: req.Id, Uid: uid, Number: strings.TrimSpace(req.Number), CustomerId: req.CustomerId, InvoiceDate: req.InvoiceDate, DueDate: req.DueDate, Notes: req.Notes,
 		TaxType: taxType, TaxRate: req.TaxRate}
 
-	if err := a.invoices.ModifyInvoice(c, invoice, invoiceLinesFromRequest(req.Lines)); err != nil {
+	lines := invoiceLinesFromRequest(req.Lines)
+
+	if req.Kind == models.INVOICE_KIND_ESTIMATE {
+		err = a.invoices.ModifyEstimate(c, invoice, lines, estimateMilestonesFromRequest(req.Milestones))
+	} else if len(req.Milestones) > 0 {
+		err = errs.ErrEstimateMilestonesInvalid
+	} else {
+		err = a.invoices.ModifyInvoice(c, invoice, lines)
+	}
+
+	if err != nil {
 		log.Errorf(c, "[invoices.InvoiceModifyHandler] failed to modify invoice \"id:%d\" for user \"uid:%d\", because %s", req.Id, uid, err.Error())
 		return nil, errs.Or(err, errs.ErrOperationFailed)
 	}

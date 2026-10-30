@@ -584,7 +584,11 @@ func insertInvoice(sess *xorm.Session, invoice *models.Invoice, lines []*models.
 	return err
 }
 
-// ModifyInvoice saves an existing invoice and replaces all of its lines
+// invoiceModifyColumns are what editing rewrites; kind, status, answers, links and sent state never change on edit
+var invoiceModifyColumns = []string{"number", "customer_id", "bill_to_name", "bill_to_contact_name", "bill_to_address_lines", "bill_to_email", "bill_to_phone", "bill_to_pan", "bill_to_gstin",
+	"invoice_date", "due_date", "notes", "total", "tax_type", "tax_rate", "subtotal", "tax_amount", "updated_unix_time"}
+
+// ModifyInvoice saves an existing invoice (never an estimate, see ModifyEstimate) and replaces all of its lines
 func (s *InvoiceService) ModifyInvoice(c core.Context, invoice *models.Invoice, lines []*models.InvoiceLine) error {
 	if invoice.Uid <= 0 {
 		return errs.ErrUserIdInvalid
@@ -598,10 +602,7 @@ func (s *InvoiceService) ModifyInvoice(c core.Context, invoice *models.Invoice, 
 		return err
 	}
 
-	// ModifyInvoice only ever modifies a plain invoice (an estimate has its own modify path later);
-	// this is never persisted (kind is not in the Cols list below), it only scopes the uniqueness check
 	invoice.Kind = models.INVOICE_KIND_INVOICE
-
 	invoice.UpdatedUnixTime = time.Now().Unix()
 
 	return s.UserDataDB(invoice.Uid).DoTransaction(c, func(sess *xorm.Session) error {
@@ -609,9 +610,8 @@ func (s *InvoiceService) ModifyInvoice(c core.Context, invoice *models.Invoice, 
 			return err
 		}
 
-		updatedRows, err := sess.Cols("number", "customer_id", "bill_to_name", "bill_to_contact_name", "bill_to_address_lines", "bill_to_email", "bill_to_phone", "bill_to_pan", "bill_to_gstin",
-			"invoice_date", "due_date", "notes", "total", "tax_type", "tax_rate", "subtotal", "tax_amount", "updated_unix_time").
-			Where("uid=? AND deleted=? AND invoice_id=?", invoice.Uid, false, invoice.InvoiceId).Update(invoice)
+		updatedRows, err := sess.Cols(invoiceModifyColumns...).
+			Where("uid=? AND deleted=? AND kind=? AND invoice_id=?", invoice.Uid, false, models.INVOICE_KIND_INVOICE, invoice.InvoiceId).Update(invoice)
 
 		if err != nil {
 			return err
@@ -628,7 +628,8 @@ func (s *InvoiceService) ModifyInvoice(c core.Context, invoice *models.Invoice, 
 	})
 }
 
-// DeleteInvoice soft-deletes an invoice and removes its payment links; the linked transactions are untouched
+// DeleteInvoice soft-deletes an invoice or estimate and removes its payment links; the linked transactions are untouched.
+// An estimate with invoices made from it is refused; an invoice made from a milestone frees that milestone.
 func (s *InvoiceService) DeleteInvoice(c core.Context, uid int64, invoiceId int64) error {
 	if uid <= 0 {
 		return errs.ErrUserIdInvalid
@@ -641,6 +642,25 @@ func (s *InvoiceService) DeleteInvoice(c core.Context, uid int64, invoiceId int6
 	now := time.Now().Unix()
 
 	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+		invoice := &models.Invoice{}
+		has, err := sess.Where("uid=? AND deleted=? AND invoice_id=?", uid, false, invoiceId).Get(invoice)
+
+		if err != nil {
+			return err
+		} else if !has {
+			return errs.ErrInvoiceNotFound
+		}
+
+		if invoice.Kind == models.INVOICE_KIND_ESTIMATE {
+			invoiced, err := estimateHasInvoices(sess, uid, invoiceId)
+
+			if err != nil {
+				return err
+			} else if invoiced {
+				return errs.ErrEstimateHasInvoices
+			}
+		}
+
 		updatedRows, err := sess.Cols("deleted", "deleted_unix_time").Where("uid=? AND deleted=? AND invoice_id=?", uid, false, invoiceId).
 			Update(&models.Invoice{Deleted: true, DeletedUnixTime: now})
 
@@ -648,6 +668,12 @@ func (s *InvoiceService) DeleteInvoice(c core.Context, uid int64, invoiceId int6
 			return err
 		} else if updatedRows < 1 {
 			return errs.ErrInvoiceNotFound
+		}
+
+		if invoice.EstimateId > 0 {
+			if _, err := sess.Cols("invoice_id").Where("uid=? AND invoice_id=?", uid, invoiceId).Update(&models.EstimateMilestone{InvoiceId: 0}); err != nil {
+				return err
+			}
 		}
 
 		_, err = sess.Where("uid=? AND invoice_id=?", uid, invoiceId).Delete(&models.InvoicePayment{})
