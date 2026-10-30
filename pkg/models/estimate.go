@@ -78,3 +78,9 @@ type EstimateInvoiceDraftRequest struct {
 	Id          int64 `form:"id" binding:"required,min=1"`
 	MilestoneId int64 `form:"milestone_id" binding:"min=0"`
 }
+
+// EstimatePublicRespondRequest is the client's answer through a public estimate link: the token is the only key
+type EstimatePublicRespondRequest struct {
+	Token string `json:"token" binding:"required,max=64"`
+	Note  string `json:"note" binding:"max=500"` // decline only; plain text
+}

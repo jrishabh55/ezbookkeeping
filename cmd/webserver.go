@@ -611,6 +611,8 @@ func startWebServer(c *core.CliContext) error {
 	{
 		publicApiRoute.GET("/invoices/view.json", bindApi(api.Invoices.InvoicePublicViewHandler, config))
 		publicApiRoute.GET("/invoices/pdf", bindPdf(api.Invoices.InvoicePublicPdfHandler, config))
+		publicApiRoute.POST("/estimates/accept.json", bindApi(api.Invoices.EstimatePublicAcceptHandler, config))
+		publicApiRoute.POST("/estimates/decline.json", bindApi(api.Invoices.EstimatePublicDeclineHandler, config))
 	}
 
 	// The short link printed on invoices and emails: /i/<token> opens the desktop document page (it renders on phones too)
