@@ -71,6 +71,8 @@
             <f7-list-item :title="tt('Budgets')" link="/budget/list"></f7-list-item>
             <f7-list-item :title="tt('Buckets')" link="/bucket/list"></f7-list-item>
             <f7-list-item :title="tt('Invoices')" link="/invoice/list"></f7-list-item>
+            <f7-list-item :title="tt('Customers')" link="/invoice/customer/list"></f7-list-item>
+            <f7-list-item :title="tt('Products')" link="/invoice/product/list"></f7-list-item>
             <f7-list-item :title="tt('Invoice Email Template')" link="/invoice/email_template"></f7-list-item>
             <f7-list-item :title="tt('Preferences')" link="/settings/preferences"></f7-list-item>
             <f7-list-item :title="tt('Statistics Settings')" link="/statistic/settings"></f7-list-item>
