@@ -26,6 +26,8 @@
                 <f7-list-item :title="tt('Total')" :after="formatAmount(invoice.total)"></f7-list-item>
                 <f7-list-item :title="estimateResponseText" v-if="estimateResponseText"></f7-list-item>
                 <f7-list-item :title="tt(`Client's note`)" :footer="invoice.responseNote" v-if="invoice.responseNote"></f7-list-item>
+                <f7-list-item :title="tt('format.misc.supersededBy', { number: supersededBy.number })"
+                              :link="'/invoice/detail?id=' + supersededBy.id" v-if="supersededBy"></f7-list-item>
             </f7-list>
             <f7-list strong inset dividers class="margin-vertical" v-else>
                 <f7-list-item :title="tt('Status')" :after="tt(displayStatusName)"></f7-list-item>
@@ -63,6 +65,17 @@
                     <f7-list-button :class="{ 'disabled': updating || !canConvert }" :title="tt('Convert to Invoice')"
                                     @click="convert('')" v-if="!invoice.convertedInvoices.length"></f7-list-button>
                 </template>
+            </f7-list>
+
+            <f7-list strong inset dividers class="margin-vertical" v-if="hasRevisions">
+                <f7-list-item group-title>
+                    <small>{{ tt('Revisions') }}</small>
+                </f7-list-item>
+                <f7-list-item :key="revision.id" v-for="revision in invoice.revisions"
+                              :title="revision.number"
+                              :footer="`${getRevisionLabel(revision)} · ${formatDate(revision.invoiceDate)} · ${tt(getRevisionStatusName(revision))}`"
+                              :after="formatAmount(revision.total, revision.currency)"
+                              :link="revision.id !== invoice.id ? '/invoice/detail?id=' + revision.id : undefined"></f7-list-item>
             </f7-list>
 
             <f7-list strong inset dividers class="margin-vertical" v-if="!isEstimate">
@@ -128,7 +141,8 @@
 
         <f7-actions close-by-outside-click close-on-escape :opened="showMoreActionSheet" @actions:closed="showMoreActionSheet = false">
             <f7-actions-group>
-                <f7-actions-button v-if="canEdit" @click="f7router.navigate(`/invoice/edit?id=${invoiceId}`)">{{ tt('Edit') }}</f7-actions-button>
+                <f7-actions-button v-if="canRevise" @click="revise">{{ tt('Revise') }}</f7-actions-button>
+                <f7-actions-button v-else-if="canEdit" @click="f7router.navigate(`/invoice/edit?id=${invoiceId}`)">{{ tt('Edit') }}</f7-actions-button>
                 <f7-actions-button @click="f7router.navigate(`/invoice/add?duplicateFrom=${invoiceId}`)">{{ tt('Duplicate') }}</f7-actions-button>
                 <f7-actions-button v-if="!isEstimate" @click="regenerate">{{ tt('Regenerate with Current Customer Details') }}</f7-actions-button>
                 <f7-actions-button v-if="!isEstimate" @click="toggleClosed">{{ invoice?.closedManually ? tt('Reopen') : tt('Mark as Paid') }}</f7-actions-button>
@@ -139,9 +153,9 @@
                 <f7-actions-button v-if="!isEstimate" @click="showRepeatMonthlyPopup = true">{{ tt('Repeat') }}</f7-actions-button>
                 <f7-actions-button @click="share">{{ tt('Share Link') }}</f7-actions-button>
                 <f7-actions-button @click="downloadPdf" :disabled="downloadingPdf">{{ tt('Download PDF') }}</f7-actions-button>
-                <f7-actions-button @click="f7router.navigate(`/invoice/send?id=${invoiceId}`)">{{ tt('Send') }}</f7-actions-button>
+                <f7-actions-button v-if="canSend" @click="f7router.navigate(`/invoice/send?id=${invoiceId}`)">{{ tt('Send') }}</f7-actions-button>
             </f7-actions-group>
-            <f7-actions-group>
+            <f7-actions-group v-if="canDelete">
                 <f7-actions-button color="red" @click="showDeleteActionSheet = true">{{ tt('Delete') }}</f7-actions-button>
             </f7-actions-group>
             <f7-actions-group>
@@ -244,6 +258,14 @@ const {
     canConvert,
     convertNeedsConfirm,
     milestoneAmounts,
+    canRevise,
+    canDelete,
+    canSend,
+    supersededBy,
+    hasRevisions,
+    getRevisionLabel,
+    getRevisionStatusName,
+    reviseEstimate,
     formatAmount,
     formatDate,
     needsSettledAmount,
@@ -347,6 +369,27 @@ function markResponse(status: 'accepted' | 'declined'): void {
 function reopen(): void {
     showMoreActionSheet.value = false;
     runAndReload(() => reopenEstimate());
+}
+
+// creates the next version as a new draft; this page switches to it (back from the editor reloads it) and the editor opens on it
+function revise(): void {
+    showMoreActionSheet.value = false;
+    updating.value = true;
+    showLoading(() => updating.value);
+
+    reviseEstimate().then(revised => {
+        updating.value = false;
+        hideLoading();
+        invoiceId.value = revised.id;
+        props.f7router.navigate(`/invoice/edit?id=${revised.id}`);
+    }).catch(error => {
+        updating.value = false;
+        hideLoading();
+
+        if (!error.processed) {
+            showToast(error.message || error);
+        }
+    });
 }
 
 // the editor opens with the invoice the estimate (milestoneId '') or a milestone turns into; saving it opens the new invoice

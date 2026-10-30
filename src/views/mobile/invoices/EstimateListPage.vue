@@ -31,7 +31,8 @@
                 <f7-swipeout-actions :left="textDirection === TextDirection.RTL"
                                      :right="textDirection === TextDirection.LTR">
                     <f7-swipeout-button color="orange" close :text="tt('Edit')" v-if="!isEstimateLocked(estimate)" @click="edit(estimate)"></f7-swipeout-button>
-                    <f7-swipeout-button color="red" class="padding-horizontal" :aria-label="tt('Delete')" @click="remove(estimate, false)">
+                    <f7-swipeout-button color="red" class="padding-horizontal" :aria-label="tt('Delete')"
+                                        v-if="canDeleteEstimate(estimate)" @click="remove(estimate, false)">
                         <f7-icon f7="trash"></f7-icon>
                     </f7-swipeout-button>
                 </f7-swipeout-actions>
@@ -73,7 +74,7 @@ import { useInvoicesStore } from '@/stores/invoice.ts';
 import { TextDirection } from '@/core/text.ts';
 import type { Invoice } from '@/models/invoice.ts';
 
-import { isEstimateLocked } from '@/lib/estimate.ts';
+import { isEstimateLocked, canDeleteEstimate } from '@/lib/estimate.ts';
 
 const props = defineProps<{
     f7route: Router.Route;
