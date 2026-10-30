@@ -93,7 +93,7 @@
                                 <v-btn class="me-2" color="success" variant="tonal" size="small" :disabled="updating"
                                        v-if="canMarkResponse" @click="markResponse('accepted')">{{ tt('Mark Accepted') }}</v-btn>
                                 <v-btn class="me-2" color="error" variant="tonal" size="small" :disabled="updating"
-                                       v-if="canMarkResponse" @click="markResponse('declined')">{{ tt('Mark Declined') }}</v-btn>
+                                       v-if="canMarkDeclined" @click="markResponse('declined')">{{ tt('Mark Declined') }}</v-btn>
                                 <v-btn color="default" variant="tonal" size="small" :disabled="updating"
                                        v-if="canReopenEstimate" @click="reopen">{{ tt('Reopen') }}</v-btn>
                             </div>
@@ -341,6 +341,7 @@ const {
     estimateResponseText,
     canEdit,
     canMarkResponse,
+    canMarkDeclined,
     canReopenEstimate,
     canConvert,
     convertNeedsConfirm,

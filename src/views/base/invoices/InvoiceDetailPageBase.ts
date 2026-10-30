@@ -71,6 +71,8 @@ export function useInvoiceDetailPageBase() {
     const canEdit = computed<boolean>(() => !!invoice.value && (!isEstimate.value || !isEstimateLocked(invoice.value)));
     // Mark accepted / declined from draft, sent or expired; Reopen an answered estimate while nothing is invoiced
     const canMarkResponse = computed<boolean>(() => isEstimate.value && (invoice.value?.estimateStatus === 'draft' || invoice.value?.estimateStatus === 'sent'));
+    // an estimate something was invoiced from can still be accepted, never declined
+    const canMarkDeclined = computed<boolean>(() => canMarkResponse.value && !invoice.value?.convertedInvoices.length);
     const canReopenEstimate = computed<boolean>(() => isEstimate.value && !!invoice.value && !invoice.value.convertedInvoices.length &&
         (invoice.value.estimateStatus === 'accepted' || invoice.value.estimateStatus === 'declined'));
     // converting is offered on accepted estimates, and on sent or expired ones after a confirm
@@ -296,6 +298,7 @@ export function useInvoiceDetailPageBase() {
         estimateResponseText,
         canEdit,
         canMarkResponse,
+        canMarkDeclined,
         canReopenEstimate,
         canConvert,
         convertNeedsConfirm,
