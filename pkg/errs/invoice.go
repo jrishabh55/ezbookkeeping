@@ -39,4 +39,5 @@ var (
 	ErrEstimateLocked            = NewNormalError(NormalSubcategoryInvoice, 61, http.StatusBadRequest, "estimate is accepted, declined or invoiced and cannot be edited")
 	ErrEstimateHasInvoices       = NewNormalError(NormalSubcategoryInvoice, 62, http.StatusBadRequest, "estimate has invoices created from it")
 	ErrEstimateStatusInvalid     = NewNormalError(NormalSubcategoryInvoice, 63, http.StatusBadRequest, "estimate status does not allow this action")
+	ErrNotAvailableForEstimate   = NewNormalError(NormalSubcategoryInvoice, 64, http.StatusBadRequest, "this action is not available for estimates")
 )

@@ -114,8 +114,15 @@ func (s *InvoiceService) CreateRecurringInvoice(c core.Context, recurring *model
 		return err
 	}
 
-	if _, _, err := s.GetInvoice(c, recurring.Uid, recurring.SourceInvoiceId); err != nil {
+	source, _, err := s.GetInvoice(c, recurring.Uid, recurring.SourceInvoiceId)
+
+	if err != nil {
 		return err
+	}
+
+	// an estimate is a quote, not a bill: it is never repeated
+	if source.Kind == models.INVOICE_KIND_ESTIMATE {
+		return errs.ErrNotAvailableForEstimate
 	}
 
 	// a schedule started today never back-fills: the daily job creates one period per run, so a past next date would
@@ -324,6 +331,10 @@ func (s *InvoiceService) GetInvoiceRenewalOption(c core.Context, uid int64, invo
 		return nil, err
 	}
 
+	if invoice.Kind == models.INVOICE_KIND_ESTIMATE {
+		return nil, nil // estimates are never renewed
+	}
+
 	productIds := make([]int64, 0, len(lines))
 
 	for _, line := range lines {
@@ -406,7 +417,7 @@ func (s *InvoiceService) GetInvoiceRenewals(c core.Context, uid int64, nowUnixTi
 
 	var invoices []*models.Invoice
 	err := s.UserDataDB(uid).NewSession(c).
-		Where("uid=? AND deleted=? AND recurring_id>? AND closed_manually=? AND (sent_unix_time=? OR sent_unix_time>=?)", uid, false, 0, false, 0, nowUnixTime-models.InvoiceRenewalAutoSentVisibleSeconds).
+		Where("uid=? AND deleted=? AND kind=? AND recurring_id>? AND closed_manually=? AND (sent_unix_time=? OR sent_unix_time>=?)", uid, false, models.INVOICE_KIND_INVOICE, 0, false, 0, nowUnixTime-models.InvoiceRenewalAutoSentVisibleSeconds).
 		OrderBy("invoice_date asc, number asc").Find(&invoices)
 
 	if err != nil || len(invoices) < 1 {

@@ -692,7 +692,7 @@ func (s *InvoiceService) SetInvoiceClosed(c core.Context, uid int64, invoiceId i
 	}
 
 	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
-		updatedRows, err := sess.Cols("closed_manually", "updated_unix_time").Where("uid=? AND deleted=? AND invoice_id=?", uid, false, invoiceId).
+		updatedRows, err := sess.Cols("closed_manually", "updated_unix_time").Where("uid=? AND deleted=? AND kind=? AND invoice_id=?", uid, false, models.INVOICE_KIND_INVOICE, invoiceId).
 			Update(&models.Invoice{ClosedManually: closed, UpdatedUnixTime: time.Now().Unix()})
 
 		if err != nil {
@@ -885,7 +885,7 @@ func (s *InvoiceService) GetLinkedInvoicesByTransactionIds(c core.Context, uid i
 	err := s.UserDataDB(uid).NewSession(c).Table("invoice_payment").
 		Select("invoice_payment.transaction_id, invoice.*").
 		Join("INNER", "invoice", "invoice.invoice_id = invoice_payment.invoice_id").
-		Where("invoice_payment.uid=? AND invoice.uid=? AND invoice.deleted=?", uid, uid, false).
+		Where("invoice_payment.uid=? AND invoice.uid=? AND invoice.deleted=? AND invoice.kind=?", uid, uid, false, models.INVOICE_KIND_INVOICE).
 		In("invoice_payment.transaction_id", transactionIds).
 		Find(&rows)
 
@@ -919,6 +919,10 @@ func (s *InvoiceService) GetPaymentSuggestions(c core.Context, uid int64, invoic
 
 	if err != nil {
 		return nil, err
+	}
+
+	if invoice.Kind == models.INVOICE_KIND_ESTIMATE {
+		return nil, errs.ErrNotAvailableForEstimate
 	}
 
 	balanceDue, err := s.invoiceBalanceDue(s.UserDataDB(uid).NewSession(c), uid, invoice)
@@ -1019,6 +1023,10 @@ func (s *InvoiceService) LinkPayment(c core.Context, uid int64, invoiceId int64,
 
 	if err != nil {
 		return err
+	}
+
+	if invoice.Kind == models.INVOICE_KIND_ESTIMATE {
+		return errs.ErrNotAvailableForEstimate
 	}
 
 	transaction, err := Transactions.GetTransactionByTransactionId(c, uid, transactionId)
