@@ -1,7 +1,7 @@
 # Estimates with milestones: design
 
 Date: 2026-10-30
-Status: draft, awaiting review
+Status: approved 2026-10-30
 Builds on: `docs/superpowers/specs/2026-10-29-crm-part-a-products-renewals-design.md` (products, renewals, customer page, Invoices / Customers / Products navigation)
 
 ## Goal
