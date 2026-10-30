@@ -125,6 +125,10 @@ function reload(done?: () => void): void {
 
     invoicesStore.loadAllEstimates({ force: force }).then(() => {
         done?.();
+
+        if (force) {
+            showToast('Estimate list has been updated');
+        }
     }).catch(error => {
         done?.();
 
