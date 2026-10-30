@@ -49,7 +49,7 @@
                         <template :key="index" v-for="(line, index) in invoice.lines">
                             <v-col cols="12" md="3">
                                 <v-combobox autocomplete="off" persistent-placeholder no-filter hide-no-data
-                                            :disabled="loading || submitting"
+                                            :disabled="loading || submitting || isMilestoneInvoice"
                                             :label="tt('Item')" :placeholder="tt('Item')"
                                             :items="getProductSuggestions(line.itemName)" item-title="name"
                                             :model-value="line.itemName"
@@ -57,7 +57,7 @@
                                     <!-- the product link sits inside the field so every line keeps the same height -->
                                     <template #append-inner v-if="getLinkedProductName(line)">
                                         <v-chip size="x-small" label closable :prepend-icon="mdiPackageVariantClosed"
-                                                :disabled="loading || submitting"
+                                                :disabled="loading || submitting || isMilestoneInvoice"
                                                 @click:close="line.productId = ''">
                                             <v-tooltip activator="parent">{{ tt('Product') + ': ' + getLinkedProductName(line) }}</v-tooltip>
                                         </v-chip>
@@ -66,36 +66,39 @@
                             </v-col>
                             <v-col cols="12" md="3">
                                 <v-textarea type="text" autocomplete="off" persistent-placeholder rows="1" auto-grow
-                                            :disabled="loading || submitting"
+                                            :disabled="loading || submitting || isMilestoneInvoice"
                                             :label="tt('Description')" :placeholder="tt('Description (optional)')"
                                             v-model="line.description" />
                             </v-col>
                             <v-col cols="4" md="2">
                                 <v-text-field type="text" autocomplete="off" persistent-placeholder
-                                              :disabled="loading || submitting"
+                                              :disabled="loading || submitting || isMilestoneInvoice"
                                               :label="tt('SAC')" :placeholder="tt('SAC')"
                                               v-model="line.sac" />
                             </v-col>
                             <v-col cols="4" md="1">
-                                <number-input :disabled="loading || submitting" :persistent-placeholder="true"
+                                <number-input :disabled="loading || submitting || isMilestoneInvoice" :persistent-placeholder="true"
                                               :label="tt('Qty')" :min-value="0.01" :max-value="10000" :max-decimal-count="2"
                                               :model-value="line.quantity / INVOICE_QUANTITY_SCALE"
                                               @update:model-value="line.quantity = Math.round($event * INVOICE_QUANTITY_SCALE)" />
                             </v-col>
                             <v-col cols="3" md="2">
-                                <amount-input :disabled="loading || submitting" :persistent-placeholder="true"
+                                <amount-input :disabled="loading || submitting || isMilestoneInvoice" :persistent-placeholder="true"
                                               :currency="invoice.currency" :show-currency="true"
                                               :label="tt('Rate')" :placeholder="tt('Rate')"
                                               v-model="line.rate" />
                             </v-col>
                             <v-col cols="1" md="1" class="d-flex align-center justify-center">
                                 <v-btn color="error" variant="text" density="comfortable" :icon="mdiDeleteOutline" :aria-label="tt('Remove')"
-                                       :disabled="loading || submitting || invoice.lines.length <= 1"
+                                       :disabled="loading || submitting || isMilestoneInvoice || invoice.lines.length <= 1"
                                        @click="removeLine(index)"></v-btn>
                             </v-col>
                         </template>
 
-                        <v-col cols="12">
+                        <v-col cols="12" v-if="isMilestoneInvoice">
+                            <span class="text-medium-emphasis">{{ tt('The amount of a milestone invoice is set from the estimate.') }}</span>
+                        </v-col>
+                        <v-col cols="12" v-else>
                             <v-btn color="primary" variant="text" density="comfortable" :prepend-icon="mdiPlus"
                                    :disabled="loading || submitting" @click="addLine">{{ tt('Add Line') }}</v-btn>
                         </v-col>
@@ -138,13 +141,13 @@
 
                         <v-col cols="6" md="3">
                             <v-select item-title="displayName" item-value="type" persistent-placeholder
-                                      :disabled="loading || submitting"
+                                      :disabled="loading || submitting || isMilestoneInvoice"
                                       :label="tt('Tax')" :placeholder="tt('Tax')"
                                       :items="allTaxTypes"
                                       v-model="invoice.taxType" />
                         </v-col>
                         <v-col cols="6" md="3">
-                            <number-input :disabled="loading || submitting || invoice.taxType === 'none'" :persistent-placeholder="true"
+                            <number-input :disabled="loading || submitting || isMilestoneInvoice || invoice.taxType === 'none'" :persistent-placeholder="true"
                                           :label="tt('Tax Rate (%)')" :placeholder="tt('Tax Rate (%)')"
                                           :min-value="0" :max-value="100" :max-decimal-count="2"
                                           v-model="taxRatePercent" />
@@ -233,6 +236,7 @@ const {
     invoice,
     allCustomers,
     isEstimate,
+    isMilestoneInvoice,
     title,
     numberLabel,
     dateLabel,

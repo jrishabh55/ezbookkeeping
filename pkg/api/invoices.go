@@ -664,14 +664,14 @@ func (a *InvoicesApi) InvoicePublicLinkUpdateHandler(c *core.WebContext) (any, *
 	}
 
 	uid := c.GetCurrentUid()
-	token, err := a.invoices.SetInvoicePublicToken(c, uid, req.Id, req.Enabled)
+	token, estimateStatus, err := a.invoices.SetInvoicePublicToken(c, uid, req.Id, req.Enabled)
 
 	if err != nil {
 		log.Errorf(c, "[invoices.InvoicePublicLinkUpdateHandler] failed to update public link of invoice \"id:%d\" for user \"uid:%d\", because %s", req.Id, uid, err.Error())
 		return nil, errs.Or(err, errs.ErrOperationFailed)
 	}
 
-	return &models.InvoicePublicLinkResponse{PublicToken: token}, nil
+	return &models.InvoicePublicLinkResponse{PublicToken: token, EstimateStatus: estimateStatus}, nil
 }
 
 // InvoicePublicViewHandler returns the invoice behind a public link; no login, so the response carries no ids

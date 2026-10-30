@@ -110,7 +110,7 @@ func TestCreateRecurringInvoicesCopiesSourceWithNextNumberAndFreshCustomer(t *te
 	customer.TermsDays = 10
 	assert.Nil(t, Invoices.ModifyCustomer(ctx, customer))
 
-	_, err := Invoices.SetInvoicePublicToken(ctx, uid, source.InvoiceId, true)
+	_, _, err := Invoices.SetInvoicePublicToken(ctx, uid, source.InvoiceId, true)
 	assert.Nil(t, err)
 	_, err = Invoices.UserDataDB(uid).NewSession(ctx).Cols("sent_unix_time").Where("invoice_id=?", source.InvoiceId).Update(&models.Invoice{SentUnixTime: 1700000000})
 	assert.Nil(t, err)

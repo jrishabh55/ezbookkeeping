@@ -11,7 +11,7 @@ import type { Product } from '@/models/product.ts';
 import { parseBigDecimal } from '@/lib/numeral.ts';
 import { type InvoiceTotals, INVOICE_DEFAULT_CURRENCY, computeInvoiceTotals, getInvoiceTaxRows, formatInvoiceTaxRate, addDaysToDate, getDaysBetweenDates, getTodayTextualDate } from '@/lib/invoice.ts';
 import { filterProductSuggestions, applyProductToLine } from '@/lib/product.ts';
-import { ESTIMATE_MAX_MILESTONES, ESTIMATE_MILESTONE_PERCENT_TOTAL, getMilestoneAmounts, getMilestonePercentTotal, getMilestonesProblem } from '@/lib/estimate.ts';
+import { ESTIMATE_MAX_MILESTONES, addMilestonePercent, getMilestoneAmounts, getMilestonePercentTotal, getMilestonesProblem } from '@/lib/estimate.ts';
 
 export function useInvoiceEditPageBase() {
     const { tt, formatAmountToLocalizedNumeralsWithCurrency, formatGregorianTextualYearMonthDayToLongDate } = useI18n();
@@ -31,6 +31,9 @@ export function useInvoiceEditPageBase() {
     const allProducts = computed<Product[]>(() => invoicesStore.allProducts.filter(product => !product.archived));
 
     const isEstimate = computed<boolean>(() => invoice.value.kind === 'estimate');
+
+    // a draft of one milestone: the server rebuilds its one line from the estimate, so the editor only shows it
+    const isMilestoneInvoice = computed<boolean>(() => !!invoice.value.milestoneId);
 
     const title = computed<string>(() => {
         if (isEstimate.value) {
@@ -132,13 +135,22 @@ export function useInvoiceEditPageBase() {
         invoice.value.lines.splice(index, 1);
     }
 
-    // a new milestone gets whatever percent is still missing, so two clicks on a fresh estimate give a sensible 50 / 50 start
+    // a new milestone gets whatever percent is still missing; once the milestones already add up to 100%, the last one is
+    // split in half instead, so a milestone can always be added without leaving one at 0%
     function addMilestone(): void {
-        if (invoice.value.milestones.length >= ESTIMATE_MAX_MILESTONES) {
+        const milestones = invoice.value.milestones;
+
+        if (milestones.length >= ESTIMATE_MAX_MILESTONES) {
             return;
         }
 
-        invoice.value.milestones.push(Invoice.createNewMilestone(Math.max(ESTIMATE_MILESTONE_PERCENT_TOTAL - milestonePercentTotal.value, 0)));
+        const percents = addMilestonePercent(milestones.map(milestone => milestone.percent));
+
+        if (milestones.length) {
+            milestones[milestones.length - 1]!.percent = percents[percents.length - 2]!;
+        }
+
+        milestones.push(Invoice.createNewMilestone(percents[percents.length - 1]!));
     }
 
     function removeMilestone(index: number): void {
@@ -250,6 +262,7 @@ export function useInvoiceEditPageBase() {
         allCustomers,
         allProducts,
         isEstimate,
+        isMilestoneInvoice,
         title,
         numberLabel,
         dateLabel,

@@ -8,6 +8,7 @@ import {
     getMilestoneAmounts,
     getMilestonePercentTotal,
     getMilestonesProblem,
+    addMilestonePercent,
     formatMilestonePercent,
     unixTimeToTextualDate
 } from '@/lib/estimate.ts';
@@ -46,6 +47,20 @@ describe('getMilestonesProblem', () => {
         expect(getMilestonesProblem(Array.from({ length: 11 }, () => ({ label: 'Part', percent: 909 })))).toBe('An estimate can have at most 10 milestones');
         expect(getMilestonePercentTotal([{ percent: 3333 }, { percent: 3333 }])).toBe(6666);
         expect(formatMilestonePercent(3333)).toBe('33.33%');
+    });
+});
+
+describe('addMilestonePercent', () => {
+    test('splits the last milestone in half once the percents add up to 100%, otherwise gives the remainder', () => {
+        expect(addMilestonePercent([])).toEqual([10000]);
+        expect(addMilestonePercent([10000])).toEqual([5000, 5000]);
+        expect(addMilestonePercent([5000, 5000])).toEqual([5000, 2500, 2500]);
+        expect(addMilestonePercent([6000])).toEqual([6000, 4000]);
+    });
+
+    test('an odd split still sums to the old percent', () => {
+        expect(addMilestonePercent([9999, 1])).toEqual([9999, 1, 0]); // 1 can only split 1 / 0
+        expect(addMilestonePercent([3333, 3333, 3334])).toEqual([3333, 3333, 1667, 1667]);
     });
 });
 

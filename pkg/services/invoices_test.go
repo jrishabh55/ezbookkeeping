@@ -576,6 +576,25 @@ func TestModifyInvoiceIgnoresCurrency(t *testing.T) {
 	assert.Equal(t, "INR", reloaded.Currency)
 }
 
+// the editor disables the customer field on an invoice made from an estimate; the server backs that up
+func TestModifyInvoiceKeepsTheCustomerOfAnEstimateConversion(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	customer := createTestCustomer(t, uid)
+	other := &models.Customer{Uid: uid, Name: "Someone Else"}
+	assert.Nil(t, Invoices.CreateCustomer(ctx, other))
+
+	estimate := createTestEstimate(t, uid, customer.CustomerId, "EST/2026-27/01", testEstimateLines(), nil)
+	invoice := newTestInvoiceDraft(uid, customer.CustomerId, "INV/2026-27/01")
+	assert.Nil(t, Invoices.CreateInvoiceFromEstimate(ctx, invoice, testEstimateLines(), estimate.InvoiceId, 0))
+
+	invoice.CustomerId = other.CustomerId
+	assert.Nil(t, Invoices.ModifyInvoice(ctx, invoice, []*models.InvoiceLine{{ItemName: "Consulting", Quantity: 100, Rate: 37000000}}))
+
+	reloaded, _, err := Invoices.GetInvoice(ctx, uid, invoice.InvoiceId)
+	assert.Nil(t, err)
+	assert.Equal(t, customer.CustomerId, reloaded.CustomerId) // the tampered customer is ignored
+}
+
 func TestLinkPaymentRejectsOtherUsersTransaction(t *testing.T) {
 	ctx, uid := newAlertTestUser(t, "PNB Savings")
 	otherCtx, otherUid := newAlertTestUser(t, "Other Savings")
@@ -670,7 +689,7 @@ func TestInvoicePublicTokenViewReturnsInvoice(t *testing.T) {
 	profile.BusinessName = "Rishabh Jain"
 	assert.Nil(t, Invoices.SaveProfile(ctx, profile))
 
-	token, err := Invoices.SetInvoicePublicToken(ctx, uid, invoice.InvoiceId, true)
+	token, _, err := Invoices.SetInvoicePublicToken(ctx, uid, invoice.InvoiceId, true)
 	assert.Nil(t, err)
 	assert.Equal(t, 43, len(token))
 
@@ -696,10 +715,10 @@ func TestInvoicePublicTokenClearedReturnsNotFound(t *testing.T) {
 	_, _, _, _, err := Invoices.GetInvoiceByPublicToken(ctx, "")
 	assert.Equal(t, errs.ErrInvoiceNotFound, err)
 
-	token, err := Invoices.SetInvoicePublicToken(ctx, uid, invoice.InvoiceId, true)
+	token, _, err := Invoices.SetInvoicePublicToken(ctx, uid, invoice.InvoiceId, true)
 	assert.Nil(t, err)
 
-	cleared, err := Invoices.SetInvoicePublicToken(ctx, uid, invoice.InvoiceId, false)
+	cleared, _, err := Invoices.SetInvoicePublicToken(ctx, uid, invoice.InvoiceId, false)
 	assert.Nil(t, err)
 	assert.Equal(t, "", cleared)
 
@@ -716,9 +735,9 @@ func TestInvoicePublicTokenResetInvalidatesOldToken(t *testing.T) {
 	customer := createTestCustomer(t, uid)
 	invoice := createTestInvoice(t, uid, customer.CustomerId, "CA/2026-27/01", 100)
 
-	first, err := Invoices.SetInvoicePublicToken(ctx, uid, invoice.InvoiceId, true)
+	first, _, err := Invoices.SetInvoicePublicToken(ctx, uid, invoice.InvoiceId, true)
 	assert.Nil(t, err)
-	second, err := Invoices.SetInvoicePublicToken(ctx, uid, invoice.InvoiceId, true)
+	second, _, err := Invoices.SetInvoicePublicToken(ctx, uid, invoice.InvoiceId, true)
 	assert.Nil(t, err)
 	assert.NotEqual(t, first, second)
 
@@ -736,18 +755,46 @@ func TestInvoicePublicTokenCrossUserUpdateIsRefused(t *testing.T) {
 	customer := createTestCustomer(t, uid)
 	invoice := createTestInvoice(t, uid, customer.CustomerId, "CA/2026-27/01", 100)
 
-	token, err := Invoices.SetInvoicePublicToken(ctx, uid, invoice.InvoiceId, true)
+	token, _, err := Invoices.SetInvoicePublicToken(ctx, uid, invoice.InvoiceId, true)
 	assert.Nil(t, err)
 
-	_, err = Invoices.SetInvoicePublicToken(ctx, otherUid, invoice.InvoiceId, true)
+	_, _, err = Invoices.SetInvoicePublicToken(ctx, otherUid, invoice.InvoiceId, true)
 	assert.Equal(t, errs.ErrInvoiceNotFound, err)
-	_, err = Invoices.SetInvoicePublicToken(ctx, otherUid, invoice.InvoiceId, false)
+	_, _, err = Invoices.SetInvoicePublicToken(ctx, otherUid, invoice.InvoiceId, false)
 	assert.Equal(t, errs.ErrInvoiceNotFound, err)
 
 	// the owner's link still works after the refused update
 	viewed, _, _, _, err := Invoices.GetInvoiceByPublicToken(ctx, token)
 	assert.Nil(t, err)
 	assert.Equal(t, invoice.InvoiceId, viewed.InvoiceId)
+}
+
+// enabling the link is how a draft estimate first becomes answerable, the same transition SendInvoiceWithContent makes on email
+func TestEnablingThePublicLinkSendsADraftEstimateButLeavesOthersAlone(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	customer := createTestCustomer(t, uid)
+
+	draft := createTestEstimate(t, uid, customer.CustomerId, "EST/2026-27/01", testEstimateLines(), nil)
+	_, draftStatus, err := Invoices.SetInvoicePublicToken(ctx, uid, draft.InvoiceId, true)
+	assert.Nil(t, err)
+	assert.Equal(t, models.ESTIMATE_STATUS_SENT, draftStatus)
+	reloadedDraft, _, err := Invoices.GetInvoice(ctx, uid, draft.InvoiceId)
+	assert.Nil(t, err)
+	assert.Equal(t, models.ESTIMATE_STATUS_SENT, reloadedDraft.EstimateStatus)
+
+	accepted := createTestEstimate(t, uid, customer.CustomerId, "EST/2026-27/02", testEstimateLines(), nil)
+	assert.Nil(t, Invoices.SetEstimateResponse(ctx, uid, accepted.InvoiceId, models.ESTIMATE_STATUS_ACCEPTED))
+	_, acceptedStatus, err := Invoices.SetInvoicePublicToken(ctx, uid, accepted.InvoiceId, true)
+	assert.Nil(t, err)
+	assert.Equal(t, models.ESTIMATE_STATUS_ACCEPTED, acceptedStatus) // unchanged
+
+	invoice := createTestInvoice(t, uid, customer.CustomerId, "CA/2026-27/01", 100)
+	_, invoiceStatus, err := Invoices.SetInvoicePublicToken(ctx, uid, invoice.InvoiceId, true)
+	assert.Nil(t, err)
+	assert.Equal(t, "", invoiceStatus) // no estimate fields touched
+	reloadedInvoice, _, err := Invoices.GetInvoice(ctx, uid, invoice.InvoiceId)
+	assert.Nil(t, err)
+	assert.Equal(t, "", reloadedInvoice.EstimateStatus)
 }
 
 // the PDF endpoint loads through GetInvoice / GetInvoicePayments / GetProfile, so a foreign id must stop there

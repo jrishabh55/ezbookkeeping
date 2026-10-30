@@ -76,6 +76,25 @@ export function getMilestonePercentTotal(milestones: readonly { readonly percent
     return milestones.reduce((sum, milestone) => sum + milestone.percent, 0);
 }
 
+// the percents (basis points) after adding one more milestone: while they already add up to 100%, the last milestone's
+// percent is split in half (rounded so the two halves still sum to its old value) and the new milestone gets the other
+// half; otherwise the new milestone gets whatever is still missing, so two clicks on a fresh estimate give a sensible 50 / 50
+export function addMilestonePercent(existingPercents: readonly number[]): number[] {
+    const percents = [...existingPercents];
+    const total = getMilestonePercentTotal(percents.map(percent => ({ percent })));
+
+    if (percents.length && total === ESTIMATE_MILESTONE_PERCENT_TOTAL) {
+        const lastPercent = percents[percents.length - 1]!;
+        const firstHalf = Math.round(lastPercent / 2);
+        percents[percents.length - 1] = firstHalf;
+        percents.push(lastPercent - firstHalf);
+    } else {
+        percents.push(Math.max(ESTIMATE_MILESTONE_PERCENT_TOTAL - total, 0));
+    }
+
+    return percents;
+}
+
 // mirrors validateEstimateMilestones in pkg/services/estimates.go; null when the milestones can be saved
 export function getMilestonesProblem(milestones: readonly { readonly label: string, readonly percent: number }[]): string | null {
     if (!milestones.length) {

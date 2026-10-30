@@ -19,7 +19,7 @@ func shareTestEstimate(t *testing.T, ctx core.Context, uid int64, estimateId int
 	_, err := datastore.Container.UserDataStore.Choose(uid).NewSession(ctx).Cols("estimate_status").
 		Where("uid=? AND invoice_id=?", uid, estimateId).Update(&models.Invoice{EstimateStatus: models.ESTIMATE_STATUS_SENT})
 	assert.Nil(t, err)
-	token, err := Invoices.SetInvoicePublicToken(ctx, uid, estimateId, true)
+	token, _, err := Invoices.SetInvoicePublicToken(ctx, uid, estimateId, true)
 	assert.Nil(t, err)
 	return token
 }
@@ -78,9 +78,13 @@ func TestPublicEstimateAnswerGuards(t *testing.T) {
 	ctx, uid := newAlertTestUser(t)
 	customer := createTestCustomer(t, uid)
 
-	// never sent
+	// never sent: enabling the link itself now sends a draft (see TestEnablingThePublicLinkSendsADraftEstimateButLeavesOthersAlone),
+	// so this guard is exercised directly against a token stored without that transition (e.g. by older data)
 	draft := createTestEstimate(t, uid, customer.CustomerId, "EST/2026-27/01", testEstimateLines(), nil)
-	draftToken, err := Invoices.SetInvoicePublicToken(ctx, uid, draft.InvoiceId, true)
+	draftToken, err := generateInvoicePublicToken()
+	assert.Nil(t, err)
+	_, err = datastore.Container.UserDataStore.Choose(uid).NewSession(ctx).Cols("public_token").
+		Where("uid=? AND invoice_id=?", uid, draft.InvoiceId).Update(&models.Invoice{PublicToken: draftToken})
 	assert.Nil(t, err)
 	assert.Equal(t, errs.ErrEstimateCannotBeAnswered, Invoices.RespondToEstimateByPublicToken(ctx, draftToken, models.ESTIMATE_STATUS_ACCEPTED, "", "2026-10-30"))
 
@@ -97,14 +101,14 @@ func TestPublicEstimateAnswerGuards(t *testing.T) {
 	assert.Equal(t, errs.ErrEstimateStatusInvalid, Invoices.RespondToEstimateByPublicToken(ctx, token, models.ESTIMATE_STATUS_SENT, "", "2026-10-30"))
 
 	// a disabled (or reset) link is a plain not-found
-	_, err = Invoices.SetInvoicePublicToken(ctx, uid, sent.InvoiceId, false)
+	_, _, err = Invoices.SetInvoicePublicToken(ctx, uid, sent.InvoiceId, false)
 	assert.Nil(t, err)
 	assert.Equal(t, errs.ErrInvoiceNotFound, Invoices.RespondToEstimateByPublicToken(ctx, token, models.ESTIMATE_STATUS_DECLINED, "", "2026-10-30"))
 	assert.Equal(t, errs.ErrInvoiceNotFound, Invoices.RespondToEstimateByPublicToken(ctx, "short", models.ESTIMATE_STATUS_DECLINED, "", "2026-10-30"))
 
 	// an invoice's link answers nothing
 	invoice := createTestInvoice(t, uid, customer.CustomerId, "INV/2026-27/01", 100)
-	invoiceToken, err := Invoices.SetInvoicePublicToken(ctx, uid, invoice.InvoiceId, true)
+	invoiceToken, _, err := Invoices.SetInvoicePublicToken(ctx, uid, invoice.InvoiceId, true)
 	assert.Nil(t, err)
 	assert.Equal(t, errs.ErrEstimateCannotBeAnswered, Invoices.RespondToEstimateByPublicToken(ctx, invoiceToken, models.ESTIMATE_STATUS_ACCEPTED, "", "2026-10-30"))
 

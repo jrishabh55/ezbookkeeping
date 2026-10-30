@@ -240,7 +240,7 @@ func (s *InvoiceService) CreateInvoiceFromEstimate(c core.Context, invoice *mode
 	}
 
 	if milestoneId > 0 && len(lines) != 1 {
-		return errs.ErrEstimateMilestonesInvalid
+		return errs.ErrEstimateMilestoneInvoiceLineCountInvalid
 	}
 
 	invoice.CustomerId = estimate.CustomerId

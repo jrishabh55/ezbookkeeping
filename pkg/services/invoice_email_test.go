@@ -115,7 +115,7 @@ func TestInvoiceEmailRichSendMatchesActualPreviewAndAttachesPDF(t *testing.T) {
 	withSmtpEnabled(t)
 	customer := createTestCustomer(t, uid)
 	invoice := createTestInvoice(t, uid, customer.CustomerId, "REAL-42", 100000)
-	token, err := Invoices.SetInvoicePublicToken(ctx, uid, invoice.InvoiceId, true)
+	token, _, err := Invoices.SetInvoicePublicToken(ctx, uid, invoice.InvoiceId, true)
 	require.NoError(t, err)
 	require.NotEmpty(t, token)
 	profile, err := Invoices.GetProfile(ctx, uid)

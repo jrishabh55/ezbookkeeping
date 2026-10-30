@@ -619,12 +619,15 @@ func (s *InvoiceService) ModifyInvoice(c core.Context, invoice *models.Invoice, 
 		}
 
 		stored := &models.Invoice{}
-		if _, err := sess.Cols("estimate_id").Where("uid=? AND deleted=? AND invoice_id=?", invoice.Uid, false, invoice.InvoiceId).Get(stored); err != nil {
+		if _, err := sess.Cols("estimate_id", "customer_id").Where("uid=? AND deleted=? AND invoice_id=?", invoice.Uid, false, invoice.InvoiceId).Get(stored); err != nil {
 			return err
 		} else if stored.EstimateId > 0 {
 			if err := lockInvoiceRow(sess, invoice.Uid, stored.EstimateId, invoice.UpdatedUnixTime); err != nil {
 				return err
 			}
+
+			// the editor disables the customer field on an invoice made from an estimate; a tampered value is ignored
+			invoice.CustomerId = stored.CustomerId
 		}
 
 		if err := checkInvoiceNumberUnique(sess, invoice); err != nil {
@@ -705,7 +708,7 @@ func (s *InvoiceService) DeleteInvoice(c core.Context, uid int64, invoiceId int6
 		}
 
 		if invoice.EstimateId > 0 {
-			if _, err := sess.Cols("invoice_id").Where("uid=? AND invoice_id=?", uid, invoiceId).Update(&models.EstimateMilestone{InvoiceId: 0}); err != nil {
+			if _, err := sess.Cols("invoice_id").Where("uid=? AND estimate_id=? AND invoice_id=?", uid, invoice.EstimateId, invoiceId).Update(&models.EstimateMilestone{InvoiceId: 0}); err != nil {
 				return err
 			}
 		}
@@ -1176,14 +1179,16 @@ func generateInvoicePublicToken() (string, error) {
 }
 
 // SetInvoicePublicToken enables the public link of an invoice with a fresh token (every call invalidates the old one)
-// or disables it (enable=false clears the token). It returns the token now stored, empty when disabled.
-func (s *InvoiceService) SetInvoicePublicToken(c core.Context, uid int64, invoiceId int64, enable bool) (string, error) {
+// or disables it (enable=false clears the token). It returns the token now stored (empty when disabled) and, for an
+// estimate, its status afterwards (empty for a plain invoice): enabling the link on a draft estimate also sends it,
+// the client's only way to answer it, using the same conditional update SendInvoiceWithContent uses when emailing it.
+func (s *InvoiceService) SetInvoicePublicToken(c core.Context, uid int64, invoiceId int64, enable bool) (string, string, error) {
 	if uid <= 0 {
-		return "", errs.ErrUserIdInvalid
+		return "", "", errs.ErrUserIdInvalid
 	}
 
 	if invoiceId <= 0 {
-		return "", errs.ErrInvoiceIdInvalid
+		return "", "", errs.ErrInvoiceIdInvalid
 	}
 
 	token := ""
@@ -1192,17 +1197,23 @@ func (s *InvoiceService) SetInvoicePublicToken(c core.Context, uid int64, invoic
 		generated, err := generateInvoicePublicToken()
 
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
 
 		token = generated
 	}
 
 	if err := s.saveInvoicePublicToken(c, uid, invoiceId, token); err != nil {
-		return "", err
+		return "", "", err
 	}
 
-	return token, nil
+	estimateStatus := ""
+
+	if invoice, err := s.getInvoiceHeader(c, uid, invoiceId); err == nil && invoice.Kind == models.INVOICE_KIND_ESTIMATE {
+		estimateStatus = invoice.EstimateStatus
+	}
+
+	return token, estimateStatus, nil
 }
 
 func (s *InvoiceService) saveInvoicePublicToken(c core.Context, uid int64, invoiceId int64, token string) error {
@@ -1216,7 +1227,16 @@ func (s *InvoiceService) saveInvoicePublicToken(c core.Context, uid int64, invoi
 			return errs.ErrInvoiceNotFound
 		}
 
-		return nil
+		if token == "" {
+			return nil
+		}
+
+		// sharing a draft estimate's link is the client's first chance to answer it, so it also sends the estimate; an already
+		// answered or sent estimate, or a plain invoice, is untouched
+		_, err = sess.Cols("estimate_status").Where("uid=? AND deleted=? AND invoice_id=? AND kind=? AND estimate_status=?",
+			uid, false, invoiceId, models.INVOICE_KIND_ESTIMATE, models.ESTIMATE_STATUS_DRAFT).Update(&models.Invoice{EstimateStatus: models.ESTIMATE_STATUS_SENT})
+
+		return err
 	})
 }
 

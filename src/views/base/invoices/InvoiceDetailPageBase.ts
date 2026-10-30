@@ -234,7 +234,8 @@ export function useInvoiceDetailPageBase() {
         }
     }
 
-    // enabled=true issues a fresh token (first share, or "Reset Link": the old URL stops working); false disables the link
+    // enabled=true issues a fresh token (first share, or "Reset Link": the old URL stops working); false disables the link.
+    // Enabling it on a draft estimate also sends it (the client's only way to answer it), so the new status is applied too.
     function setPublicLink(enabled: boolean): Promise<string> {
         const current = invoice.value;
 
@@ -242,8 +243,13 @@ export function useInvoiceDetailPageBase() {
             return Promise.reject({ message: 'Unable to update public link' });
         }
 
-        return invoicesStore.updateInvoicePublicLink({ invoiceId: current.id, enabled }).then(token => {
+        return invoicesStore.updateInvoicePublicLink({ invoiceId: current.id, enabled }).then(({ token, estimateStatus }) => {
             current.publicToken = token;
+
+            if (estimateStatus) {
+                current.estimateStatus = estimateStatus;
+            }
+
             return token;
         });
     }

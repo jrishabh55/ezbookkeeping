@@ -17,6 +17,7 @@ import {
     RecurringInvoice
 } from '@/models/invoice.ts';
 import { type InvoiceLineGroup, Product } from '@/models/product.ts';
+import type { EstimateStatus } from '@/lib/estimate.ts';
 
 import { isEquals } from '@/lib/common.ts';
 import services, { type ApiResponsePromise } from '@/lib/services.ts';
@@ -165,9 +166,11 @@ export const useInvoicesStore = defineStore('invoices', () => {
         return request(services.unlinkInvoicePayment({ invoiceId, transactionId }), 'Unable to unlink this transaction');
     }
 
-    // enabled=true issues a fresh token every time (first share or "Reset Link"); false disables the link; resolves the stored token
-    function updateInvoicePublicLink({ invoiceId, enabled }: { invoiceId: string, enabled: boolean }): Promise<string> {
-        return request(services.updateInvoicePublicLink({ id: invoiceId, enabled }), 'Unable to update public link').then(result => result.publicToken);
+    // enabled=true issues a fresh token every time (first share or "Reset Link"); false disables the link; resolves the stored
+    // token and, for an estimate, its status afterwards (enabling the link also sends a draft one)
+    function updateInvoicePublicLink({ invoiceId, enabled }: { invoiceId: string, enabled: boolean }): Promise<{ token: string, estimateStatus: EstimateStatus | '' }> {
+        return request(services.updateInvoicePublicLink({ id: invoiceId, enabled }), 'Unable to update public link')
+            .then(result => ({ token: result.publicToken, estimateStatus: result.estimateStatus ?? '' }));
     }
 
     // emails the invoice (public link + PDF); resolves the invoice as stored afterwards (public token, sent time)

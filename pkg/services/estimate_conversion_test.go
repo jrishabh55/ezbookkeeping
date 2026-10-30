@@ -177,7 +177,7 @@ func TestCreateInvoiceFromMilestoneRecomputesTheRateAndInvoicesEachMilestoneOnce
 
 	// a milestone invoice has exactly one line
 	twoLines := newTestInvoiceDraft(uid, customer.CustomerId, "INV/2026-27/05")
-	assert.Equal(t, errs.ErrEstimateMilestonesInvalid, Invoices.CreateInvoiceFromEstimate(ctx, twoLines, testEstimateLines(), estimate.InvoiceId, milestones[0].MilestoneId))
+	assert.Equal(t, errs.ErrEstimateMilestoneInvoiceLineCountInvalid, Invoices.CreateInvoiceFromEstimate(ctx, twoLines, testEstimateLines(), estimate.InvoiceId, milestones[0].MilestoneId))
 }
 
 func TestFullConversionHappensOnceWhileItsInvoiceExists(t *testing.T) {

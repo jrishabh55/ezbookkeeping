@@ -89,29 +89,31 @@
                         <f7-list-item group-title>
                             <small>{{ tt('Line') + ' #' + (index + 1) }}</small>
                             <f7-button rasied fill color="red" icon-f7="trash" icon-size="16px" :aria-label="tt('Remove')"
-                                       :class="{ 'disabled': invoice.lines.length <= 1 }"
+                                       :class="{ 'disabled': isMilestoneInvoice || invoice.lines.length <= 1 }"
                                        @click="removeLine(index)"></f7-button>
                         </f7-list-item>
-                        <f7-list-input type="text" autocomplete="off" clear-button
+                        <f7-list-input type="text" autocomplete="off" clear-button :disabled="isMilestoneInvoice"
                                        :label="tt('Item')" :placeholder="tt('Item')"
                                        v-model:value="line.itemName"></f7-list-input>
                         <f7-list-item link="#" no-chevron class="list-item-with-header-and-title"
+                                      :class="{ 'disabled': isMilestoneInvoice }"
                                       :header="tt('Product')"
                                       :title="getLinkedProductName(line) || tt('None')"
                                       @click="productPopupLineIndex = index"
                                       v-if="allProducts.length">
                         </f7-list-item>
-                        <f7-list-input type="textarea" style="height: auto" autocomplete="off"
+                        <f7-list-input type="textarea" style="height: auto" autocomplete="off" :disabled="isMilestoneInvoice"
                                        :label="tt('Description')" :placeholder="tt('Description (optional)')"
                                        v-textarea-auto-size v-model:value="line.description"></f7-list-input>
-                        <f7-list-input type="text" autocomplete="off" clear-button
+                        <f7-list-input type="text" autocomplete="off" clear-button :disabled="isMilestoneInvoice"
                                        :label="tt('SAC')" :placeholder="tt('SAC')"
                                        v-model:value="line.sac"></f7-list-input>
-                        <list-number-input :label="tt('Qty')" :placeholder="tt('Qty')"
+                        <list-number-input :label="tt('Qty')" :placeholder="tt('Qty')" :disabled="isMilestoneInvoice"
                                            :min-value="0.01" :max-value="10000" :max-decimal-count="2"
                                            :model-value="line.quantity / INVOICE_QUANTITY_SCALE"
                                            @update:model-value="line.quantity = Math.round($event * INVOICE_QUANTITY_SCALE)"></list-number-input>
                         <f7-list-item link="#" no-chevron class="list-item-with-header-and-title"
+                                      :class="{ 'disabled': isMilestoneInvoice }"
                                       :header="tt('Rate')"
                                       :title="formatAmount(line.rate)"
                                       @click="rateSheetLineIndex = index">
@@ -124,6 +126,9 @@
                         </f7-list-item>
                     </template>
                 </f7-list>
+                <f7-block class="text-align-center" v-if="isMilestoneInvoice">
+                    <small>{{ tt('The amount of a milestone invoice is set from the estimate.') }}</small>
+                </f7-block>
             </f7-block>
 
             <f7-list strong inset dividers class="margin-vertical" v-if="isEstimate">
@@ -162,6 +167,7 @@
             <f7-list strong inset dividers class="margin-vertical">
                 <template #list>
                     <f7-list-item class="list-item-with-header-and-title" link="#" no-chevron
+                                  :class="{ 'disabled': isMilestoneInvoice }"
                                   :header="tt('Tax')"
                                   :title="selectedTaxTypeName"
                                   @click="showTaxTypeSheet = true">
@@ -172,7 +178,7 @@
                                                    v-model="invoice.taxType">
                         </list-item-selection-sheet>
                     </f7-list-item>
-                    <list-number-input :label="tt('Tax Rate (%)')" :placeholder="tt('Tax Rate (%)')"
+                    <list-number-input :label="tt('Tax Rate (%)')" :placeholder="tt('Tax Rate (%)')" :disabled="isMilestoneInvoice"
                                        :min-value="0" :max-value="100" :max-decimal-count="2"
                                        v-model="taxRatePercent" v-if="invoice.taxType !== 'none'"></list-number-input>
                     <template v-if="invoice.taxType !== 'none'">
@@ -189,7 +195,7 @@
 
         <f7-actions close-by-outside-click close-on-escape :opened="showMoreActionSheet" @actions:closed="showMoreActionSheet = false">
             <f7-actions-group>
-                <f7-actions-button @click="addLine">{{ tt('Add Line') }}</f7-actions-button>
+                <f7-actions-button v-if="!isMilestoneInvoice" @click="addLine">{{ tt('Add Line') }}</f7-actions-button>
                 <f7-actions-button @click="addCustomer">{{ tt('Add Customer') }}</f7-actions-button>
                 <f7-actions-button v-if="isEstimate" @click="addMilestone">{{ tt('Add Milestone') }}</f7-actions-button>
             </f7-actions-group>
@@ -232,6 +238,7 @@ const {
     allCustomers,
     allProducts,
     isEstimate,
+    isMilestoneInvoice,
     title,
     numberLabel,
     dateLabel,

@@ -423,9 +423,11 @@ type InvoicePublicLinkUpdateRequest struct {
 	Enabled bool  `json:"enabled"`
 }
 
-// InvoicePublicLinkResponse carries the current public token of an invoice (empty when the link is disabled)
+// InvoicePublicLinkResponse carries the current public token of an invoice (empty when the link is disabled) and, for an
+// estimate, its status afterwards (empty for a plain invoice)
 type InvoicePublicLinkResponse struct {
-	PublicToken string `json:"publicToken"`
+	PublicToken    string `json:"publicToken"`
+	EstimateStatus string `json:"estimateStatus,omitempty"`
 }
 
 // InvoicePublicViewRequest represents all parameters of the unauthenticated invoice view request

@@ -275,6 +275,7 @@ export interface InvoiceModifyRequest extends InvoiceCreateRequest {
 
 export interface InvoicePublicLinkResponse {
     readonly publicToken: string;
+    readonly estimateStatus?: EstimateStatus | '';
 }
 
 // what a recipient of a public link sees: the printed document plus the amount received, no ids or payments
