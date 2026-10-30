@@ -1,6 +1,7 @@
 import type { TextualYearMonthDay } from '@/core/datetime.ts';
 
 import { INVOICE_DEFAULT_CURRENCY } from '@/lib/invoice.ts';
+import type { EstimateStatus } from '@/lib/estimate.ts';
 
 // mirrors models.INVOICE_TAX_TYPE_* in pkg/models/invoice.go
 export type InvoiceTaxType = 'none' | 'igst' | 'cgst_sgst';
@@ -14,6 +15,41 @@ export const INVOICE_TAX_TYPES: { readonly type: InvoiceTaxType, readonly name: 
 
 // mirrors models.RECURRING_INVOICE_MODE_* in pkg/models/recurring_invoice.go
 export type RecurringInvoiceMode = 'create' | 'draft_ahead' | 'auto_send';
+
+// mirrors models.INVOICE_KIND_* in pkg/models/invoice.go
+export type InvoiceKind = 'invoice' | 'estimate';
+
+// one payment term of an estimate as the editor and the detail view hold it ('' ids until saved / invoiced)
+export interface EstimateMilestone {
+    id: string;
+    label: string;
+    percent: number; // basis points
+    invoiceId: string;
+    invoiceNumber: string;
+}
+
+export interface EstimateMilestoneInfoResponse {
+    readonly id?: string;
+    readonly label: string;
+    readonly percent: number;
+    readonly invoiceId?: string;
+    readonly invoiceNumber?: string;
+}
+
+export interface EstimateMilestoneRequest {
+    readonly label: string;
+    readonly percent: number;
+}
+
+export interface EstimateConvertedInvoice {
+    readonly id: string;
+    readonly number: string;
+}
+
+export interface PublicEstimateMilestone {
+    readonly label: string;
+    readonly percent: number;
+}
 
 // the renewal modes with their locale keys, in menu order
 export const RECURRING_INVOICE_MODES: { readonly mode: RecurringInvoiceMode, readonly name: string }[] = [
@@ -55,6 +91,8 @@ export interface InvoiceProfileInfoResponse {
     readonly emailSubjectTemplate: string;
     readonly emailBodyTemplate: string;
     readonly renewalDraftDays: number;
+    readonly estimateNumberPrefix: string;
+    readonly estimateValidDays: number;
 }
 
 export type InvoiceProfileUpdateRequest = Omit<InvoiceProfileInfoResponse, 'emailSubjectTemplate' | 'emailBodyTemplate'> & Partial<Pick<InvoiceProfileInfoResponse, 'emailSubjectTemplate' | 'emailBodyTemplate'>>;
@@ -150,6 +188,16 @@ export interface InvoiceInfoResponse {
     readonly sentUnixTime?: number; // when the invoice was last emailed; absent = never
     readonly emails?: InvoiceEmail[]; // newest first, without emailHtml
     readonly renewalOption?: InvoiceRenewalOption | null;
+    readonly estimateStatus?: EstimateStatus | '';
+    readonly respondedUnixTime?: number;
+    readonly respondedByClient?: boolean;
+    readonly responseNote?: string;
+    readonly estimateId?: string; // invoices made from an estimate
+    readonly estimateNumber?: string;
+    readonly milestoneId?: string; // conversion drafts of one milestone
+    readonly milestones?: EstimateMilestoneInfoResponse[];
+    readonly convertedInvoices?: EstimateConvertedInvoice[];
+    readonly fullyInvoiced?: boolean;
 }
 
 // one email sent for an invoice; emailHtml is only filled when that email is fetched on its own
@@ -215,6 +263,10 @@ export interface InvoiceCreateRequest {
     readonly taxRate: number;
     readonly lines: InvoiceLineRequest[];
     readonly currency: string; // honoured on create only; the server ignores it on modify
+    readonly kind: InvoiceKind;
+    readonly milestones: EstimateMilestoneRequest[];
+    readonly estimateId: string;
+    readonly milestoneId: string;
 }
 
 export interface InvoiceModifyRequest extends InvoiceCreateRequest {
@@ -257,6 +309,10 @@ export interface PublicInvoiceResponse {
     readonly closedManually: boolean;
     readonly lines: InvoiceLine[];
     readonly profile: PublicInvoiceProfileResponse;
+    readonly kind?: string;
+    readonly estimateStatus?: EstimateStatus;
+    readonly respondedUnixTime?: number;
+    readonly milestones?: PublicEstimateMilestone[];
 }
 
 export class InvoiceProfile implements InvoiceProfileInfoResponse {
@@ -275,6 +331,8 @@ export class InvoiceProfile implements InvoiceProfileInfoResponse {
     public emailSubjectTemplate: string = '';
     public emailBodyTemplate: string = '';
     public renewalDraftDays: number = 15;
+    public estimateNumberPrefix: string = 'EST';
+    public estimateValidDays: number = 30;
 
     public fillFrom(other: InvoiceProfileInfoResponse): void {
         this.businessName = other.businessName;
@@ -292,6 +350,8 @@ export class InvoiceProfile implements InvoiceProfileInfoResponse {
         this.emailSubjectTemplate = other.emailSubjectTemplate ?? '';
         this.emailBodyTemplate = other.emailBodyTemplate ?? '';
         this.renewalDraftDays = other.renewalDraftDays ?? 15;
+        this.estimateNumberPrefix = other.estimateNumberPrefix || 'EST';
+        this.estimateValidDays = other.estimateValidDays || 30;
     }
 
     public toUpdateRequest(): InvoiceProfileInfoResponse {
@@ -310,7 +370,9 @@ export class InvoiceProfile implements InvoiceProfileInfoResponse {
             defaultCurrency: this.defaultCurrency,
             emailSubjectTemplate: this.emailSubjectTemplate,
             emailBodyTemplate: this.emailBodyTemplate,
-            renewalDraftDays: this.renewalDraftDays
+            renewalDraftDays: this.renewalDraftDays,
+            estimateNumberPrefix: this.estimateNumberPrefix.trim(),
+            estimateValidDays: this.estimateValidDays
         };
     }
 
@@ -425,7 +487,7 @@ export class Customer implements CustomerInfoResponse {
 
 export class Invoice implements InvoiceInfoResponse {
     public id: string = '';
-    public kind: string = 'invoice';
+    public kind: InvoiceKind = 'invoice';
     public number: string = '';
     public customerId: string = '';
     public billToName: string = '';
@@ -452,10 +514,32 @@ export class Invoice implements InvoiceInfoResponse {
     public sentUnixTime: number = 0; // 0 = never emailed
     public emails: InvoiceEmail[] = [];
     public renewalOption: InvoiceRenewalOption | null = null;
+    public estimateStatus: EstimateStatus | '' = ''; // estimates only
+    public respondedUnixTime: number = 0;
+    public respondedByClient: boolean = false;
+    public responseNote: string = '';
+    public estimateId: string = ''; // invoices made from an estimate
+    public estimateNumber: string = '';
+    public milestoneId: string = ''; // a conversion draft of one milestone; sent back on create
+    public milestones: EstimateMilestone[] = [];
+    public convertedInvoices: EstimateConvertedInvoice[] = [];
+    public fullyInvoiced: boolean = false;
 
     public fillFrom(other: InvoiceInfoResponse): void {
         this.id = other.id;
-        this.kind = other.kind;
+        this.kind = other.kind === 'estimate' ? 'estimate' : 'invoice';
+        this.estimateStatus = other.estimateStatus ?? '';
+        this.respondedUnixTime = other.respondedUnixTime ?? 0;
+        this.respondedByClient = other.respondedByClient ?? false;
+        this.responseNote = other.responseNote ?? '';
+        this.estimateId = other.estimateId ?? '';
+        this.estimateNumber = other.estimateNumber ?? '';
+        this.milestoneId = other.milestoneId ?? '';
+        this.milestones = (other.milestones ?? []).map(milestone => ({
+            id: milestone.id ?? '', label: milestone.label, percent: milestone.percent, invoiceId: milestone.invoiceId ?? '', invoiceNumber: milestone.invoiceNumber ?? ''
+        }));
+        this.convertedInvoices = [...(other.convertedInvoices ?? [])];
+        this.fullyInvoiced = other.fullyInvoiced ?? false;
         this.number = other.number;
         this.customerId = other.customerId;
         this.billToName = other.billToName;
@@ -501,7 +585,11 @@ export class Invoice implements InvoiceInfoResponse {
                 sac: line.sac.trim(),
                 productId: line.productId || '0'
             })),
-            currency: this.currency
+            currency: this.currency,
+            kind: this.kind,
+            milestones: this.kind === 'estimate' ? this.milestones.map(milestone => ({ label: milestone.label.trim(), percent: milestone.percent })) : [],
+            estimateId: this.estimateId || '0',
+            milestoneId: this.milestoneId || '0'
         };
     }
 
@@ -516,13 +604,14 @@ export class Invoice implements InvoiceInfoResponse {
         return Invoice.of(this);
     }
 
-    // a new unsaved invoice with this invoice's customer, currency, lines and notes (the "Duplicate" action)
+    // a new unsaved invoice (or draft estimate, with the same payment terms) with this one's customer, currency, lines and notes
     public duplicate(): Invoice {
-        const invoice = Invoice.createNewInvoice();
+        const invoice = this.kind === 'estimate' ? Invoice.createNewEstimate() : Invoice.createNewInvoice();
         invoice.customerId = this.customerId;
         invoice.currency = this.currency;
         invoice.notes = this.notes;
         invoice.lines = this.lines.map(line => ({ ...line }));
+        invoice.milestones = this.milestones.map(milestone => Invoice.createNewMilestone(milestone.percent, milestone.label));
         return invoice;
     }
 
@@ -539,7 +628,10 @@ export class Invoice implements InvoiceInfoResponse {
     // the invoice as seen through a public link: no id, customer id, payments or token
     public static ofPublic(response: PublicInvoiceResponse): Invoice {
         const invoice = new Invoice();
-        invoice.fillFrom({ ...response, id: '', kind: 'invoice', customerId: '', payments: [] });
+        invoice.fillFrom({
+            ...response, id: '', kind: response.kind || 'invoice', customerId: '', payments: [],
+            milestones: (response.milestones ?? []).map(milestone => ({ label: milestone.label, percent: milestone.percent }))
+        });
         return invoice;
     }
 
@@ -551,6 +643,17 @@ export class Invoice implements InvoiceInfoResponse {
 
     public static createNewLine(sac: string = ''): InvoiceLine {
         return { itemName: '', description: '', quantity: 100, rate: 0, amount: 0, sac, productId: '' }; // quantity in hundredths
+    }
+
+    public static createNewEstimate(): Invoice {
+        const estimate = Invoice.createNewInvoice();
+        estimate.kind = 'estimate';
+        estimate.estimateStatus = 'draft';
+        return estimate;
+    }
+
+    public static createNewMilestone(percent: number, label: string = ''): EstimateMilestone {
+        return { id: '', label, percent, invoiceId: '', invoiceNumber: '' };
     }
 }
 
@@ -681,7 +784,7 @@ export interface CustomerProduct {
 }
 
 export interface CustomerTimelineItem {
-    readonly kind: 'invoice' | 'email' | 'payment';
+    readonly kind: 'invoice' | 'email' | 'payment' | 'estimate' | 'estimate_accepted' | 'estimate_declined';
     readonly unixTime: number;
     readonly invoiceId: string;
     readonly invoiceNumber: string;
@@ -689,6 +792,8 @@ export interface CustomerTimelineItem {
     readonly currency: string;
     readonly text: string;
     readonly renewal: boolean;
+    readonly estimateNumber?: string;
+    readonly byClient?: boolean;
 }
 
 export interface CustomerOverview {

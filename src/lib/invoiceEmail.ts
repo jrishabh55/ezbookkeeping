@@ -21,7 +21,8 @@ export const INVOICE_EMAIL_EDITOR_VARIABLES: readonly InvoiceEmailEditorVariable
     { key: 'business_name', label: 'Business Name' },
     { key: 'business_address', label: 'Business Address' },
     { key: 'business_phone', label: 'Business Phone' },
-    { key: 'business_website', label: 'Business Website' }
+    { key: 'business_website', label: 'Business Website' },
+    { key: 'document_type', label: 'Document Type' }
 ];
 
 // Keep the saved template unresolved: the server expands it for this invoice on preview/send.

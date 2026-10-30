@@ -10,6 +10,7 @@ import {
     type InvoiceEmailTemplateUpdateRequest,
     type InvoiceRenewal,
     type CustomerOverview,
+    type InvoiceKind,
     InvoiceProfile,
     Customer,
     Invoice,
@@ -24,6 +25,7 @@ import { readInvoicePdf } from '@/lib/invoicePdf.ts';
 
 export const useInvoicesStore = defineStore('invoices', () => {
     const allInvoices = ref<Invoice[]>([]);
+    const allEstimates = ref<Invoice[]>([]);
     const allInvoicesMap = ref<Record<string, Invoice>>({});
     const allCustomers = ref<Customer[]>([]);
     const allCustomersMap = ref<Record<string, Customer>>({});
@@ -80,6 +82,7 @@ export const useInvoicesStore = defineStore('invoices', () => {
     function removeInvoiceFromList(invoiceId: string): void {
         allInvoices.value = allInvoices.value.filter(invoice => invoice.id !== invoiceId);
         delete allInvoicesMap.value[invoiceId];
+        allEstimates.value = allEstimates.value.filter(estimate => estimate.id !== invoiceId);
     }
 
     function removeCustomerFromList(customerId: string): void {
@@ -90,6 +93,7 @@ export const useInvoicesStore = defineStore('invoices', () => {
     function resetInvoices(): void {
         allInvoices.value = [];
         allInvoicesMap.value = {};
+        allEstimates.value = [];
         allCustomers.value = [];
         allCustomersMap.value = {};
         customerListStateInvalid.value = true;
@@ -144,8 +148,8 @@ export const useInvoicesStore = defineStore('invoices', () => {
         return request(apiRequest, 'Unable to save invoice');
     }
 
-    function getNextInvoiceNumber({ invoiceDate }: { invoiceDate: string }): Promise<string> {
-        return request(services.getNextInvoiceNumber({ invoiceDate }), 'Unable to get next invoice number');
+    function getNextInvoiceNumber({ invoiceDate, kind }: { invoiceDate: string, kind?: InvoiceKind }): Promise<string> {
+        return request(services.getNextInvoiceNumber({ invoiceDate, kind }), 'Unable to get next invoice number');
     }
 
     function getInvoicePaymentSuggestions({ invoiceId }: { invoiceId: string }): Promise<InvoicePayment[]> {
@@ -360,6 +364,37 @@ export const useInvoicesStore = defineStore('invoices', () => {
         return request(services.getCustomerOverview({ id: customerId }), 'Unable to retrieve customer');
     }
 
+    // like the invoice list, never served from cache: client answers and conversions change estimates behind the UI's back
+    function loadAllEstimates({ force }: { force?: boolean }): Promise<Invoice[]> {
+        return request(services.getAllEstimates(), 'Unable to retrieve estimate list').then(result => {
+            const estimates = Invoice.ofMulti(result);
+
+            if (force && isEquals(allEstimates.value, estimates)) {
+                return Promise.reject({ message: 'Estimate list is up to date', isUpToDate: true });
+            }
+
+            allEstimates.value = estimates;
+            return estimates;
+        });
+    }
+
+    function setEstimateResponse({ estimateId, status }: { estimateId: string, status: 'accepted' | 'declined' }): Promise<Invoice> {
+        return request(services.setEstimateResponse({ id: estimateId, status }), 'Unable to save estimate').then(result => Invoice.of(result));
+    }
+
+    function reopenEstimate({ estimateId }: { estimateId: string }): Promise<Invoice> {
+        return request(services.reopenEstimate({ id: estimateId }), 'Unable to save estimate').then(result => Invoice.of(result));
+    }
+
+    // the unsaved invoice an estimate (milestoneId '') or one of its milestones turns into, for the editor
+    function getEstimateInvoiceDraft({ estimateId, milestoneId }: { estimateId: string, milestoneId: string }): Promise<Invoice> {
+        return request(services.getEstimateInvoiceDraft({ id: estimateId, milestoneId }), 'Unable to convert estimate').then(result => Invoice.of(result));
+    }
+
+    function loadEstimatesToInvoice(): Promise<Invoice[]> {
+        return request(services.getEstimatesToInvoice(), 'Unable to retrieve estimate list').then(result => Invoice.ofMulti(result));
+    }
+
     async function getInvoicePdf(invoiceId: string): Promise<Blob> {
         try {
             const response = await services.getInvoicePdf(invoiceId);
@@ -373,6 +408,7 @@ export const useInvoicesStore = defineStore('invoices', () => {
     return {
         // states
         allInvoices,
+        allEstimates,
         allInvoicesMap,
         allCustomers,
         allCustomersMap,
@@ -413,6 +449,11 @@ export const useInvoicesStore = defineStore('invoices', () => {
         getUnlinkedInvoiceLineGroups,
         linkInvoiceLinesToProduct,
         loadInvoiceRenewals,
-        getCustomerOverview
+        getCustomerOverview,
+        loadAllEstimates,
+        setEstimateResponse,
+        reopenEstimate,
+        getEstimateInvoiceDraft,
+        loadEstimatesToInvoice
     };
 });

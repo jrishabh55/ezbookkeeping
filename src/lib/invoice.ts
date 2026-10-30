@@ -155,8 +155,8 @@ export function formatInvoiceDocumentDate(date: string): string {
     return new Date(Date.UTC(year!, month! - 1, day!)).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
 }
 
-export function getInvoicePdfFileName(number: string, dueDate: string): string {
-    return `Invoice_${number.replace(/[\\/:*?"<>|\s]+/g, '_')}_${dueDate}`;
+export function getInvoicePdfFileName(number: string, dueDate: string, kind: string = 'invoice'): string {
+    return `${kind === 'estimate' ? 'Estimate' : 'Invoice'}_${number.replace(/[\\/:*?"<>|\s]+/g, '_')}_${dueDate}`;
 }
 
 export function addDaysToDate(date: string, days: number): TextualYearMonthDay {
@@ -184,9 +184,9 @@ export function getInvoicePublicLinkUrl(publicToken: string): string {
 }
 
 // prints the document; the browser suggests document.title as the PDF file name
-export function printInvoiceDocument(invoice: { readonly number: string, readonly dueDate: string }): void {
+export function printInvoiceDocument(invoice: { readonly number: string, readonly dueDate: string, readonly kind?: string }): void {
     const originalTitle = document.title;
-    document.title = getInvoicePdfFileName(invoice.number, invoice.dueDate);
+    document.title = getInvoicePdfFileName(invoice.number, invoice.dueDate, invoice.kind);
     window.addEventListener('afterprint', () => {
         document.title = originalTitle;
     }, { once: true });

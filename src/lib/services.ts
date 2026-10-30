@@ -1110,8 +1110,8 @@ export default {
     reopenInvoice: ({ id }: { id: string }): ApiResponsePromise<boolean> => {
         return axios.post<ApiResponse<boolean>>('v1/invoices/reopen.json', { id });
     },
-    getNextInvoiceNumber: ({ invoiceDate }: { invoiceDate: string }): ApiResponsePromise<string> => {
-        return axios.get<ApiResponse<string>>('v1/invoices/next_number.json?invoice_date=' + invoiceDate);
+    getNextInvoiceNumber: ({ invoiceDate, kind }: { invoiceDate: string, kind?: string }): ApiResponsePromise<string> => {
+        return axios.get<ApiResponse<string>>('v1/invoices/next_number.json?invoice_date=' + invoiceDate + (kind === 'estimate' ? '&kind=estimate' : ''));
     },
     getInvoicePaymentSuggestions: ({ id }: { id: string }): ApiResponsePromise<InvoicePayment[]> => {
         return axios.get<ApiResponse<InvoicePayment[]>>('v1/invoices/payment/suggestions.json?id=' + id);
@@ -1154,6 +1154,28 @@ export default {
     },
     getInvoiceRenewals: (): ApiResponsePromise<InvoiceRenewalInfoResponse[]> => {
         return axios.get<ApiResponse<InvoiceRenewalInfoResponse[]>>('v1/invoices/renewals.json');
+    },
+    getAllEstimates: (): ApiResponsePromise<InvoiceInfoResponse[]> => {
+        return axios.get<ApiResponse<InvoiceInfoResponse[]>>('v1/invoices/list.json?kind=estimate');
+    },
+    setEstimateResponse: (req: { id: string, status: 'accepted' | 'declined' }): ApiResponsePromise<InvoiceInfoResponse> => {
+        return axios.post<ApiResponse<InvoiceInfoResponse>>('v1/estimates/respond.json', req);
+    },
+    reopenEstimate: ({ id }: { id: string }): ApiResponsePromise<InvoiceInfoResponse> => {
+        return axios.post<ApiResponse<InvoiceInfoResponse>>('v1/estimates/reopen.json', { id });
+    },
+    getEstimateInvoiceDraft: ({ id, milestoneId }: { id: string, milestoneId: string }): ApiResponsePromise<InvoiceInfoResponse> => {
+        return axios.get<ApiResponse<InvoiceInfoResponse>>('v1/estimates/invoice_draft.json?id=' + id + (milestoneId ? '&milestone_id=' + milestoneId : ''));
+    },
+    getEstimatesToInvoice: (): ApiResponsePromise<InvoiceInfoResponse[]> => {
+        return axios.get<ApiResponse<InvoiceInfoResponse[]>>('v1/estimates/to_invoice.json');
+    },
+    // unauthenticated like getPublicInvoice: the token is the only key; a refused answer rejects and the page reloads the estimate
+    respondToPublicEstimate: ({ token, accept, note }: { token: string, accept: boolean, note: string }): ApiResponsePromise<boolean> => {
+        return axios.post<ApiResponse<boolean>>(accept ? 'public/estimates/accept.json' : 'public/estimates/decline.json', { token, note }, {
+            noAuth: true,
+            ignoreError: true
+        } as ApiRequestConfig);
     },
     updateInvoicePublicLink: (req: { id: string, enabled: boolean }): ApiResponsePromise<InvoicePublicLinkResponse> => {
         return axios.post<ApiResponse<InvoicePublicLinkResponse>>('v1/invoices/public_link/update.json', req);
