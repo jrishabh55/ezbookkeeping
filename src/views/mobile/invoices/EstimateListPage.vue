@@ -51,7 +51,7 @@
 
         <f7-actions close-by-outside-click close-on-escape :opened="showDeleteActionSheet" @actions:closed="showDeleteActionSheet = false">
             <f7-actions-group>
-                <f7-actions-label>{{ tt('Are you sure you want to delete this estimate?') }}</f7-actions-label>
+                <f7-actions-label>{{ tt(estimateToDelete ? getDeleteEstimateConfirmation(estimateToDelete) : 'Are you sure you want to delete this estimate?') }}</f7-actions-label>
                 <f7-actions-button color="red" @click="remove(estimateToDelete, true)">{{ tt('Delete') }}</f7-actions-button>
             </f7-actions-group>
             <f7-actions-group>
@@ -74,7 +74,7 @@ import { useInvoicesStore } from '@/stores/invoice.ts';
 import { TextDirection } from '@/core/text.ts';
 import type { Invoice } from '@/models/invoice.ts';
 
-import { isEstimateLocked, canDeleteEstimate } from '@/lib/estimate.ts';
+import { isEstimateLocked, canDeleteEstimate, getDeleteEstimateConfirmation } from '@/lib/estimate.ts';
 
 const props = defineProps<{
     f7route: Router.Route;
@@ -168,6 +168,12 @@ function remove(estimate: Invoice | null, confirm: boolean): void {
         }
     }).then(() => {
         hideLoading();
+
+        // deleting a revision changes other rows: a sent one takes the earlier versions with it, a draft one gives the previous
+        // version its status back
+        if (estimate.revisionNumber > 0) {
+            reload();
+        }
     }).catch(error => {
         hideLoading();
 

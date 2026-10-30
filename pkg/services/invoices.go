@@ -663,8 +663,9 @@ func (s *InvoiceService) ModifyInvoice(c core.Context, invoice *models.Invoice, 
 }
 
 // DeleteInvoice soft-deletes an invoice or estimate and removes its payment links; the linked transactions are untouched.
-// An estimate with invoices made from it, a superseded estimate version and a revision that is no longer a draft are refused; an
-// invoice made from a milestone frees that milestone; deleting a draft revision returns the version it superseded to its old status.
+// An estimate with invoices made from any of its versions and a superseded estimate version are refused; an invoice made from a
+// milestone frees that milestone; deleting a draft revision returns the version it superseded to its old status, deleting any other
+// latest estimate version deletes every version of its chain.
 func (s *InvoiceService) DeleteInvoice(c core.Context, uid int64, invoiceId int64) error {
 	if uid <= 0 {
 		return errs.ErrUserIdInvalid
@@ -699,26 +700,37 @@ func (s *InvoiceService) DeleteInvoice(c core.Context, uid int64, invoiceId int6
 			}
 		}
 
+		deletedIds := []int64{invoiceId}
+
 		if invoice.Kind == models.INVOICE_KIND_ESTIMATE {
 			if err := checkEstimateDeletable(invoice); err != nil {
 				return err
 			}
 
-			invoiced, err := estimateHasInvoices(sess, uid, invoiceId)
+			if isDraftEstimateRevision(invoice) {
+				invoiced, err := estimateHasInvoices(sess, uid, invoiceId)
 
-			if err != nil {
-				return err
-			} else if invoiced {
-				return errs.ErrEstimateHasInvoices
+				if err != nil {
+					return err
+				} else if invoiced {
+					return errs.ErrEstimateHasInvoices
+				}
+			} else {
+				// the latest version of a chain (a first version on its own included) goes with every earlier version
+				deletedIds, err = getEstimateChainIdsToDelete(sess, invoice, now)
+
+				if err != nil {
+					return err
+				}
 			}
 		}
 
-		updatedRows, err := sess.Cols("deleted", "deleted_unix_time").Where("uid=? AND deleted=? AND invoice_id=?", uid, false, invoiceId).
+		updatedRows, err := sess.Cols("deleted", "deleted_unix_time").Where("uid=? AND deleted=?", uid, false).In("invoice_id", deletedIds).
 			Update(&models.Invoice{Deleted: true, DeletedUnixTime: now})
 
 		if err != nil {
 			return err
-		} else if updatedRows < 1 {
+		} else if updatedRows < int64(len(deletedIds)) {
 			return errs.ErrInvoiceNotFound
 		}
 
@@ -728,13 +740,13 @@ func (s *InvoiceService) DeleteInvoice(c core.Context, uid int64, invoiceId int6
 			}
 		}
 
-		if invoice.Kind == models.INVOICE_KIND_ESTIMATE && invoice.RevisionNumber > 0 {
+		if invoice.Kind == models.INVOICE_KIND_ESTIMATE && isDraftEstimateRevision(invoice) {
 			if err := restorePreviousEstimateVersion(sess, invoice, now); err != nil {
 				return err
 			}
 		}
 
-		_, err = sess.Where("uid=? AND invoice_id=?", uid, invoiceId).Delete(&models.InvoicePayment{})
+		_, err = sess.Where("uid=?", uid).In("invoice_id", deletedIds).Delete(&models.InvoicePayment{})
 		return err
 	})
 }

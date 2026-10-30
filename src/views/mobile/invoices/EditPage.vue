@@ -1,7 +1,11 @@
 <template>
-    <f7-page @page:afterin="onPageAfterIn">
+    <!-- a draft opened by Revise: going back without saving discards it, so the back gesture is off and Back is handled here -->
+    <f7-page :class="{ 'no-swipeback': isRevisionDraft }" @page:afterin="onPageAfterIn" @page:beforeremove="onPageBeforeRemove">
         <f7-navbar>
-            <f7-nav-left :class="{ 'disabled': loading }" :back-link="tt('Back')"></f7-nav-left>
+            <f7-nav-left :class="{ 'disabled': loading || submitting }" v-if="isRevisionDraft">
+                <f7-link icon="icon-back" :text="tt('Back')" @click="discardRevision"></f7-link>
+            </f7-nav-left>
+            <f7-nav-left :class="{ 'disabled': loading }" :back-link="tt('Back')" v-else></f7-nav-left>
             <f7-nav-title :title="tt(title)"></f7-nav-title>
             <f7-nav-right :class="{ 'navbar-compact-icons': true, 'disabled': loading }">
                 <f7-link icon-f7="ellipsis" :aria-label="tt('More')" @click="showMoreActionSheet = true"></f7-link>
@@ -18,7 +22,7 @@
         <template v-else>
             <f7-list form strong inset dividers class="margin-vertical">
                 <f7-list-item class="list-item-with-header-and-title" link="#"
-                              :class="{ 'disabled': !!invoice.estimateId }"
+                              :class="{ 'disabled': isCustomerLocked }"
                               :header="tt('Customer')"
                               :title="selectedCustomerName"
                               @click="showCustomerPopup = true">
@@ -196,7 +200,7 @@
         <f7-actions close-by-outside-click close-on-escape :opened="showMoreActionSheet" @actions:closed="showMoreActionSheet = false">
             <f7-actions-group>
                 <f7-actions-button v-if="!isMilestoneInvoice" @click="addLine">{{ tt('Add Line') }}</f7-actions-button>
-                <f7-actions-button @click="addCustomer">{{ tt('Add Customer') }}</f7-actions-button>
+                <f7-actions-button v-if="!isCustomerLocked" @click="addCustomer">{{ tt('Add Customer') }}</f7-actions-button>
                 <f7-actions-button v-if="isEstimate" @click="addMilestone">{{ tt('Add Milestone') }}</f7-actions-button>
             </f7-actions-group>
             <f7-actions-group>
@@ -239,6 +243,7 @@ const {
     allProducts,
     isEstimate,
     isMilestoneInvoice,
+    isCustomerLocked,
     title,
     numberLabel,
     dateLabel,
@@ -271,6 +276,9 @@ const {
 const invoicesStore = useInvoicesStore();
 
 const loadingError = ref<unknown | null>(null);
+// opened by Revise on the new draft revision: leaving without saving deletes it (the previous version gets its status back)
+const isRevisionDraft = props.f7route.query['revision'] === '1';
+let revisionSettled = false; // saved or discarded
 const profile = ref<InvoiceProfile | null>(null);
 const showMoreActionSheet = ref<boolean>(false);
 const showCustomerPopup = ref<boolean>(false);
@@ -406,7 +414,10 @@ function save(): void {
             (editInvoiceId.value ? 'You have saved this estimate' : 'You have added a new estimate') :
             (editInvoiceId.value ? 'You have saved this invoice' : 'You have added a new invoice'));
 
-        if (props.f7route.query['duplicateFrom'] || props.f7route.query['fromEstimate']) {
+        if (isRevisionDraft) {
+            revisionSettled = true;
+            router.back(`/invoice/detail?id=${saved.id}`, { force: true }); // the revision's detail in place of the previous version's
+        } else if (props.f7route.query['duplicateFrom'] || props.f7route.query['fromEstimate']) {
             router.navigate(`/invoice/detail?id=${saved.id}`, { reloadCurrent: true }); // open the copy in place of this page
         } else {
             router.back();
@@ -418,6 +429,51 @@ function save(): void {
         if (!error.processed) {
             showToast(error.message || error);
         }
+    });
+}
+
+// Back on a draft revision that was never saved: delete it, then return to the previous version's detail, which reloads with its
+// earlier status so the client can still answer the version they were sent
+function discardRevision(): void {
+    const router = props.f7router;
+
+    if (revisionSettled || !editInvoiceId.value) {
+        router.back();
+        return;
+    }
+
+    revisionSettled = true;
+    submitting.value = true;
+    showLoading(() => submitting.value);
+
+    invoicesStore.deleteInvoice({ invoice: invoice.value }).then(() => {
+        submitting.value = false;
+        hideLoading();
+        showToast('Revision discarded');
+        router.back();
+    }).catch(error => {
+        revisionSettled = false;
+        submitting.value = false;
+        hideLoading();
+
+        if (!error.processed) {
+            showToast(error.message || error);
+        }
+    });
+}
+
+// any other way out of an unsaved draft revision (a failed load routing back, the browser's back) still discards it
+function onPageBeforeRemove(): void {
+    if (!isRevisionDraft || revisionSettled || !editInvoiceId.value || invoice.value.id !== editInvoiceId.value) {
+        return;
+    }
+
+    revisionSettled = true;
+
+    invoicesStore.deleteInvoice({ invoice: invoice.value }).then(() => {
+        showToast('Revision discarded');
+    }).catch(() => {
+        // it stays a draft revision, which the Revisions list can still delete
     });
 }
 

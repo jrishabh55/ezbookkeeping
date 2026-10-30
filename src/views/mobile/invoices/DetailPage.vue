@@ -165,7 +165,7 @@
 
         <f7-actions close-by-outside-click close-on-escape :opened="showDeleteActionSheet" @actions:closed="showDeleteActionSheet = false">
             <f7-actions-group>
-                <f7-actions-label>{{ tt(isEstimate ? 'Are you sure you want to delete this estimate?' : 'Are you sure you want to delete this invoice?') }}</f7-actions-label>
+                <f7-actions-label>{{ tt(deleteConfirmation) }}</f7-actions-label>
                 <f7-actions-button color="red" @click="remove">{{ tt('Delete') }}</f7-actions-button>
             </f7-actions-group>
             <f7-actions-group>
@@ -260,6 +260,7 @@ const {
     milestoneAmounts,
     canRevise,
     canDelete,
+    deleteConfirmation,
     canSend,
     supersededBy,
     hasRevisions,
@@ -380,8 +381,9 @@ function revise(): void {
     reviseEstimate().then(revised => {
         updating.value = false;
         hideLoading();
-        invoiceId.value = revised.id;
-        props.f7router.navigate(`/invoice/edit?id=${revised.id}`);
+        // this page stays on the previous version: saving the draft replaces it with the revision's detail, going back without
+        // saving discards the draft and this page reloads with the previous version's status restored
+        props.f7router.navigate(`/invoice/edit?id=${revised.id}&revision=1`);
     }).catch(error => {
         updating.value = false;
         hideLoading();

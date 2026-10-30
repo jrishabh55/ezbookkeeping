@@ -325,7 +325,7 @@ import { ESTIMATE_STATUS_COLORS } from '@/views/base/invoices/EstimateListPageBa
 import { useInvoicesStore } from '@/stores/invoice.ts';
 import { useAccountsStore } from '@/stores/account.ts';
 
-import type { InvoiceEmail, InvoicePayment, InvoiceSendForm } from '@/models/invoice.ts';
+import type { Invoice, InvoiceEmail, InvoicePayment, InvoiceSendForm } from '@/models/invoice.ts';
 
 import type { InvoiceDisplayStatus } from '@/lib/invoice.ts';
 import { formatMilestonePercent } from '@/lib/estimate.ts';
@@ -374,6 +374,7 @@ const {
     milestoneAmounts,
     canRevise,
     canDelete,
+    deleteConfirmation,
     canSend,
     supersededBy,
     hasRevisions,
@@ -578,7 +579,7 @@ function duplicate(): void {
 }
 
 function remove(): void {
-    confirmDialog.value?.open(isEstimate.value ? 'Are you sure you want to delete this estimate?' : 'Are you sure you want to delete this invoice?').then(() => {
+    confirmDialog.value?.open(deleteConfirmation.value).then(() => {
         if (!invoice.value) {
             return;
         }
@@ -720,8 +721,11 @@ function reopen(): void {
     runAndReload(() => reopenEstimate());
 }
 
-// creates the next version as a new draft, shows it here and opens it in the editor; the version the client saw stays as it was
+// creates the next version as a new draft, shows it here and opens it in the editor; the version the client saw stays as it was.
+// Closing the editor without saving discards the new draft, which gives the previous version back its status, so the client can
+// still answer the version they were sent
 function revise(): void {
+    const previousId = invoiceId.value;
     updating.value = true;
 
     reviseEstimate().then(revised => {
@@ -733,10 +737,33 @@ function revise(): void {
             snackbar.value?.showMessage(result.message);
             load();
         }).catch(error => {
-            if (error && !error.processed) {
-                snackbar.value?.showError(error);
+            if (error) {
+                if (!error.processed) {
+                    snackbar.value?.showError(error);
+                }
+
+                return;
             }
+
+            discardRevision(revised, previousId);
         });
+    }).catch(error => {
+        updating.value = false;
+
+        if (!error.processed) {
+            snackbar.value?.showError(error);
+        }
+    });
+}
+
+// deletes a draft revision that was never saved and shows the version it would have replaced again
+function discardRevision(revision: Invoice, previousId: string): void {
+    updating.value = true;
+
+    invoicesStore.deleteInvoice({ invoice: revision }).then(() => {
+        updating.value = false;
+        snackbar.value?.showMessage('Revision discarded');
+        openOther(previousId);
     }).catch(error => {
         updating.value = false;
 

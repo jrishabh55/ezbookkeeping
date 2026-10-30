@@ -8,13 +8,13 @@
                     <v-row>
                         <v-col cols="12" md="6">
                             <v-autocomplete item-title="name" item-value="id" persistent-placeholder
-                                            :disabled="loading || submitting || !!invoice.estimateId"
+                                            :disabled="loading || submitting || isCustomerLocked"
                                             :label="tt('Customer')" :placeholder="tt('Customer')"
                                             :items="allCustomers" :no-data-text="tt('No results')"
                                             v-model="invoice.customerId">
                                 <template #append>
                                     <v-btn density="compact" color="default" variant="text" :icon="true"
-                                           :aria-label="tt('Add Customer')" :disabled="loading || submitting" @click="addCustomer">
+                                           :aria-label="tt('Add Customer')" :disabled="loading || submitting || isCustomerLocked" @click="addCustomer">
                                         <v-icon :icon="mdiAccountPlusOutline" />
                                         <v-tooltip activator="parent">{{ tt('Add Customer') }}</v-tooltip>
                                     </v-btn>
@@ -200,7 +200,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, useTemplateRef } from 'vue';
+import { ref, computed, watch, useTemplateRef } from 'vue';
 
 import { mdiPlus, mdiDeleteOutline, mdiAccountPlusOutline, mdiPackageVariantClosed } from '@mdi/js';
 
@@ -237,6 +237,7 @@ const {
     allCustomers,
     isEstimate,
     isMilestoneInvoice,
+    isCustomerLocked,
     title,
     numberLabel,
     dateLabel,
@@ -279,6 +280,15 @@ const profile = ref<InvoiceProfile | null>(null);
 const initInvoice = ref<Invoice>(Invoice.createNewInvoice());
 
 const isInvoiceModified = computed<boolean>(() => !isEquals(invoice.value.toCreateRequest(), initInvoice.value.toCreateRequest()));
+
+// closing without saving (Escape or a backdrop click on an unmodified form, not just Cancel) settles open()'s promise as cancelled;
+// after a save the promise is already resolved and this does nothing
+watch(showState, value => {
+    if (!value) {
+        rejectFunc?.();
+        rejectFunc = null;
+    }
+});
 
 function suggestNumber(): void {
     loadSuggestedNumber().then(applied => {

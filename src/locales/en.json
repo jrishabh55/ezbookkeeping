@@ -3118,6 +3118,8 @@
     "Unable to revise estimate": "Unable to revise estimate",
     "This estimate has been revised.": "This estimate has been revised.",
     "View the latest version": "View the latest version",
+    "Delete this estimate and all its revisions?": "Delete this estimate and all its revisions?",
+    "Revision discarded": "Revision discarded",
     "Unable to add product": "Unable to add product",
     "Unable to save product": "Unable to save product",
     "Unable to delete this product": "Unable to delete this product",

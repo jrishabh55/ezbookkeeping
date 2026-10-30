@@ -35,6 +35,10 @@ export function useInvoiceEditPageBase() {
     // a draft of one milestone: the server rebuilds its one line from the estimate, so the editor only shows it
     const isMilestoneInvoice = computed<boolean>(() => !!invoice.value.milestoneId);
 
+    // an invoice made from an estimate, and a revision of an estimate, keep their customer (the server ignores a change): an old
+    // version's public page must never point its client at an estimate made out to someone else
+    const isCustomerLocked = computed<boolean>(() => !!invoice.value.estimateId || (isEstimate.value && invoice.value.revisionNumber > 0));
+
     const title = computed<string>(() => {
         if (isEstimate.value) {
             return editInvoiceId.value ? 'Edit Estimate' : 'Add Estimate';
@@ -263,6 +267,7 @@ export function useInvoiceEditPageBase() {
         allProducts,
         isEstimate,
         isMilestoneInvoice,
+        isCustomerLocked,
         title,
         numberLabel,
         dateLabel,

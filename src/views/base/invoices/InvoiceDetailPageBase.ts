@@ -33,6 +33,7 @@ import {
     isEstimateLocked,
     canReviseEstimate,
     canDeleteEstimate,
+    getDeleteEstimateConfirmation,
     getEstimateRevisionLabel,
     getSupersedingRevision,
     getMilestoneAmounts
@@ -82,8 +83,11 @@ export function useInvoiceDetailPageBase() {
     // a sent (or expired), declined or accepted-not-invoiced estimate is changed by revising it into a new draft version
     const canRevise = computed<boolean>(() => isEstimate.value && !!invoice.value && canReviseEstimate(invoice.value));
     const isSuperseded = computed<boolean>(() => isEstimate.value && invoice.value?.estimateStatus === 'superseded');
-    // a superseded version, or a revision that was sent, is never deleted; invoices and first versions are
+    // a superseded version, or an estimate something was invoiced from, is never deleted; the latest version of a chain is
     const canDelete = computed<boolean>(() => !!invoice.value && (!isEstimate.value || canDeleteEstimate(invoice.value)));
+    // the Delete confirmation (a locale key): a sent or answered revision goes with every earlier version
+    const deleteConfirmation = computed<string>(() => isEstimate.value && invoice.value
+        ? getDeleteEstimateConfirmation(invoice.value) : 'Are you sure you want to delete this invoice?');
     // emailing a superseded version would send terms that no longer stand
     const canSend = computed<boolean>(() => !!invoice.value && !isSuperseded.value);
     const supersededBy = computed<EstimateRevision | null>(() => invoice.value && isSuperseded.value ? getSupersedingRevision(invoice.value.revisions, invoice.value.revisionNumber) : null);
@@ -353,6 +357,7 @@ export function useInvoiceDetailPageBase() {
         canRevise,
         isSuperseded,
         canDelete,
+        deleteConfirmation,
         canSend,
         supersededBy,
         hasRevisions,

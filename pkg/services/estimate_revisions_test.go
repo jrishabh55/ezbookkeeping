@@ -266,10 +266,6 @@ func TestDeletingADraftRevisionRestoresThePreviousVersion(t *testing.T) {
 	assert.Equal(t, "EST/2026-27/01-R2", second.Number)
 	assert.Equal(t, int32(2), second.RevisionNumber)
 
-	// once sent, a revision is answered or revised, never deleted: deleting it would leave the chain without a live version
-	shareTestEstimate(t, ctx, uid, second.InvoiceId)
-	assert.Equal(t, errs.ErrEstimateStatusInvalid, Invoices.DeleteInvoice(ctx, uid, second.InvoiceId))
-
 	// a first-version draft is deleted as before
 	draft := createTestEstimate(t, uid, customer.CustomerId, "EST/2026-27/02", testEstimateLines(), nil)
 	assert.Nil(t, Invoices.DeleteInvoice(ctx, uid, draft.InvoiceId))
@@ -278,4 +274,95 @@ func TestDeletingADraftRevisionRestoresThePreviousVersion(t *testing.T) {
 	next, err := Invoices.NextEstimateNumber(ctx, uid, "2026-10-30")
 	assert.Nil(t, err)
 	assert.Equal(t, "EST/2026-27/02", next)
+}
+
+func TestDeletingTheSentLatestVersionDeletesTheWholeChain(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	customer := createTestCustomer(t, uid)
+	estimate := createTestEstimate(t, uid, customer.CustomerId, "EST/2026-27/01", testEstimateLines(), testEstimateMilestones())
+	shareTestEstimate(t, ctx, uid, estimate.InvoiceId)
+	first, err := Invoices.ReviseEstimate(ctx, uid, estimate.InvoiceId, "2026-10-30")
+	assert.Nil(t, err)
+	shareTestEstimate(t, ctx, uid, first.InvoiceId)
+	second, err := Invoices.ReviseEstimate(ctx, uid, first.InvoiceId, "2026-10-30")
+	assert.Nil(t, err)
+	shareTestEstimate(t, ctx, uid, second.InvoiceId)
+
+	// a superseded version still cannot be deleted on its own
+	assert.Equal(t, errs.ErrEstimateStatusInvalid, Invoices.DeleteInvoice(ctx, uid, first.InvoiceId))
+	assert.Equal(t, errs.ErrEstimateStatusInvalid, Invoices.DeleteInvoice(ctx, uid, estimate.InvoiceId))
+
+	// the sent latest version takes every version with it
+	assert.Nil(t, Invoices.DeleteInvoice(ctx, uid, second.InvoiceId))
+
+	for _, id := range []int64{estimate.InvoiceId, first.InvoiceId, second.InvoiceId} {
+		_, _, err := Invoices.GetInvoice(ctx, uid, id)
+		assert.Equal(t, errs.ErrInvoiceNotFound, err)
+	}
+
+	all, err := Invoices.GetAllEstimates(ctx, uid)
+	assert.Nil(t, err)
+	assert.Empty(t, all)
+
+	// nothing references the customer any more
+	assert.Nil(t, Invoices.DeleteCustomer(ctx, uid, customer.CustomerId))
+}
+
+func TestDeletingAChainIsRefusedWhenAnyVersionWasInvoiced(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	customer := createTestCustomer(t, uid)
+	estimate := createTestEstimate(t, uid, customer.CustomerId, "EST/2026-27/01", testEstimateLines(), nil)
+	shareTestEstimate(t, ctx, uid, estimate.InvoiceId)
+	revision, err := Invoices.ReviseEstimate(ctx, uid, estimate.InvoiceId, "2026-10-30")
+	assert.Nil(t, err)
+	shareTestEstimate(t, ctx, uid, revision.InvoiceId)
+
+	// an invoice made from the old version (as it would have been before the revision)
+	invoice := createTestInvoice(t, uid, customer.CustomerId, "INV/2026-27/01", 100)
+	linkTestInvoiceToEstimate(t, uid, invoice.InvoiceId, estimate.InvoiceId)
+
+	assert.Equal(t, errs.ErrEstimateHasInvoices, Invoices.DeleteInvoice(ctx, uid, revision.InvoiceId))
+
+	for _, id := range []int64{estimate.InvoiceId, revision.InvoiceId} {
+		_, _, err := Invoices.GetInvoice(ctx, uid, id)
+		assert.Nil(t, err)
+	}
+
+	// once that invoice is gone the chain goes
+	assert.Nil(t, Invoices.DeleteInvoice(ctx, uid, invoice.InvoiceId))
+	assert.Nil(t, Invoices.DeleteInvoice(ctx, uid, revision.InvoiceId))
+
+	all, err := Invoices.GetAllEstimates(ctx, uid)
+	assert.Nil(t, err)
+	assert.Empty(t, all)
+}
+
+func TestModifyEstimateKeepsTheCustomerOfARevision(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	customer := createTestCustomer(t, uid)
+	other := &models.Customer{Uid: uid, Name: "Someone Else"}
+	assert.Nil(t, Invoices.CreateCustomer(ctx, other))
+
+	estimate := createTestEstimate(t, uid, customer.CustomerId, "EST/2026-27/01", testEstimateLines(), nil)
+	shareTestEstimate(t, ctx, uid, estimate.InvoiceId)
+	revision, err := Invoices.ReviseEstimate(ctx, uid, estimate.InvoiceId, "2026-10-30")
+	assert.Nil(t, err)
+
+	revision.CustomerId = other.CustomerId
+	revision.Notes = "Revised scope"
+	assert.Nil(t, Invoices.ModifyEstimate(ctx, revision, testEstimateLines(), nil))
+
+	reloaded, _, err := Invoices.GetInvoice(ctx, uid, revision.InvoiceId)
+	assert.Nil(t, err)
+	assert.Equal(t, customer.CustomerId, reloaded.CustomerId)
+	assert.Equal(t, "Quber Tech", reloaded.BillToName)
+	assert.Equal(t, "Revised scope", reloaded.Notes)
+
+	// a first-version draft still changes customer freely
+	draft := createTestEstimate(t, uid, customer.CustomerId, "EST/2026-27/02", testEstimateLines(), nil)
+	draft.CustomerId = other.CustomerId
+	assert.Nil(t, Invoices.ModifyEstimate(ctx, draft, testEstimateLines(), nil))
+	reloaded, _, err = Invoices.GetInvoice(ctx, uid, draft.InvoiceId)
+	assert.Nil(t, err)
+	assert.Equal(t, other.CustomerId, reloaded.CustomerId)
 }

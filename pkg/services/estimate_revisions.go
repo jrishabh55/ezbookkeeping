@@ -213,18 +213,56 @@ func (s *InvoiceService) reviseEstimate(c core.Context, source *models.Invoice, 
 	return revision, nil
 }
 
-// checkEstimateDeletable refuses a superseded version (history the newer version depends on) and a revision that is no longer a
-// draft (the client may have seen it); a first version, or a draft revision, can be deleted
+// checkEstimateDeletable refuses a superseded version (history the newer version depends on): only the latest version of a chain
+// is deleted, a draft revision on its own (see restorePreviousEstimateVersion), anything else together with its whole chain
 func checkEstimateDeletable(estimate *models.Invoice) error {
 	if estimate.EstimateStatus == models.ESTIMATE_STATUS_SUPERSEDED {
 		return errs.ErrEstimateStatusInvalid
 	}
 
-	if estimate.RevisionNumber > 0 && estimate.EstimateStatus != models.ESTIMATE_STATUS_DRAFT {
-		return errs.ErrEstimateStatusInvalid
+	return nil
+}
+
+// isDraftEstimateRevision reports whether deleting the estimate deletes just it and restores the version it superseded
+func isDraftEstimateRevision(estimate *models.Invoice) bool {
+	return estimate.RevisionNumber > 0 && estimate.EstimateStatus == models.ESTIMATE_STATUS_DRAFT
+}
+
+// getEstimateChainIdsToDelete returns the ids of every non-deleted version of the estimate's chain, ascending revision number, after
+// locking each one (the caller has already locked the estimate itself; only estimate rows are locked, so the invoice → estimate lock
+// order holds). It returns ErrEstimateHasInvoices when a non-deleted invoice was made from any of them.
+func getEstimateChainIdsToDelete(sess *xorm.Session, estimate *models.Invoice, now int64) ([]int64, error) {
+	rootId := estimateChainRootId(estimate)
+
+	var versions []*models.Invoice
+	err := sess.Cols("invoice_id").Where("uid=? AND deleted=? AND kind=? AND (invoice_id=? OR revision_of=?)", estimate.Uid, false, models.INVOICE_KIND_ESTIMATE, rootId, rootId).
+		OrderBy("revision_number asc").Find(&versions)
+
+	if err != nil {
+		return nil, err
 	}
 
-	return nil
+	ids := make([]int64, 0, len(versions))
+
+	for _, version := range versions {
+		if version.InvoiceId != estimate.InvoiceId {
+			if err := lockInvoiceRow(sess, estimate.Uid, version.InvoiceId, now); err != nil {
+				return nil, err
+			}
+		}
+
+		invoiced, err := estimateHasInvoices(sess, estimate.Uid, version.InvoiceId)
+
+		if err != nil {
+			return nil, err
+		} else if invoiced {
+			return nil, errs.ErrEstimateHasInvoices
+		}
+
+		ids = append(ids, version.InvoiceId)
+	}
+
+	return ids, nil
 }
 
 // restorePreviousEstimateVersion returns the version a deleted draft revision superseded (the chain's highest lower revision number
@@ -302,6 +340,9 @@ func (s *InvoiceService) GetEstimateSupersededBy(c core.Context, estimate *model
 	if err != nil {
 		return "", err
 	} else if !has || latest.EstimateStatus == models.ESTIMATE_STATUS_DRAFT {
+		return "", nil
+	} else if latest.CustomerId != estimate.CustomerId {
+		// a version made out to someone else is never advertised to this version's client
 		return "", nil
 	}
 

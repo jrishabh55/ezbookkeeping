@@ -51,6 +51,19 @@ func TestSupersededPublicViewPointsAtTheLatestSharedVersion(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, "", supersededBy)
 
+	// a latest version for a different customer is never advertised to the old version's client
+	other := &models.Customer{Uid: uid, Name: "Someone Else"}
+	assert.Nil(t, Invoices.CreateCustomer(ctx, other))
+	_, err = datastore.Container.UserDataStore.Choose(uid).NewSession(ctx).Cols("customer_id").
+		Where("uid=? AND invoice_id=?", uid, revision.InvoiceId).Update(&models.Invoice{CustomerId: other.CustomerId})
+	assert.Nil(t, err)
+	supersededBy, err = Invoices.GetEstimateSupersededBy(ctx, old)
+	assert.Nil(t, err)
+	assert.Equal(t, "", supersededBy)
+	_, err = datastore.Container.UserDataStore.Choose(uid).NewSession(ctx).Cols("customer_id").
+		Where("uid=? AND invoice_id=?", uid, revision.InvoiceId).Update(&models.Invoice{CustomerId: customer.CustomerId})
+	assert.Nil(t, err)
+
 	// a disabled link on the latest version leaves only the notice
 	_, _, err = Invoices.SetInvoicePublicToken(ctx, uid, revision.InvoiceId, false)
 	assert.Nil(t, err)

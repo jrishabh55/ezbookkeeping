@@ -9,6 +9,8 @@ import {
     canAnswerEstimate,
     canReviseEstimate,
     canDeleteEstimate,
+    deletesEstimateChain,
+    getDeleteEstimateConfirmation,
     getEstimateRevisionLabel,
     getSupersedingRevision,
     getMilestoneAmounts,
@@ -155,11 +157,23 @@ describe('estimate revisions', () => {
         expect(canReviseEstimate(estimate('superseded', '2099-01-01'))).toBe(false);
     });
 
-    test('a superseded version or a revision that was sent cannot be deleted', () => {
+    test('only the latest version with nothing invoiced can be deleted', () => {
         expect(canDeleteEstimate({ estimateStatus: 'sent', revisionNumber: 0 })).toBe(true);
         expect(canDeleteEstimate({ estimateStatus: 'draft', revisionNumber: 2 })).toBe(true);
-        expect(canDeleteEstimate({ estimateStatus: 'sent', revisionNumber: 2 })).toBe(false);
+        expect(canDeleteEstimate({ estimateStatus: 'sent', revisionNumber: 2 })).toBe(true);
+        expect(canDeleteEstimate({ estimateStatus: 'accepted', revisionNumber: 1, convertedInvoices: [] })).toBe(true);
+        expect(canDeleteEstimate({ estimateStatus: 'accepted', revisionNumber: 1, convertedInvoices: [{ id: '1', number: 'INV/2026-27/01' }] })).toBe(false);
         expect(canDeleteEstimate({ estimateStatus: 'superseded', revisionNumber: 0 })).toBe(false);
+        expect(canDeleteEstimate({ estimateStatus: 'superseded', revisionNumber: 1 })).toBe(false);
+    });
+
+    test('deleting a revision that is no longer a draft deletes the whole chain', () => {
+        expect(deletesEstimateChain({ estimateStatus: 'sent', revisionNumber: 1 })).toBe(true);
+        expect(deletesEstimateChain({ estimateStatus: 'declined', revisionNumber: 2 })).toBe(true);
+        expect(deletesEstimateChain({ estimateStatus: 'draft', revisionNumber: 1 })).toBe(false);
+        expect(deletesEstimateChain({ estimateStatus: 'sent', revisionNumber: 0 })).toBe(false);
+        expect(getDeleteEstimateConfirmation({ estimateStatus: 'accepted', revisionNumber: 1 })).toBe('Delete this estimate and all its revisions?');
+        expect(getDeleteEstimateConfirmation({ estimateStatus: 'draft', revisionNumber: 1 })).toBe('Are you sure you want to delete this estimate?');
     });
 
     test('revision labels', () => {

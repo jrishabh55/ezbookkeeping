@@ -63,14 +63,24 @@ export function canReviseEstimate(estimate: { readonly estimateStatus: EstimateS
     return (status === 'sent' || status === 'declined' || status === 'accepted') && !estimate.convertedInvoices.length;
 }
 
-// a superseded version is history and a revision that was sent stays (answer or revise it); a first version or a draft revision can be
-// deleted. Mirrors checkEstimateDeletable in pkg/services/estimate_revisions.go
-export function canDeleteEstimate(estimate: { readonly estimateStatus: EstimateStatus | '', readonly revisionNumber: number }): boolean {
+// only the latest version of a chain (never a superseded one) is deleted, and only while nothing was invoiced from it: a draft revision
+// on its own, anything else together with every earlier version. Mirrors DeleteInvoice / checkEstimateDeletable in pkg/services
+export function canDeleteEstimate(estimate: { readonly estimateStatus: EstimateStatus | '', readonly revisionNumber: number, readonly convertedInvoices?: readonly unknown[] }): boolean {
     if (estimate.estimateStatus === 'superseded') {
         return false;
     }
 
-    return estimate.revisionNumber === 0 || (estimate.estimateStatus || 'draft') === 'draft';
+    return !estimate.convertedInvoices?.length;
+}
+
+// whether deleting this (deletable) version also deletes earlier versions: a revision that is no longer a draft takes its whole chain
+export function deletesEstimateChain(estimate: { readonly estimateStatus: EstimateStatus | '', readonly revisionNumber: number }): boolean {
+    return estimate.revisionNumber > 0 && (estimate.estimateStatus || 'draft') !== 'draft';
+}
+
+// the Delete confirmation's locale key: deleting a sent or answered revision says it takes every earlier version with it
+export function getDeleteEstimateConfirmation(estimate: { readonly estimateStatus: EstimateStatus | '', readonly revisionNumber: number }): string {
+    return deletesEstimateChain(estimate) ? 'Delete this estimate and all its revisions?' : 'Are you sure you want to delete this estimate?';
 }
 
 // a version's name in the Revisions list as a locale key and its parameters: "Original", then "Revision 1", "Revision 2", …

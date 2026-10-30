@@ -71,6 +71,19 @@ func (s *InvoiceService) ModifyEstimate(c core.Context, estimate *models.Invoice
 		return err
 	}
 
+	// a version of a revision chain keeps its customer (the editor disables the field; a tampered value is ignored), so an old
+	// version's public page never points its client at an estimate made out to someone else. Chain membership never changes, so
+	// reading it before the transaction is safe; bill-to is then filled from the kept customer.
+	current, _, err := s.GetInvoice(c, estimate.Uid, estimate.InvoiceId)
+
+	if err != nil {
+		return err
+	} else if current.Kind != models.INVOICE_KIND_ESTIMATE {
+		return errs.ErrInvoiceNotFound
+	} else if current.RevisionNumber > 0 || current.RevisionOf > 0 {
+		estimate.CustomerId = current.CustomerId
+	}
+
 	if err := s.prepareInvoice(c, estimate, lines); err != nil {
 		return err
 	}
@@ -95,6 +108,8 @@ func (s *InvoiceService) ModifyEstimate(c core.Context, estimate *models.Invoice
 
 		if err := checkEstimateEditable(sess, stored); err != nil {
 			return err
+		} else if stored.CustomerId != estimate.CustomerId && (stored.RevisionNumber > 0 || stored.RevisionOf > 0) {
+			return errs.ErrEstimateLocked
 		}
 
 		if err := checkInvoiceNumberUnique(sess, estimate); err != nil {
