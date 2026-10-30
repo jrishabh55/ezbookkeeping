@@ -10,6 +10,7 @@ import (
 
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/datastore"
+	"github.com/mayswind/ezbookkeeping/pkg/errs"
 	"github.com/mayswind/ezbookkeeping/pkg/models"
 	"github.com/mayswind/ezbookkeeping/pkg/utils"
 )
@@ -578,4 +579,30 @@ func TestIngestNeftRepeatedFirstHalfIsDuplicate(t *testing.T) {
 	r3, _ := Alerts.Ingest(ctx, uid, "XX-HDFCBK", neftHdfcCredit, at.Add(43*time.Minute))
 	assert.Equal(t, "added", r3.Outcome)
 	assertNeftTransfer(t, ctx, uid)
+}
+
+func TestIngestNeftReplacesExactlyTheUtrHalf(t *testing.T) {
+	ctx, uid := newAlertTestUser(t, "PNB 4215", "HDFC Bank 7731")
+	at := time.Now().Add(-2 * time.Hour)
+	otherDebit := strings.ReplaceAll(neftPnbDebit, "PUNBY26303389748", "PUNBX26302969498")
+	r1, _ := Alerts.Ingest(ctx, uid, "XX-PNBSMS", neftPnbDebit, at)
+	r2, _ := Alerts.Ingest(ctx, uid, "XX-PNBSMS", otherDebit, at.Add(5*time.Minute))
+	assert.Equal(t, "added", r1.Outcome)
+	assert.Equal(t, "added", r2.Outcome)
+	assert.Contains(t, tagNamesOf(t, ctx, uid, r2.TransactionId), "Needs review")
+
+	r3, err := Alerts.Ingest(ctx, uid, "XX-HDFCBK", neftHdfcCredit, at.Add(43*time.Minute))
+	assert.Nil(t, err)
+	assert.Equal(t, "added", r3.Outcome)
+	assert.Equal(t, 2, countTransactions(t, ctx, uid))
+
+	_, err = Transactions.GetTransactionByTransactionId(ctx, uid, r1.TransactionId)
+	assert.Equal(t, errs.ErrTransactionNotFound, err)
+	kept, err := Transactions.GetTransactionByTransactionId(ctx, uid, r2.TransactionId)
+	assert.Nil(t, err)
+	assert.Equal(t, models.TRANSACTION_DB_TYPE_EXPENSE, kept.Type)
+	transfer, err := Transactions.GetTransactionByTransactionId(ctx, uid, r3.TransactionId)
+	assert.Nil(t, err)
+	assert.Equal(t, models.TRANSACTION_DB_TYPE_TRANSFER_OUT, transfer.Type)
+	assert.NotContains(t, tagNamesOf(t, ctx, uid, r3.TransactionId), "Needs review")
 }

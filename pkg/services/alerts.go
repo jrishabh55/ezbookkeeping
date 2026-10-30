@@ -267,8 +267,10 @@ func (s *AlertService) Ingest(c core.Context, uid int64, sender string, text str
 
 	// A NEFT / RTGS transfer between two own accounts arrives as two SMS that never name each
 	// other's account, only the same UTR: pair this one with the other half recorded earlier
+	var utrMatchedTransactionId int64
+
 	if !classification.IsTransfer {
-		otherAccountId, isDuplicate, err := s.pairByTransferReference(c, uid, account.AccountId, parsed, alerts.TransferReference(text), receivedAt)
+		otherAccountId, matchedTransactionId, isDuplicate, err := s.pairByTransferReference(c, uid, account.AccountId, parsed, alerts.TransferReference(text), receivedAt)
 
 		if err != nil {
 			return nil, s.failAfterStore(c, uid, message.AlertId, err)
@@ -277,6 +279,7 @@ func (s *AlertService) Ingest(c core.Context, uid int64, sender string, text str
 			return &AlertIngestResult{Outcome: "duplicate"}, nil
 		} else if otherAccountId > 0 {
 			classification = alerts.Classification{IsTransfer: true, OtherAccountId: otherAccountId}
+			utrMatchedTransactionId = matchedTransactionId
 		}
 	}
 
@@ -322,7 +325,14 @@ func (s *AlertService) Ingest(c core.Context, uid int64, sender string, text str
 
 		// The other side's SMS may have arrived first without naming this account (e.g. a credit
 		// "by IMPS from JOHN DOE") and been recorded as a plain income / expense; replace it
-		conflict, err := s.replaceEarlierTransferSide(c, uid, srcAccountId, dstAccountId, parsed.Direction, parsed.Amount, receivedAt, tagIds[tagAutoSms], tagIds[tagNeedsReview])
+		// (a half paired by its UTR is exactly the transaction that UTR's alert created)
+		var conflict bool
+
+		if utrMatchedTransactionId > 0 {
+			conflict, err = s.replaceTransferSide(c, uid, utrMatchedTransactionId, tagIds[tagAutoSms], tagIds[tagNeedsReview])
+		} else {
+			conflict, err = s.replaceEarlierTransferSide(c, uid, srcAccountId, dstAccountId, parsed.Direction, parsed.Amount, receivedAt, tagIds[tagAutoSms], tagIds[tagNeedsReview])
+		}
 
 		if err != nil {
 			return nil, s.failAfterStore(c, uid, message.AlertId, err)
@@ -686,6 +696,25 @@ func (s *AlertService) replaceEarlierTransferSide(c core.Context, uid int64, src
 		return false, err
 	}
 
+	return s.replacePlainSides(c, uid, candidates, autoSmsTagId, needsReviewTagId)
+}
+
+// replaceTransferSide applies replaceEarlierTransferSide's rules to exactly one transaction: the
+// plain half that an alert with the same NEFT / RTGS UTR created (see pairByTransferReference)
+func (s *AlertService) replaceTransferSide(c core.Context, uid int64, transactionId int64, autoSmsTagId int64, needsReviewTagId int64) (bool, error) {
+	transaction, err := Transactions.GetTransactionByTransactionId(c, uid, transactionId)
+
+	if err != nil {
+		return false, err
+	}
+
+	return s.replacePlainSides(c, uid, []*models.Transaction{transaction}, autoSmsTagId, needsReviewTagId)
+}
+
+// replacePlainSides deletes the first "Auto (SMS)" candidate still tagged "Needs review" (its
+// alert becomes "duplicate"), and returns conflict when an "Auto (SMS)" candidate the user has
+// already reviewed is found before one
+func (s *AlertService) replacePlainSides(c core.Context, uid int64, candidates []*models.Transaction, autoSmsTagId int64, needsReviewTagId int64) (bool, error) {
 	transactionIds := make([]int64, len(candidates))
 
 	for i := 0; i < len(candidates); i++ {
@@ -741,12 +770,12 @@ const transferReferenceWindow = 48 * time.Hour
 // characters and may have been edited by the user. The same UTR on the same account in the same
 // direction is a repeat of this SMS (duplicate). The opposite direction on a different own
 // account B is the other half of a transfer when its transaction is still the plain expense /
-// income it created, or a transfer between this account and B: B is returned, and the caller
-// records the transfer (replaceEarlierTransferSide then deals with the plain half, and
-// isDuplicateOwnTransfer with an existing transfer). Amount and time alone never pair.
-func (s *AlertService) pairByTransferReference(c core.Context, uid int64, accountId int64, parsed alerts.ParsedAlert, utr string, receivedAt time.Time) (int64, bool, error) {
+// income it created (B and that transaction's id are returned, and the caller replaces exactly
+// that transaction, see replaceTransferSide) or a transfer between this account and B (B alone
+// is returned, and isDuplicateOwnTransfer finds the existing transfer). Amount and time alone never pair.
+func (s *AlertService) pairByTransferReference(c core.Context, uid int64, accountId int64, parsed alerts.ParsedAlert, utr string, receivedAt time.Time) (int64, int64, bool, error) {
 	if utr == "" {
-		return 0, false, nil
+		return 0, 0, false, nil
 	}
 
 	var messages []*models.AlertMessage
@@ -754,16 +783,16 @@ func (s *AlertService) pairByTransferReference(c core.Context, uid int64, accoun
 		uid, "added", 0, receivedAt.Add(-transferReferenceWindow).Unix(), receivedAt.Add(transferReferenceWindow).Unix(), "%"+utr+"%").OrderBy("received_unix_time desc").Find(&messages)
 
 	if err != nil || len(messages) == 0 {
-		return 0, false, err
+		return 0, 0, false, err
 	}
 
 	accounts, err := Accounts.GetAllAccountsByUid(c, uid)
 
 	if err != nil {
-		return 0, false, err
+		return 0, 0, false, err
 	}
 
-	otherAccountId := int64(0)
+	otherAccountId, plainTransactionId := int64(0), int64(0)
 
 	for i := 0; i < len(messages); i++ {
 		candidate := alerts.Parse(messages[i].Sender, messages[i].Text)
@@ -774,7 +803,7 @@ func (s *AlertService) pairByTransferReference(c core.Context, uid int64, accoun
 
 		if candidate.Direction == parsed.Direction {
 			if candidate.Last4 == parsed.Last4 {
-				return 0, true, nil
+				return 0, 0, true, nil
 			}
 
 			continue
@@ -795,7 +824,7 @@ func (s *AlertService) pairByTransferReference(c core.Context, uid int64, accoun
 		if err == errs.ErrTransactionNotFound {
 			continue
 		} else if err != nil {
-			return 0, false, err
+			return 0, 0, false, err
 		}
 
 		plainType := models.TRANSACTION_DB_TYPE_EXPENSE
@@ -810,9 +839,13 @@ func (s *AlertService) pairByTransferReference(c core.Context, uid int64, accoun
 		if isPlain || isTransfer {
 			otherAccountId = other.AccountId
 		}
+
+		if isPlain {
+			plainTransactionId = transaction.TransactionId
+		}
 	}
 
-	return otherAccountId, false, nil
+	return otherAccountId, plainTransactionId, false, nil
 }
 
 // pairCardPayment matches one half of a card bill paid through CRED with the other half recorded
