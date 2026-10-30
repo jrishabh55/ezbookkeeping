@@ -71,3 +71,27 @@ func TestPublicEstimateResponseCarriesStatusAndPaymentTerms(t *testing.T) {
 	assert.NotContains(t, string(data), "1234")
 	assert.NotContains(t, string(data), "private")
 }
+
+func TestPublicSupersededEstimateResponseCarriesOnlyTheLatestToken(t *testing.T) {
+	estimate := &models.Invoice{InvoiceId: 1234, Kind: models.INVOICE_KIND_ESTIMATE, Number: "EST/2026-27/01", Currency: "INR", Total: 235999,
+		EstimateStatus: models.ESTIMATE_STATUS_SUPERSEDED, SupersededFromStatus: models.ESTIMATE_STATUS_ACCEPTED, RevisionOf: 0, RevisionNumber: 0}
+	resp := estimate.ToPublicInvoiceResponse(nil, 0, &models.InvoiceProfile{})
+	resp.SupersededBy = "tokenOfTheLatestVersion0000000000000000000"
+
+	data, err := json.Marshal(resp)
+	assert.Nil(t, err)
+
+	var body map[string]any
+	assert.Nil(t, json.Unmarshal(data, &body))
+	assert.Equal(t, "superseded", body["estimateStatus"])
+	assert.Equal(t, "tokenOfTheLatestVersion0000000000000000000", body["supersededBy"])
+	assert.NotContains(t, string(data), "1234")
+	assert.NotContains(t, string(data), "accepted") // the status it had before is internal
+	assert.NotContains(t, string(data), "revision")
+
+	// a version nobody replaced carries no supersededBy at all
+	estimate.EstimateStatus = models.ESTIMATE_STATUS_SENT
+	data, err = json.Marshal(estimate.ToPublicInvoiceResponse(nil, 0, &models.InvoiceProfile{}))
+	assert.Nil(t, err)
+	assert.NotContains(t, string(data), "supersededBy")
+}

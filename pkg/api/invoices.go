@@ -271,7 +271,8 @@ func (a *InvoicesApi) CustomerOverviewHandler(c *core.WebContext) (any, *errs.Er
 	return overview, nil
 }
 
-// InvoiceListHandler returns all invoices (or, with kind=estimate, all estimates) of current user with received amounts
+// InvoiceListHandler returns all invoices (or, with kind=estimate, the latest version of every estimate; every version with
+// include_superseded=true) of current user with received amounts
 func (a *InvoicesApi) InvoiceListHandler(c *core.WebContext) (any, *errs.Error) {
 	var req models.InvoiceListRequest
 
@@ -285,8 +286,10 @@ func (a *InvoicesApi) InvoiceListHandler(c *core.WebContext) (any, *errs.Error) 
 	var invoices []*models.Invoice
 	var err error
 
-	if req.Kind == models.INVOICE_KIND_ESTIMATE {
+	if req.Kind == models.INVOICE_KIND_ESTIMATE && req.IncludeSuperseded {
 		invoices, err = a.invoices.GetAllEstimates(c, uid)
+	} else if req.Kind == models.INVOICE_KIND_ESTIMATE {
+		invoices, err = a.invoices.GetLatestEstimates(c, uid)
 	} else {
 		invoices, err = a.invoices.GetAllInvoices(c, uid)
 	}
@@ -364,13 +367,27 @@ func (a *InvoicesApi) getInvoiceResponse(c *core.WebContext, uid int64, invoiceI
 	}
 
 	if invoice.Kind == models.INVOICE_KIND_ESTIMATE {
-		progress, err := a.invoices.GetEstimateProgress(c, uid, []int64{invoiceId})
+		// the chain always includes this estimate itself, so one progress query covers the detail and the Revisions list
+		revisions, err := a.invoices.GetEstimateRevisions(c, uid, invoice)
+
+		if err != nil {
+			return nil, err
+		}
+
+		revisionIds := make([]int64, len(revisions))
+
+		for idx, revision := range revisions {
+			revisionIds[idx] = revision.InvoiceId
+		}
+
+		progress, err := a.invoices.GetEstimateProgress(c, uid, revisionIds)
 
 		if err != nil {
 			return nil, err
 		}
 
 		resp.SetEstimateProgress(progress[invoiceId])
+		resp.SetEstimateRevisions(revisions, progress)
 	} else if invoice.EstimateId > 0 {
 		// an estimate cannot be deleted while this invoice exists, so it is always there
 		estimate, _, err := a.invoices.GetInvoice(c, uid, invoice.EstimateId)
@@ -702,6 +719,12 @@ func (a *InvoicesApi) InvoicePublicViewHandler(c *core.WebContext) (any, *errs.E
 		}
 
 		resp.Milestones = models.ToPublicEstimateMilestoneResponses(milestones)
+		resp.SupersededBy, err = a.invoices.GetEstimateSupersededBy(c, invoice)
+
+		if err != nil {
+			log.Errorf(c, "[invoices.InvoicePublicViewHandler] failed to get the latest version of estimate \"id:%d\", because %s", invoice.InvoiceId, err.Error())
+			return nil, errs.Or(err, errs.ErrOperationFailed)
+		}
 	}
 
 	return resp, nil

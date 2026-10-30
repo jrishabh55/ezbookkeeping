@@ -29,6 +29,7 @@ const (
 	CUSTOMER_TIMELINE_KIND_ESTIMATE          = "estimate"
 	CUSTOMER_TIMELINE_KIND_ESTIMATE_ACCEPTED = "estimate_accepted"
 	CUSTOMER_TIMELINE_KIND_ESTIMATE_DECLINED = "estimate_declined"
+	CUSTOMER_TIMELINE_KIND_ESTIMATE_REVISED  = "estimate_revised" // invoiceNumber is the new version, estimateNumber the one it revised
 )
 
 // CustomerTimelineMaxItems is how many of the newest timeline entries the customer page shows
@@ -405,9 +406,11 @@ type InvoiceIdRequest struct {
 	Id int64 `json:"id,string" form:"id,string" binding:"required,min=1"`
 }
 
-// InvoiceListRequest picks invoices (default) or estimates for the list
+// InvoiceListRequest picks invoices (default) or estimates for the list; estimates are the latest version of each chain unless
+// IncludeSuperseded asks for every version (the web client's "Show closed" filters them on its side)
 type InvoiceListRequest struct {
-	Kind string `form:"kind" binding:"omitempty,oneof=invoice estimate"`
+	Kind              string `form:"kind" binding:"omitempty,oneof=invoice estimate"`
+	IncludeSuperseded bool   `form:"include_superseded"`
 }
 
 // InvoiceNextNumberRequest represents all parameters of next invoice number request
@@ -538,6 +541,7 @@ type InvoiceInfoResponse struct {
 	FullyInvoiced      bool                                `json:"fullyInvoiced,omitempty"`     // estimates
 	EstimateNumber     string                              `json:"estimateNumber,omitempty"`    // invoices made from an estimate
 	RevisionNumber     int32                               `json:"revisionNumber,omitempty"`    // estimates: 0 on a first version
+	Revisions          []*EstimateRevisionResponse         `json:"revisions,omitempty"`         // estimates: every version of the chain, newest first
 }
 
 // PublicInvoiceProfileResponse is the part of the invoice profile a recipient of a public link may see
@@ -579,6 +583,7 @@ type PublicInvoiceResponse struct {
 	EstimateStatus    string                             `json:"estimateStatus,omitempty"`
 	RespondedUnixTime int64                              `json:"respondedUnixTime,omitempty"`
 	Milestones        []*PublicEstimateMilestoneResponse `json:"milestones,omitempty"`
+	SupersededBy      string                             `json:"supersededBy,omitempty"` // a superseded version: the latest sent version's public token
 }
 
 // ToInvoiceProfileResponse returns a view-object according to database model
@@ -790,4 +795,23 @@ func (r *InvoiceInfoResponse) SetEstimateProgress(progress *EstimateProgress) {
 	}
 
 	r.FullyInvoiced = progress.FullyInvoiced
+}
+
+// SetEstimateRevisions fills every version of the estimate's revision chain (newest first) with whether each is fully invoiced
+func (r *InvoiceInfoResponse) SetEstimateRevisions(revisions []*Invoice, progress map[int64]*EstimateProgress) {
+	r.Revisions = make([]*EstimateRevisionResponse, len(revisions))
+
+	for idx, revision := range revisions {
+		r.Revisions[idx] = &EstimateRevisionResponse{
+			Id:             utils.Int64ToString(revision.InvoiceId),
+			Number:         revision.Number,
+			RevisionNumber: revision.RevisionNumber,
+			InvoiceDate:    revision.InvoiceDate,
+			DueDate:        revision.DueDate,
+			EstimateStatus: revision.EstimateStatus,
+			Total:          revision.Total,
+			Currency:       revision.Currency,
+			FullyInvoiced:  progress[revision.InvoiceId] != nil && progress[revision.InvoiceId].FullyInvoiced,
+		}
+	}
 }

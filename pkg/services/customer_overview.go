@@ -37,9 +37,11 @@ func (s *InvoiceService) GetCustomerOverview(c core.Context, uid int64, customer
 		invoiceMap[row.InvoiceId] = row
 	}
 
+	previous := previousEstimateVersions(rows)
+
 	for _, row := range rows {
 		if row.Kind == models.INVOICE_KIND_ESTIMATE {
-			overview.Timeline = append(overview.Timeline, estimateTimelineItems(row)...)
+			overview.Timeline = append(overview.Timeline, estimateTimelineItems(row, previous[row.InvoiceId])...)
 			continue
 		}
 
@@ -108,11 +110,19 @@ func (s *InvoiceService) GetCustomerOverview(c core.Context, uid int64, customer
 	return overview, nil
 }
 
-// estimateTimelineItems are an estimate's events on the customer page: created, then accepted or declined (with the client's note)
-func estimateTimelineItems(estimate *models.Invoice) []*models.CustomerTimelineItemResponse {
+// estimateTimelineItems are an estimate's events on the customer page: created (or, for a revision, "<previous> revised as <number>"),
+// then accepted or declined (with the client's note)
+func estimateTimelineItems(estimate *models.Invoice, previous *models.Invoice) []*models.CustomerTimelineItemResponse {
 	id := utils.Int64ToString(estimate.InvoiceId)
-	items := []*models.CustomerTimelineItemResponse{{Kind: models.CUSTOMER_TIMELINE_KIND_ESTIMATE, UnixTime: estimate.CreatedUnixTime,
-		InvoiceId: id, InvoiceNumber: estimate.Number, Amount: estimate.Total, Currency: estimate.Currency}}
+	first := &models.CustomerTimelineItemResponse{Kind: models.CUSTOMER_TIMELINE_KIND_ESTIMATE, UnixTime: estimate.CreatedUnixTime,
+		InvoiceId: id, InvoiceNumber: estimate.Number, Amount: estimate.Total, Currency: estimate.Currency}
+
+	if previous != nil {
+		first.Kind = models.CUSTOMER_TIMELINE_KIND_ESTIMATE_REVISED
+		first.EstimateNumber = previous.Number
+	}
+
+	items := []*models.CustomerTimelineItemResponse{first}
 
 	kind := ""
 
@@ -121,6 +131,14 @@ func estimateTimelineItems(estimate *models.Invoice) []*models.CustomerTimelineI
 		kind = models.CUSTOMER_TIMELINE_KIND_ESTIMATE_ACCEPTED
 	case models.ESTIMATE_STATUS_DECLINED:
 		kind = models.CUSTOMER_TIMELINE_KIND_ESTIMATE_DECLINED
+	case models.ESTIMATE_STATUS_SUPERSEDED:
+		// the answer it had before it was revised is still history
+		switch estimate.SupersededFromStatus {
+		case models.ESTIMATE_STATUS_ACCEPTED:
+			kind = models.CUSTOMER_TIMELINE_KIND_ESTIMATE_ACCEPTED
+		case models.ESTIMATE_STATUS_DECLINED:
+			kind = models.CUSTOMER_TIMELINE_KIND_ESTIMATE_DECLINED
+		}
 	}
 
 	if kind != "" && estimate.RespondedUnixTime > 0 {
@@ -129,6 +147,31 @@ func estimateTimelineItems(estimate *models.Invoice) []*models.CustomerTimelineI
 	}
 
 	return items
+}
+
+// previousEstimateVersions maps each revision among rows to the version it revised: the highest lower revision number of the same
+// chain still among rows. A revision whose earlier versions belong to another customer gets none and shows as a plain new estimate.
+func previousEstimateVersions(rows []*models.Invoice) map[int64]*models.Invoice {
+	previous := make(map[int64]*models.Invoice)
+
+	for _, row := range rows {
+		if row.Kind != models.INVOICE_KIND_ESTIMATE || row.RevisionNumber == 0 {
+			continue
+		}
+
+		for _, other := range rows {
+			if other.Kind != models.INVOICE_KIND_ESTIMATE || other.RevisionNumber >= row.RevisionNumber ||
+				(other.InvoiceId != row.RevisionOf && other.RevisionOf != row.RevisionOf) {
+				continue
+			}
+
+			if current := previous[row.InvoiceId]; current == nil || other.RevisionNumber > current.RevisionNumber {
+				previous[row.InvoiceId] = other
+			}
+		}
+	}
+
+	return previous
 }
 
 // addCustomerProducts fills the products bought from the product-linked lines of the customer's invoices, most recently bought first

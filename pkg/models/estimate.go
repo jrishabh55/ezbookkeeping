@@ -105,3 +105,16 @@ func ToPublicEstimateMilestoneResponses(milestones []*EstimateMilestone) []*Publ
 
 	return resps
 }
+
+// EstimateRevisionResponse is one version of an estimate's revision chain as the detail view lists it, newest first
+type EstimateRevisionResponse struct {
+	Id             string `json:"id"`
+	Number         string `json:"number"`
+	RevisionNumber int32  `json:"revisionNumber"`
+	InvoiceDate    string `json:"invoiceDate"`
+	DueDate        string `json:"dueDate"`
+	EstimateStatus string `json:"estimateStatus"`
+	Total          int64  `json:"total"`
+	Currency       string `json:"currency"`
+	FullyInvoiced  bool   `json:"fullyInvoiced"`
+}

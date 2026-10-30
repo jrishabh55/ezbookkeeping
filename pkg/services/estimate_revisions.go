@@ -254,3 +254,56 @@ func restorePreviousEstimateVersion(sess *xorm.Session, revision *models.Invoice
 
 	return err
 }
+
+// GetEstimateRevisions returns every non-deleted version of the estimate's revision chain, newest (highest revision number) first;
+// a first version that was never revised returns just itself
+func (s *InvoiceService) GetEstimateRevisions(c core.Context, uid int64, estimate *models.Invoice) ([]*models.Invoice, error) {
+	if uid <= 0 {
+		return nil, errs.ErrUserIdInvalid
+	}
+
+	rootId := estimateChainRootId(estimate)
+
+	var revisions []*models.Invoice
+	err := s.UserDataDB(uid).NewSession(c).Where("uid=? AND deleted=? AND kind=? AND (invoice_id=? OR revision_of=?)", uid, false, models.INVOICE_KIND_ESTIMATE, rootId, rootId).
+		OrderBy("revision_number desc").Find(&revisions)
+
+	return revisions, err
+}
+
+// GetLatestEstimates returns the latest version of every estimate of user (never a superseded one), newest estimate date first
+func (s *InvoiceService) GetLatestEstimates(c core.Context, uid int64) ([]*models.Invoice, error) {
+	if uid <= 0 {
+		return nil, errs.ErrUserIdInvalid
+	}
+
+	var estimates []*models.Invoice
+	err := s.UserDataDB(uid).NewSession(c).Where("uid=? AND deleted=? AND kind=? AND estimate_status<>?", uid, false, models.INVOICE_KIND_ESTIMATE, models.ESTIMATE_STATUS_SUPERSEDED).
+		OrderBy("invoice_date desc, number desc").Find(&estimates)
+
+	return estimates, err
+}
+
+// GetEstimateSupersededBy returns, for a superseded version, the public token of the latest version of its chain when that version was
+// sent (sent, accepted or declined) and its link is enabled; otherwise empty. The public page links to the token only, never to an id,
+// and never to a draft the client has not been sent.
+func (s *InvoiceService) GetEstimateSupersededBy(c core.Context, estimate *models.Invoice) (string, error) {
+	if estimate.Kind != models.INVOICE_KIND_ESTIMATE || estimate.EstimateStatus != models.ESTIMATE_STATUS_SUPERSEDED {
+		return "", nil
+	}
+
+	rootId := estimateChainRootId(estimate)
+	latest := &models.Invoice{}
+	has, err := s.UserDataDB(estimate.Uid).NewSession(c).
+		Where("uid=? AND deleted=? AND kind=? AND estimate_status<>? AND (invoice_id=? OR revision_of=?)",
+			estimate.Uid, false, models.INVOICE_KIND_ESTIMATE, models.ESTIMATE_STATUS_SUPERSEDED, rootId, rootId).
+		OrderBy("revision_number desc").Get(latest)
+
+	if err != nil {
+		return "", err
+	} else if !has || latest.EstimateStatus == models.ESTIMATE_STATUS_DRAFT {
+		return "", nil
+	}
+
+	return latest.PublicToken, nil
+}
