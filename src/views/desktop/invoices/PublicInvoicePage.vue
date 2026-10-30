@@ -1,14 +1,22 @@
 <template>
     <div class="public-invoice-page">
         <div class="public-invoice-toolbar" v-if="invoice">
-            <span class="public-invoice-status" :class="{ 'public-invoice-status-paid': isPaid }">
+            <span class="public-invoice-status" v-if="isEstimate">
+                {{ estimateStatusText || tt('Total') + ': ' + formatInvoiceDocumentAmount(invoice.total, invoice.currency) }}
+            </span>
+            <span class="public-invoice-status" :class="{ 'public-invoice-status-paid': isPaid }" v-else>
                 {{ isPaid ? tt('Paid') : tt('Amount Due') + ': ' + formatInvoiceDocumentAmount(balanceDue, invoice.currency) }}
             </span>
             <v-spacer />
+            <template v-if="canAnswer">
+                <v-btn color="success" :loading="answering" :disabled="answering" @click="answer(true)">{{ tt('Accept') }}</v-btn>
+                <v-btn color="error" variant="tonal" :disabled="answering" @click="showDeclineDialog = true">{{ tt('Decline') }}</v-btn>
+            </template>
             <v-btn color="primary" variant="tonal" :prepend-icon="mdiPrinterOutline" @click="print">{{ tt('Print') }}</v-btn>
             <v-btn color="primary" variant="tonal" :prepend-icon="mdiDownloadOutline" :loading="downloadingPdf" @click="downloadPdf">{{ tt('Download PDF') }}</v-btn>
         </div>
 
+        <div class="public-invoice-message" role="alert" v-if="answerError">{{ tt('This estimate can no longer be answered.') }}</div>
         <div class="public-invoice-message" role="alert" v-if="downloadError">{{ tt('Unable to download invoice PDF') }}</div>
         <div class="public-invoice-paper" v-if="invoice && profile">
             <invoice-document :invoice="invoice" :profile="profile" />
@@ -17,6 +25,21 @@
         <div class="public-invoice-message" v-else>
             <v-progress-circular indeterminate color="primary" />
         </div>
+
+        <v-dialog width="480" v-model="showDeclineDialog">
+            <v-card>
+                <v-card-title>{{ tt('Decline Estimate') }}</v-card-title>
+                <v-card-text>
+                    <v-textarea rows="3" auto-grow counter="500" maxlength="500" :disabled="answering"
+                                :label="tt('Note (optional)')" v-model="declineNote" />
+                </v-card-text>
+                <v-card-actions>
+                    <v-spacer />
+                    <v-btn :disabled="answering" @click="showDeclineDialog = false">{{ tt('Cancel') }}</v-btn>
+                    <v-btn color="error" :loading="answering" @click="answer(false)">{{ tt('Decline') }}</v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
     </div>
 </template>
 
@@ -34,7 +57,8 @@ import { Invoice, InvoiceProfile } from '@/models/invoice.ts';
 import services from '@/lib/services.ts';
 import { readInvoicePdf } from '@/lib/invoicePdf.ts';
 import { startDownloadFile } from '@/lib/ui/common.ts';
-import { formatInvoiceDocumentAmount, getInvoicePdfFileName, getInvoiceDisplayBalanceDue, getInvoiceDisplayStatus, getTodayTextualDate, printInvoiceDocument } from '@/lib/invoice.ts';
+import { formatInvoiceDocumentAmount, formatInvoiceDocumentDate, getInvoicePdfFileName, getInvoiceDisplayBalanceDue, getInvoiceDisplayStatus, getTodayTextualDate, printInvoiceDocument } from '@/lib/invoice.ts';
+import { canAnswerEstimate, getEstimateDisplayStatus, unixTimeToTextualDate } from '@/lib/estimate.ts';
 
 // A recipient's view of one invoice: no app chrome, no stores, no login. The data comes from the
 // unauthenticated public endpoint, which returns the document fields only (no ids, payments or token).
@@ -50,8 +74,38 @@ const downloadError = ref<boolean>(false);
 const invoice = ref<Invoice | null>(null);
 const profile = ref<InvoiceProfile | null>(null);
 
+const today = getTodayTextualDate();
+const answering = ref<boolean>(false);
+const answerError = ref<boolean>(false);
+const showDeclineDialog = ref<boolean>(false);
+const declineNote = ref<string>('');
+
 const isPaid = computed<boolean>(() => !!invoice.value && getInvoiceDisplayStatus(invoice.value, getTodayTextualDate()) === 'paid');
 const balanceDue = computed<number>(() => invoice.value ? getInvoiceDisplayBalanceDue(invoice.value) : 0);
+
+const isEstimate = computed<boolean>(() => invoice.value?.kind === 'estimate');
+// the server checks the same: sent and still valid
+const canAnswer = computed<boolean>(() => !!invoice.value && canAnswerEstimate(invoice.value, today));
+
+const estimateStatusText = computed<string>(() => {
+    const current = invoice.value;
+
+    if (!current || !isEstimate.value) {
+        return '';
+    }
+
+    if ((current.estimateStatus === 'accepted' || current.estimateStatus === 'declined') && current.respondedUnixTime) {
+        const date = formatInvoiceDocumentDate(unixTimeToTextualDate(current.respondedUnixTime));
+        return tt(current.estimateStatus === 'accepted' ? 'format.misc.estimateAcceptedOn' : 'format.misc.estimateDeclinedOn', { date });
+    }
+
+    if (getEstimateDisplayStatus(current, today) === 'expired') {
+        return tt('format.misc.estimateExpiredOn', { date: formatInvoiceDocumentDate(current.dueDate) });
+    }
+
+    return '';
+});
+
 async function downloadPdf(): Promise<void> {
     const current = invoice.value;
     if (!current || downloadingPdf.value) {
@@ -63,7 +117,7 @@ async function downloadPdf(): Promise<void> {
     try {
         const response = await services.getPublicInvoicePdf(props.token);
         const pdf = await readInvoicePdf(response.data);
-        startDownloadFile(`${getInvoicePdfFileName(current.number, current.dueDate)}.pdf`, pdf);
+        startDownloadFile(`${getInvoicePdfFileName(current.number, current.dueDate, current.kind)}.pdf`, pdf);
     } catch {
         downloadError.value = true;
     } finally {
@@ -77,19 +131,39 @@ function print(): void {
     }
 }
 
-services.getPublicInvoice({ token: props.token }).then(response => {
-    const data = response.data;
+function load(): Promise<void> {
+    return services.getPublicInvoice({ token: props.token }).then(response => {
+        const data = response.data;
 
-    if (data && data.success && data.result) {
-        invoice.value = Invoice.ofPublic(data.result);
-        profile.value = InvoiceProfile.ofPublic(data.result.profile);
-        document.title = data.result.number;
-    }
-}).catch(() => {
-    // unknown or disabled link: the page shows "not available" below
-}).finally(() => {
-    loading.value = false;
-});
+        if (data && data.success && data.result) {
+            invoice.value = Invoice.ofPublic(data.result);
+            profile.value = InvoiceProfile.ofPublic(data.result.profile);
+            document.title = data.result.number;
+        }
+    }).catch(() => {
+        // unknown or disabled link: the page shows "not available" below
+    }).finally(() => {
+        loading.value = false;
+    });
+}
+
+// the answer is recorded once; whatever happened, the page reloads the estimate to show its real state
+function answer(accept: boolean): void {
+    answering.value = true;
+    answerError.value = false;
+
+    services.respondToPublicEstimate({ token: props.token, accept, note: accept ? '' : declineNote.value.trim() }).then(response => {
+        answerError.value = !response.data?.success;
+    }).catch(() => {
+        answerError.value = true;
+    }).finally(() => {
+        answering.value = false;
+        showDeclineDialog.value = false;
+        load();
+    });
+}
+
+load();
 </script>
 
 <style scoped>
