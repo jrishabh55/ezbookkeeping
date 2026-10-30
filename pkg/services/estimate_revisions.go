@@ -212,3 +212,45 @@ func (s *InvoiceService) reviseEstimate(c core.Context, source *models.Invoice, 
 
 	return revision, nil
 }
+
+// checkEstimateDeletable refuses a superseded version (history the newer version depends on) and a revision that is no longer a
+// draft (the client may have seen it); a first version, or a draft revision, can be deleted
+func checkEstimateDeletable(estimate *models.Invoice) error {
+	if estimate.EstimateStatus == models.ESTIMATE_STATUS_SUPERSEDED {
+		return errs.ErrEstimateStatusInvalid
+	}
+
+	if estimate.RevisionNumber > 0 && estimate.EstimateStatus != models.ESTIMATE_STATUS_DRAFT {
+		return errs.ErrEstimateStatusInvalid
+	}
+
+	return nil
+}
+
+// restorePreviousEstimateVersion returns the version a deleted draft revision superseded (the chain's highest lower revision number
+// still there) to the status it had before Revise, inside the caller's transaction. The update is conditional on it still being
+// superseded; a version stored without SupersededFromStatus goes back to sent.
+func restorePreviousEstimateVersion(sess *xorm.Session, revision *models.Invoice, now int64) error {
+	previous := &models.Invoice{}
+	has, err := sess.Where("uid=? AND deleted=? AND kind=? AND estimate_status=? AND revision_number<? AND (invoice_id=? OR revision_of=?)",
+		revision.Uid, false, models.INVOICE_KIND_ESTIMATE, models.ESTIMATE_STATUS_SUPERSEDED, revision.RevisionNumber, revision.RevisionOf, revision.RevisionOf).
+		OrderBy("revision_number desc").Get(previous)
+
+	if err != nil {
+		return err
+	} else if !has {
+		return nil
+	}
+
+	status := previous.SupersededFromStatus
+
+	if status == "" {
+		status = models.ESTIMATE_STATUS_SENT
+	}
+
+	_, err = sess.Cols("estimate_status", "superseded_from_status", "updated_unix_time").
+		Where("uid=? AND deleted=? AND invoice_id=? AND estimate_status=?", revision.Uid, false, previous.InvoiceId, models.ESTIMATE_STATUS_SUPERSEDED).
+		Update(&models.Invoice{EstimateStatus: status, SupersededFromStatus: "", UpdatedUnixTime: now})
+
+	return err
+}

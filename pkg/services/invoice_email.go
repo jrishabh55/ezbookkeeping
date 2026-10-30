@@ -129,6 +129,10 @@ func (s *InvoiceService) SendInvoiceWithContent(c core.Context, uid, invoiceID i
 	if err != nil {
 		return err
 	}
+	// a superseded version is read-only: the client already saw it and the latest version is what gets sent
+	if invoice.Kind == models.INVOICE_KIND_ESTIMATE && invoice.EstimateStatus == models.ESTIMATE_STATUS_SUPERSEDED {
+		return errs.ErrEstimateStatusInvalid
+	}
 	payments, err := s.GetInvoicePayments(c, uid, []int64{invoiceID})
 	if err != nil {
 		return err

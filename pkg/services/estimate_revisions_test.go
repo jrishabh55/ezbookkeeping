@@ -201,3 +201,81 @@ func TestModifyEstimateRefusesAnythingButDraft(t *testing.T) {
 	assert.Equal(t, "First draft", reloaded.Notes)
 	assert.Equal(t, models.ESTIMATE_STATUS_SENT, reloaded.EstimateStatus)
 }
+
+func TestSupersededVersionRefusesEveryAction(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	customer := createTestCustomer(t, uid)
+	estimate := createTestEstimate(t, uid, customer.CustomerId, "EST/2026-27/01", testEstimateLines(), testEstimateMilestones())
+	token := shareTestEstimate(t, ctx, uid, estimate.InvoiceId)
+	_, err := Invoices.ReviseEstimate(ctx, uid, estimate.InvoiceId, "2026-10-30")
+	assert.Nil(t, err)
+
+	milestones, err := Invoices.GetEstimateMilestones(ctx, uid, estimate.InvoiceId)
+	assert.Nil(t, err)
+
+	assert.Equal(t, errs.ErrEstimateLocked, Invoices.ModifyEstimate(ctx, estimate, testEstimateLines(), nil))
+	assert.Equal(t, errs.ErrEstimateStatusInvalid, Invoices.SetEstimateResponse(ctx, uid, estimate.InvoiceId, models.ESTIMATE_STATUS_ACCEPTED))
+	assert.Equal(t, errs.ErrEstimateStatusInvalid, Invoices.SetEstimateResponse(ctx, uid, estimate.InvoiceId, models.ESTIMATE_STATUS_DECLINED))
+	assert.Equal(t, errs.ErrEstimateStatusInvalid, Invoices.ReopenEstimate(ctx, uid, estimate.InvoiceId))
+	assert.Equal(t, errs.ErrEstimateCannotBeAnswered, Invoices.RespondToEstimateByPublicToken(ctx, token, models.ESTIMATE_STATUS_ACCEPTED, "", "2026-10-30"))
+
+	_, _, err = Invoices.GetEstimateInvoiceDraft(ctx, uid, estimate.InvoiceId, milestones[0].MilestoneId, "2026-10-30")
+	assert.Equal(t, errs.ErrEstimateStatusInvalid, err)
+	assert.Equal(t, errs.ErrEstimateStatusInvalid, Invoices.CreateInvoiceFromEstimate(ctx, newTestInvoiceDraft(uid, customer.CustomerId, "INV/2026-27/01"),
+		[]*models.InvoiceLine{{ItemName: "Advance", Quantity: 100, Rate: 1}}, estimate.InvoiceId, milestones[0].MilestoneId))
+
+	assert.Equal(t, errs.ErrEstimateStatusInvalid, Invoices.DeleteInvoice(ctx, uid, estimate.InvoiceId))
+	_, err = Invoices.ReviseEstimate(ctx, uid, estimate.InvoiceId, "2026-10-30")
+	assert.Equal(t, errs.ErrEstimateCannotBeRevised, err)
+
+	// nothing changed: still superseded, still there, no invoice made, the payment terms untouched
+	reloaded, _, err := Invoices.GetInvoice(ctx, uid, estimate.InvoiceId)
+	assert.Nil(t, err)
+	assert.Equal(t, models.ESTIMATE_STATUS_SUPERSEDED, reloaded.EstimateStatus)
+	assert.Equal(t, int64(0), reloaded.RespondedUnixTime)
+
+	invoices, err := Invoices.GetAllInvoices(ctx, uid)
+	assert.Nil(t, err)
+	assert.Empty(t, invoices)
+
+	milestones, err = Invoices.GetEstimateMilestones(ctx, uid, estimate.InvoiceId)
+	assert.Nil(t, err)
+	assert.Equal(t, int64(0), milestones[0].InvoiceId)
+}
+
+func TestDeletingADraftRevisionRestoresThePreviousVersion(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	customer := createTestCustomer(t, uid)
+	estimate := createTestEstimate(t, uid, customer.CustomerId, "EST/2026-27/01", testEstimateLines(), nil)
+	shareTestEstimate(t, ctx, uid, estimate.InvoiceId)
+	assert.Nil(t, Invoices.SetEstimateResponse(ctx, uid, estimate.InvoiceId, models.ESTIMATE_STATUS_DECLINED))
+
+	first, err := Invoices.ReviseEstimate(ctx, uid, estimate.InvoiceId, "2026-10-30")
+	assert.Nil(t, err)
+	assert.Nil(t, Invoices.DeleteInvoice(ctx, uid, first.InvoiceId))
+
+	reloaded, _, err := Invoices.GetInvoice(ctx, uid, estimate.InvoiceId)
+	assert.Nil(t, err)
+	assert.Equal(t, models.ESTIMATE_STATUS_DECLINED, reloaded.EstimateStatus) // exactly what it was before Revise
+	assert.Equal(t, "", reloaded.SupersededFromStatus)
+	assert.Greater(t, reloaded.RespondedUnixTime, int64(0))
+
+	// the deleted draft's number is never handed out again
+	second, err := Invoices.ReviseEstimate(ctx, uid, estimate.InvoiceId, "2026-10-30")
+	assert.Nil(t, err)
+	assert.Equal(t, "EST/2026-27/01-R2", second.Number)
+	assert.Equal(t, int32(2), second.RevisionNumber)
+
+	// once sent, a revision is answered or revised, never deleted: deleting it would leave the chain without a live version
+	shareTestEstimate(t, ctx, uid, second.InvoiceId)
+	assert.Equal(t, errs.ErrEstimateStatusInvalid, Invoices.DeleteInvoice(ctx, uid, second.InvoiceId))
+
+	// a first-version draft is deleted as before
+	draft := createTestEstimate(t, uid, customer.CustomerId, "EST/2026-27/02", testEstimateLines(), nil)
+	assert.Nil(t, Invoices.DeleteInvoice(ctx, uid, draft.InvoiceId))
+
+	// 01 and 01-R2 remain: the next new estimate is 02 again, the -R suffix does not count
+	next, err := Invoices.NextEstimateNumber(ctx, uid, "2026-10-30")
+	assert.Nil(t, err)
+	assert.Equal(t, "EST/2026-27/02", next)
+}

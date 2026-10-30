@@ -78,7 +78,8 @@ func estimateMilestoneLineText(label string, percent int32, estimateNumber strin
 // estimateInvoiceLines returns the lines an invoice made from the estimate gets, checking it can still be made: every line
 // copied (milestoneId 0; only for an estimate without milestones and not invoiced yet) or the one line of an open milestone
 func estimateInvoiceLines(sess *xorm.Session, estimate *models.Invoice, estimateLines []*models.InvoiceLine, milestoneId int64) ([]*models.InvoiceLine, error) {
-	if estimate.EstimateStatus == models.ESTIMATE_STATUS_DECLINED {
+	// a declined estimate is not invoiced, and only the latest version of a revised estimate can be
+	if estimate.EstimateStatus == models.ESTIMATE_STATUS_DECLINED || estimate.EstimateStatus == models.ESTIMATE_STATUS_SUPERSEDED {
 		return nil, errs.ErrEstimateStatusInvalid
 	}
 

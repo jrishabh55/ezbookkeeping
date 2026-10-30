@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/mayswind/ezbookkeeping/pkg/errs"
 	"github.com/mayswind/ezbookkeeping/pkg/models"
 )
 
@@ -36,4 +37,17 @@ func TestSendingAnEstimateMarksItSentWithEstimateWording(t *testing.T) {
 	invoice := createTestInvoice(t, uid, customer.CustomerId, "INV/2026-27/01", 100)
 	assert.Nil(t, Invoices.SendInvoiceWithContent(ctx, uid, invoice.InvoiceId, "accounts@qubertech.com", "", nil, nil))
 	assert.Equal(t, "Invoice INV/2026-27/01", mailer.sent[2].Subject)
+}
+
+func TestEmailingASupersededEstimateFailsAndSendsNothing(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	mailer := withCapturingMailer(t)
+	customer := createTestCustomer(t, uid)
+	estimate := createTestEstimate(t, uid, customer.CustomerId, "EST/2026-27/01", testEstimateLines(), nil)
+	shareTestEstimate(t, ctx, uid, estimate.InvoiceId)
+	_, err := Invoices.ReviseEstimate(ctx, uid, estimate.InvoiceId, "2026-10-30")
+	assert.Nil(t, err)
+
+	assert.Equal(t, errs.ErrEstimateStatusInvalid, Invoices.SendInvoiceWithContent(ctx, uid, estimate.InvoiceId, "accounts@qubertech.com", "", nil, nil))
+	assert.Empty(t, mailer.sent)
 }

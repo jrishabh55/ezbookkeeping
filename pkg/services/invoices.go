@@ -663,7 +663,8 @@ func (s *InvoiceService) ModifyInvoice(c core.Context, invoice *models.Invoice, 
 }
 
 // DeleteInvoice soft-deletes an invoice or estimate and removes its payment links; the linked transactions are untouched.
-// An estimate with invoices made from it is refused; an invoice made from a milestone frees that milestone.
+// An estimate with invoices made from it, a superseded estimate version and a revision that is no longer a draft are refused; an
+// invoice made from a milestone frees that milestone; deleting a draft revision returns the version it superseded to its old status.
 func (s *InvoiceService) DeleteInvoice(c core.Context, uid int64, invoiceId int64) error {
 	if uid <= 0 {
 		return errs.ErrUserIdInvalid
@@ -699,6 +700,10 @@ func (s *InvoiceService) DeleteInvoice(c core.Context, uid int64, invoiceId int6
 		}
 
 		if invoice.Kind == models.INVOICE_KIND_ESTIMATE {
+			if err := checkEstimateDeletable(invoice); err != nil {
+				return err
+			}
+
 			invoiced, err := estimateHasInvoices(sess, uid, invoiceId)
 
 			if err != nil {
@@ -719,6 +724,12 @@ func (s *InvoiceService) DeleteInvoice(c core.Context, uid int64, invoiceId int6
 
 		if invoice.EstimateId > 0 {
 			if _, err := sess.Cols("invoice_id").Where("uid=? AND estimate_id=? AND invoice_id=?", uid, invoice.EstimateId, invoiceId).Update(&models.EstimateMilestone{InvoiceId: 0}); err != nil {
+				return err
+			}
+		}
+
+		if invoice.Kind == models.INVOICE_KIND_ESTIMATE && invoice.RevisionNumber > 0 {
+			if err := restorePreviousEstimateVersion(sess, invoice, now); err != nil {
 				return err
 			}
 		}
