@@ -102,6 +102,28 @@ function injectFramework7CssFile({ htmlFileName, placeHolders }: { htmlFileName:
     ];
 }
 
+// dev server only: mirrors the Go server's /i/<token> short link (cmd/webserver.go), which the Vite dev server would otherwise serve as the app start page
+function publicInvoiceShortLink(): Plugin {
+    return {
+        name: 'public-invoice-short-link:serve',
+        apply: 'serve',
+        configureServer(server): void {
+            server.middlewares.use((req, res, next) => {
+                const match = /^\/i\/([^/?#]+)/.exec(req.url ?? '');
+
+                if (!match) {
+                    next();
+                    return;
+                }
+
+                res.statusCode = 302;
+                res.setHeader('Location', `/desktop.html#/public/invoice/${match[1]}`);
+                res.end();
+            });
+        }
+    };
+}
+
 export default defineConfig(() => {
     const licenseContent = fs.readFileSync('./LICENSE', { encoding: 'utf-8' });
     const buildUnixTime = process.env['buildUnixTime'] || '';
@@ -120,6 +142,7 @@ export default defineConfig(() => {
             __EZBOOKKEEPING_THIRD_PARTY_LICENSES__: JSON.stringify(thirdPartyLicenseFile)
         },
         plugins: [
+            publicInvoiceShortLink(),
             vue({
                 template: {
                     compilerOptions: {
