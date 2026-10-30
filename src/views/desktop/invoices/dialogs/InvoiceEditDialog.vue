@@ -44,64 +44,62 @@
                                          :label="tt('Payment Due')"
                                          v-model="invoice.dueDate" />
                         </v-col>
-                    </v-row>
 
-                    <v-row class="mt-2" :key="index" v-for="(line, index) in invoice.lines">
-                        <v-col cols="12" md="3">
-                            <v-combobox autocomplete="off" persistent-placeholder no-filter hide-no-data
-                                        :disabled="loading || submitting"
-                                        :label="tt('Item')" :placeholder="tt('Item')"
-                                        :items="getProductSuggestions(line.itemName)" item-title="name"
-                                        :hint="getLinkedProductName(line) ? tt('Product') + ': ' + getLinkedProductName(line) : ''"
-                                        :persistent-hint="!!getLinkedProductName(line)"
-                                        :model-value="line.itemName"
-                                        @update:model-value="onItemChanged(line, $event)">
-                                <template #message="{ message }">
-                                    {{ message }}
-                                    <v-btn class="ml-1" density="compact" size="x-small" variant="text" :icon="mdiClose"
-                                           :aria-label="tt('Remove')" :disabled="loading || submitting"
-                                           v-if="getLinkedProductName(line)"
-                                           @click="line.productId = ''" />
-                                </template>
-                            </v-combobox>
-                        </v-col>
-                        <v-col cols="12" md="3">
-                            <v-textarea type="text" autocomplete="off" persistent-placeholder rows="1" auto-grow
-                                        :disabled="loading || submitting"
-                                        :label="tt('Description')" :placeholder="tt('Description (optional)')"
-                                        v-model="line.description" />
-                        </v-col>
-                        <v-col cols="4" md="1">
-                            <v-text-field type="text" autocomplete="off" persistent-placeholder
-                                          :disabled="loading || submitting"
-                                          :label="tt('SAC')" :placeholder="tt('SAC')"
-                                          v-model="line.sac" />
-                        </v-col>
-                        <v-col cols="4" md="1">
-                            <number-input :disabled="loading || submitting" :persistent-placeholder="true"
-                                          :label="tt('Qty')" :min-value="0.01" :max-value="10000" :max-decimal-count="2"
-                                          :model-value="line.quantity / INVOICE_QUANTITY_SCALE"
-                                          @update:model-value="line.quantity = Math.round($event * INVOICE_QUANTITY_SCALE)" />
-                        </v-col>
-                        <v-col cols="4" md="3">
-                            <amount-input :disabled="loading || submitting" :persistent-placeholder="true"
-                                          :currency="invoice.currency" :show-currency="true"
-                                          :label="tt('Rate')" :placeholder="tt('Rate')"
-                                          v-model="line.rate" />
-                        </v-col>
-                        <v-col cols="2" md="1" class="d-flex align-center">
-                            <v-btn color="error" variant="text" :icon="mdiDeleteOutline" :aria-label="tt('Remove')"
-                                   :disabled="loading || submitting || invoice.lines.length <= 1"
-                                   @click="removeLine(index)"></v-btn>
-                        </v-col>
-                    </v-row>
+                        <!-- one grid for the whole form: every gap comes from the column gutters, never from per-row margins -->
+                        <template :key="index" v-for="(line, index) in invoice.lines">
+                            <v-col cols="12" md="3">
+                                <v-combobox autocomplete="off" persistent-placeholder no-filter hide-no-data
+                                            :disabled="loading || submitting"
+                                            :label="tt('Item')" :placeholder="tt('Item')"
+                                            :items="getProductSuggestions(line.itemName)" item-title="name"
+                                            :model-value="line.itemName"
+                                            @update:model-value="onItemChanged(line, $event)">
+                                    <!-- the product link sits inside the field so every line keeps the same height -->
+                                    <template #append-inner v-if="getLinkedProductName(line)">
+                                        <v-chip size="x-small" label closable :prepend-icon="mdiPackageVariantClosed"
+                                                :disabled="loading || submitting"
+                                                @click:close="line.productId = ''">
+                                            <v-tooltip activator="parent">{{ tt('Product') + ': ' + getLinkedProductName(line) }}</v-tooltip>
+                                        </v-chip>
+                                    </template>
+                                </v-combobox>
+                            </v-col>
+                            <v-col cols="12" md="3">
+                                <v-textarea type="text" autocomplete="off" persistent-placeholder rows="1" auto-grow
+                                            :disabled="loading || submitting"
+                                            :label="tt('Description')" :placeholder="tt('Description (optional)')"
+                                            v-model="line.description" />
+                            </v-col>
+                            <v-col cols="4" md="2">
+                                <v-text-field type="text" autocomplete="off" persistent-placeholder
+                                              :disabled="loading || submitting"
+                                              :label="tt('SAC')" :placeholder="tt('SAC')"
+                                              v-model="line.sac" />
+                            </v-col>
+                            <v-col cols="4" md="1">
+                                <number-input :disabled="loading || submitting" :persistent-placeholder="true"
+                                              :label="tt('Qty')" :min-value="0.01" :max-value="10000" :max-decimal-count="2"
+                                              :model-value="line.quantity / INVOICE_QUANTITY_SCALE"
+                                              @update:model-value="line.quantity = Math.round($event * INVOICE_QUANTITY_SCALE)" />
+                            </v-col>
+                            <v-col cols="3" md="2">
+                                <amount-input :disabled="loading || submitting" :persistent-placeholder="true"
+                                              :currency="invoice.currency" :show-currency="true"
+                                              :label="tt('Rate')" :placeholder="tt('Rate')"
+                                              v-model="line.rate" />
+                            </v-col>
+                            <v-col cols="1" md="1" class="d-flex align-center justify-center">
+                                <v-btn color="error" variant="text" density="comfortable" :icon="mdiDeleteOutline" :aria-label="tt('Remove')"
+                                       :disabled="loading || submitting || invoice.lines.length <= 1"
+                                       @click="removeLine(index)"></v-btn>
+                            </v-col>
+                        </template>
 
-                    <div class="d-flex align-center mt-2">
-                        <v-btn color="primary" variant="text" density="comfortable" :prepend-icon="mdiPlus"
-                               :disabled="loading || submitting" @click="addLine">{{ tt('Add Line') }}</v-btn>
-                    </div>
+                        <v-col cols="12">
+                            <v-btn color="primary" variant="text" density="comfortable" :prepend-icon="mdiPlus"
+                                   :disabled="loading || submitting" @click="addLine">{{ tt('Add Line') }}</v-btn>
+                        </v-col>
 
-                    <v-row class="mt-2">
                         <v-col cols="6" md="3">
                             <v-select item-title="displayName" item-value="type" persistent-placeholder
                                       :disabled="loading || submitting"
@@ -131,9 +129,7 @@
                                 <span class="text-title-medium">{{ formatAmount(totals.total) }}</span>
                             </div>
                         </v-col>
-                    </v-row>
 
-                    <v-row class="mt-2">
                         <v-col cols="12" md="12">
                             <v-textarea type="text" autocomplete="off" persistent-placeholder rows="6"
                                         :disabled="loading || submitting"
@@ -167,7 +163,7 @@
 <script setup lang="ts">
 import { ref, computed, useTemplateRef } from 'vue';
 
-import { mdiPlus, mdiClose, mdiDeleteOutline, mdiAccountPlusOutline } from '@mdi/js';
+import { mdiPlus, mdiDeleteOutline, mdiAccountPlusOutline, mdiPackageVariantClosed } from '@mdi/js';
 
 import SnackBar from '@/components/desktop/SnackBar.vue';
 import CustomerEditDialog from './CustomerEditDialog.vue';

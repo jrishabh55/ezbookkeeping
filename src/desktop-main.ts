@@ -239,6 +239,12 @@ const vuetify = createVuetify({
             color: 'primary',
             hideDetails: 'auto'
         },
+        VCombobox: {
+            variant: 'outlined',
+            density: 'comfortable',
+            color: 'primary',
+            hideDetails: 'auto'
+        },
         VAvatar: {
             variant: 'flat',
             VIcon: {
