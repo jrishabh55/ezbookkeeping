@@ -52,6 +52,8 @@ import BudgetListPage from '@/views/desktop/budgets/ListPage.vue';
 import BucketListPage from '@/views/desktop/buckets/ListPage.vue';
 import InvoiceListPage from '@/views/desktop/invoices/ListPage.vue';
 import PublicInvoicePage from '@/views/desktop/invoices/PublicInvoicePage.vue';
+import CustomerListPage from '@/views/desktop/customers/ListPage.vue';
+import ProductListPage from '@/views/desktop/products/ListPage.vue';
 
 function checkLogin(): NavigationGuardReturn {
     if (!isUserLogined()) {
@@ -174,6 +176,16 @@ const router = createRouter({
         {
             path: '/invoice/list',
             component: InvoiceListPage,
+            beforeEnter: checkLogin
+        },
+        {
+            path: '/customer/list',
+            component: CustomerListPage,
+            beforeEnter: checkLogin
+        },
+        {
+            path: '/product/list',
+            component: ProductListPage,
             beforeEnter: checkLogin
         },
         {

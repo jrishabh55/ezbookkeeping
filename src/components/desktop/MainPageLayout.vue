@@ -121,6 +121,28 @@
                                     </v-btn>
                                 </router-link>
 
+                                <router-link to="/customer/list"
+                                             :aria-current="isTopNavigationActive('/customer/list') ? 'page' : undefined">
+                                    <v-btn class="top-navigation-button ms-1" density="comfortable" variant="text"
+                                           :aria-label="tt('Customers')" :icon="true"
+                                           :active="isTopNavigationActive('/customer/list')"
+                                           :color="isTopNavigationActive('/customer/list') ? 'primary' : 'default'">
+                                        <v-icon :icon="isTopNavigationActive('/customer/list') ? mdiAccountMultiple : mdiAccountMultipleOutline" size="24" />
+                                        <v-tooltip activator="parent">{{ tt('Customers') }}</v-tooltip>
+                                    </v-btn>
+                                </router-link>
+
+                                <router-link to="/product/list"
+                                             :aria-current="isTopNavigationActive('/product/list') ? 'page' : undefined">
+                                    <v-btn class="top-navigation-button ms-1" density="comfortable" variant="text"
+                                           :aria-label="tt('Products')" :icon="true"
+                                           :active="isTopNavigationActive('/product/list')"
+                                           :color="isTopNavigationActive('/product/list') ? 'primary' : 'default'">
+                                        <v-icon :icon="isTopNavigationActive('/product/list') ? mdiPackageVariant : mdiPackageVariantClosed" size="24" />
+                                        <v-tooltip activator="parent">{{ tt('Products') }}</v-tooltip>
+                                    </v-btn>
+                                </router-link>
+
                                 <router-link class="d-inline-flex align-center" to="/transaction/list?pageType=0&dateType=7"
                                              v-if="showAddTransactionButtonInDesktopNavbar">
                                     <v-btn class="add-transaction-button ms-2" color="primary" density="comfortable" variant="flat"
@@ -251,6 +273,10 @@ import {
     mdiPiggyBankOutline,
     mdiFileDocument,
     mdiFileDocumentOutline,
+    mdiAccountMultiple,
+    mdiAccountMultipleOutline,
+    mdiPackageVariant,
+    mdiPackageVariantClosed,
     mdiPlus,
     mdiCellphone,
     mdiThemeLightDark,

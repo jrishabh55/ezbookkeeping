@@ -30,26 +30,10 @@
             </li>
             <li class="nav-link">
                 <a class="d-flex align-center cursor-pointer"
-                   :class="{ 'router-link-active router-link-exact-active': activeView === 'customers', 'disabled': loading }"
-                   @click="activeView = 'customers'">
-                    <v-icon class="nav-item-icon" :icon="mdiAccountMultipleOutline"/>
-                    <span class="nav-item-title">{{ tt('Customers') }}</span>
-                </a>
-            </li>
-            <li class="nav-link">
-                <a class="d-flex align-center cursor-pointer"
                    :class="{ 'router-link-active router-link-exact-active': activeView === 'recurring', 'disabled': loading }"
                    @click="activeView = 'recurring'">
                     <v-icon class="nav-item-icon" :icon="mdiRepeat"/>
                     <span class="nav-item-title">{{ tt('Recurring') }}</span>
-                </a>
-            </li>
-            <li class="nav-link">
-                <a class="d-flex align-center cursor-pointer"
-                   :class="{ 'router-link-active router-link-exact-active': activeView === 'products', 'disabled': loading }"
-                   @click="activeView = 'products'">
-                    <v-icon class="nav-item-icon" :icon="mdiPackageVariantClosed"/>
-                    <span class="nav-item-title">{{ tt('Products') }}</span>
                 </a>
             </li>
         </template>
@@ -86,8 +70,6 @@
                                                          to="/settings/invoice_profile"></v-list-item>
                                             <v-list-item :prepend-icon="mdiEmailEditOutline" :title="tt('Invoice Email Template')"
                                                          to="/settings/invoice_email_template"></v-list-item>
-                                            <v-list-item :prepend-icon="mdiLinkVariant" :title="tt('Link Past Invoice Lines')"
-                                                         v-if="activeView === 'products'" @click="productLinkDialog?.open()"></v-list-item>
                                         </v-list>
                                     </v-menu>
                                 </v-btn>
@@ -127,45 +109,6 @@
                                 <td class="text-right">{{ formatAmount(getInvoiceDisplayBalanceDue(invoice), invoice.currency) }}</td>
                                 <td>
                                     <v-chip size="small" variant="tonal" :color="statusColors[getDisplayStatus(invoice)]">{{ tt(getDisplayStatusName(invoice)) }}</v-chip>
-                                </td>
-                            </tr>
-                            </tbody>
-                        </v-table>
-
-                        <v-table class="table-striped" :hover="!loading" v-if="activeView === 'customers'">
-                            <thead>
-                            <tr>
-                                <th>
-                                    <div class="d-flex align-center">
-                                        <span>{{ tt('Customer Name') }}</span>
-                                        <v-spacer/>
-                                        <span>{{ tt('Operation') }}</span>
-                                    </div>
-                                </th>
-                            </tr>
-                            </thead>
-
-                            <tbody v-if="!loading && !allCustomers.length">
-                            <tr><td>{{ tt('No available customer') }}</td></tr>
-                            </tbody>
-
-                            <tbody>
-                            <tr :key="customer.id" v-for="customer in allCustomers"
-                                @mouseover="hoveredCustomerId = customer.id" @mouseleave="hoveredCustomerId = ''">
-                                <td>
-                                    <div class="d-flex align-center">
-                                        <a class="cursor-pointer" @click="viewCustomer(customer)">{{ customer.name }}</a>
-                                        <small class="text-medium-emphasis ms-2" v-if="customer.contactName">{{ customer.contactName }}</small>
-                                        <v-spacer/>
-                                        <template v-if="hoveredCustomerId === customer.id && !loading">
-                                            <v-btn class="px-2" color="default" density="comfortable" variant="text"
-                                                   :prepend-icon="mdiPencilOutline" :disabled="loading || updating"
-                                                   @click="editCustomer(customer)">{{ tt('Edit') }}</v-btn>
-                                            <v-btn class="px-2" color="default" density="comfortable" variant="text"
-                                                   :prepend-icon="mdiDeleteOutline" :disabled="loading || updating"
-                                                   @click="removeCustomer(customer)">{{ tt('Delete') }}</v-btn>
-                                        </template>
-                                    </div>
                                 </td>
                             </tr>
                             </tbody>
@@ -215,43 +158,6 @@
                             </tr>
                             </tbody>
                         </v-table>
-
-                        <v-table class="table-striped" :hover="!loading" v-if="activeView === 'products'">
-                            <thead>
-                            <tr>
-                                <th>{{ tt('Product Name') }}</th>
-                                <th>{{ tt('Renews') }}</th>
-                                <th class="text-right">{{ tt('Default Rate') }}</th>
-                                <th class="text-right">{{ tt('Operation') }}</th>
-                            </tr>
-                            </thead>
-
-                            <tbody v-if="!loading && !allProducts.length">
-                            <tr><td colspan="4">{{ tt('No available product') }}</td></tr>
-                            </tbody>
-
-                            <tbody>
-                            <tr :key="product.id" v-for="product in allProducts"
-                                @mouseover="hoveredProductId = product.id" @mouseleave="hoveredProductId = ''">
-                                <td>
-                                    <span :class="{ 'text-medium-emphasis': product.archived }">{{ product.name }}</span>
-                                    <v-chip class="ms-2" size="x-small" variant="tonal" v-if="product.archived">{{ tt('Archived') }}</v-chip>
-                                </td>
-                                <td>{{ getProductSummary(product) }}</td>
-                                <td class="text-right">{{ formatRate(product) }}</td>
-                                <td class="text-right">
-                                    <template v-if="hoveredProductId === product.id && !loading">
-                                        <v-btn class="px-2" color="default" density="comfortable" variant="text"
-                                               :prepend-icon="mdiPencilOutline" :disabled="loading || updating"
-                                               @click="editProduct(product)">{{ tt('Edit') }}</v-btn>
-                                        <v-btn class="px-2" color="default" density="comfortable" variant="text"
-                                               :prepend-icon="mdiDeleteOutline" :disabled="loading || updating"
-                                               @click="removeProduct(product)">{{ tt('Delete') }}</v-btn>
-                                    </template>
-                                </td>
-                            </tr>
-                            </tbody>
-                        </v-table>
                     </v-card>
                 </v-col>
             </v-row>
@@ -260,11 +166,7 @@
 
     <invoice-edit-dialog ref="invoiceEditDialog" />
     <invoice-detail-dialog ref="invoiceDetailDialog" />
-    <customer-edit-dialog ref="customerEditDialog" />
-    <customer-detail-dialog ref="customerDetailDialog" />
     <recurring-invoice-edit-dialog ref="recurringInvoiceEditDialog" />
-    <product-edit-dialog ref="productEditDialog" />
-    <product-link-dialog ref="productLinkDialog" />
     <confirm-dialog ref="confirmDialog"/>
     <snack-bar ref="snackbar" />
 </template>
@@ -283,31 +185,22 @@ import {
     mdiFileDocumentOutline,
     mdiFileDocumentEditOutline,
     mdiEmailEditOutline,
-    mdiAccountMultipleOutline,
-    mdiRepeat,
-    mdiPackageVariantClosed,
-    mdiLinkVariant
+    mdiRepeat
 } from '@mdi/js';
 
 import ConfirmDialog from '@/components/desktop/ConfirmDialog.vue';
 import SnackBar from '@/components/desktop/SnackBar.vue';
 import InvoiceEditDialog from './dialogs/InvoiceEditDialog.vue';
 import InvoiceDetailDialog from './dialogs/InvoiceDetailDialog.vue';
-import CustomerEditDialog from './dialogs/CustomerEditDialog.vue';
-import CustomerDetailDialog from './dialogs/CustomerDetailDialog.vue';
 import RecurringInvoiceEditDialog from './dialogs/RecurringInvoiceEditDialog.vue';
-import ProductEditDialog from './dialogs/ProductEditDialog.vue';
-import ProductLinkDialog from './dialogs/ProductLinkDialog.vue';
 
 import { useI18n } from '@/locales/helpers.ts';
 import { useInvoiceListPageBase } from '@/views/base/invoices/InvoiceListPageBase.ts';
 import { useRecurringInvoiceListPageBase } from '@/views/base/invoices/RecurringInvoiceListPageBase.ts';
-import { useProductEditPageBase } from '@/views/base/invoices/ProductEditPageBase.ts';
 
 import { useInvoicesStore } from '@/stores/invoice.ts';
 
-import type { Customer, Invoice, RecurringInvoice } from '@/models/invoice.ts';
-import type { Product } from '@/models/product.ts';
+import type { Invoice, RecurringInvoice } from '@/models/invoice.ts';
 
 import { type InvoiceDisplayStatus, getInvoiceDisplayBalanceDue } from '@/lib/invoice.ts';
 
@@ -315,11 +208,7 @@ type ConfirmDialogType = InstanceType<typeof ConfirmDialog>;
 type SnackBarType = InstanceType<typeof SnackBar>;
 type InvoiceEditDialogType = InstanceType<typeof InvoiceEditDialog>;
 type InvoiceDetailDialogType = InstanceType<typeof InvoiceDetailDialog>;
-type CustomerEditDialogType = InstanceType<typeof CustomerEditDialog>;
-type CustomerDetailDialogType = InstanceType<typeof CustomerDetailDialog>;
 type RecurringInvoiceEditDialogType = InstanceType<typeof RecurringInvoiceEditDialog>;
-type ProductEditDialogType = InstanceType<typeof ProductEditDialog>;
-type ProductLinkDialogType = InstanceType<typeof ProductLinkDialog>;
 
 const { tt } = useI18n();
 const {
@@ -341,7 +230,6 @@ const {
     getSourceNumber,
     getScheduleText
 } = useRecurringInvoiceListPageBase();
-const { getProductSummary, formatRate } = useProductEditPageBase();
 
 const invoicesStore = useInvoicesStore();
 const route = useRoute();
@@ -351,32 +239,22 @@ const confirmDialog = useTemplateRef<ConfirmDialogType>('confirmDialog');
 const snackbar = useTemplateRef<SnackBarType>('snackbar');
 const invoiceEditDialog = useTemplateRef<InvoiceEditDialogType>('invoiceEditDialog');
 const invoiceDetailDialog = useTemplateRef<InvoiceDetailDialogType>('invoiceDetailDialog');
-const customerEditDialog = useTemplateRef<CustomerEditDialogType>('customerEditDialog');
-const customerDetailDialog = useTemplateRef<CustomerDetailDialogType>('customerDetailDialog');
 const recurringInvoiceEditDialog = useTemplateRef<RecurringInvoiceEditDialogType>('recurringInvoiceEditDialog');
-const productEditDialog = useTemplateRef<ProductEditDialogType>('productEditDialog');
-const productLinkDialog = useTemplateRef<ProductLinkDialogType>('productLinkDialog');
 
 const statusColors: Record<InvoiceDisplayStatus, string> = { unpaid: 'warning', partial: 'primary', paid: 'success', overdue: 'error' };
 
-const activeView = ref<'invoices' | 'customers' | 'recurring' | 'products'>('invoices');
+const activeView = ref<'invoices' | 'recurring'>('invoices');
 const updating = ref<boolean>(false);
-const hoveredCustomerId = ref<string>('');
 const hoveredRecurringId = ref<string>('');
-const hoveredProductId = ref<string>('');
 
-const allCustomers = computed<Customer[]>(() => invoicesStore.allCustomers);
-const allProducts = computed<Product[]>(() => invoicesStore.allProducts);
-const activeViewTitle = computed<string>(() => activeView.value === 'invoices' ? 'Invoices' : activeView.value === 'customers' ? 'Customers' : activeView.value === 'products' ? 'Products' : 'Recurring');
+const activeViewTitle = computed<string>(() => activeView.value === 'invoices' ? 'Invoices' : 'Recurring');
 
 function reload(force: boolean): void {
     loading.value = true;
 
     Promise.all([
         invoicesStore.loadAllInvoices({ force: force }),
-        invoicesStore.loadAllCustomers({ force: force }),
         invoicesStore.loadAllRecurringInvoices({ force: force }),
-        invoicesStore.loadAllProducts({ force: force }),
         invoicesStore.loadInvoiceProfile({ force: false })
     ]).then(() => {
         loading.value = false;
@@ -396,28 +274,6 @@ function reload(force: boolean): void {
 }
 
 function add(): void {
-    if (activeView.value === 'customers') {
-        customerEditDialog.value?.open({}).then(result => {
-            snackbar.value?.showMessage(result.message);
-        }).catch(error => {
-            if (error && !error.processed) {
-                snackbar.value?.showError(error);
-            }
-        });
-        return;
-    }
-
-    if (activeView.value === 'products') {
-        productEditDialog.value?.open({}).then(result => {
-            snackbar.value?.showMessage(result.message);
-        }).catch(error => {
-            if (error && !error.processed) {
-                snackbar.value?.showError(error);
-            }
-        });
-        return;
-    }
-
     invoiceEditDialog.value?.open({}).then(result => {
         snackbar.value?.showMessage(result.message);
         reload(false);
@@ -442,62 +298,6 @@ function viewById(invoiceId: string): void {
         if (error && !error.processed) {
             snackbar.value?.showError(error);
         }
-    });
-}
-
-function viewCustomer(customer: Customer): void {
-    customerDetailDialog.value?.open({ id: customer.id });
-}
-
-function editCustomer(customer: Customer): void {
-    customerEditDialog.value?.open({ id: customer.id, currentCustomer: customer }).then(result => {
-        snackbar.value?.showMessage(result.message);
-    }).catch(error => {
-        if (error && !error.processed) {
-            snackbar.value?.showError(error);
-        }
-    });
-}
-
-function removeCustomer(customer: Customer): void {
-    confirmDialog.value?.open('Are you sure you want to delete this customer?').then(() => {
-        updating.value = true;
-
-        invoicesStore.deleteCustomer({ customer }).then(() => {
-            updating.value = false;
-        }).catch(error => {
-            updating.value = false;
-
-            if (!error.processed) {
-                snackbar.value?.showError(error);
-            }
-        });
-    });
-}
-
-function editProduct(product: Product): void {
-    productEditDialog.value?.open({ id: product.id, currentProduct: product }).then(result => {
-        snackbar.value?.showMessage(result.message);
-    }).catch(error => {
-        if (error && !error.processed) {
-            snackbar.value?.showError(error);
-        }
-    });
-}
-
-function removeProduct(product: Product): void {
-    confirmDialog.value?.open('Are you sure you want to delete this product?').then(() => {
-        updating.value = true;
-
-        invoicesStore.deleteProduct({ product }).then(() => {
-            updating.value = false;
-        }).catch(error => {
-            updating.value = false;
-
-            if (!error.processed) {
-                snackbar.value?.showError(error); // "product is used by invoices, archive it instead"
-            }
-        });
     });
 }
 
