@@ -267,10 +267,13 @@ func (s *AlertService) Ingest(c core.Context, uid int64, sender string, text str
 
 	// A NEFT / RTGS transfer between two own accounts arrives as two SMS that never name each
 	// other's account, only the same UTR: pair this one with the other half recorded earlier
+	// (not when this SMS fell back to "Unmatched alerts": that would replace a real half with a
+	// transfer to the fallback account)
 	var utrMatchedTransactionId int64
+	utr := alerts.TransferReference(text)
 
-	if !classification.IsTransfer {
-		otherAccountId, matchedTransactionId, isDuplicate, err := s.pairByTransferReference(c, uid, account.AccountId, parsed, alerts.TransferReference(text), receivedAt)
+	if !classification.IsTransfer && !forcedReview {
+		otherAccountId, matchedTransactionId, isDuplicate, err := s.pairByTransferReference(c, uid, account.AccountId, parsed, utr, receivedAt)
 
 		if err != nil {
 			return nil, s.failAfterStore(c, uid, message.AlertId, err)
@@ -314,7 +317,13 @@ func (s *AlertService) Ingest(c core.Context, uid int64, sender string, text str
 			srcAccountId, dstAccountId = classification.OtherAccountId, account.AccountId
 		}
 
-		isDuplicate, err := s.isDuplicateOwnTransfer(c, uid, srcAccountId, dstAccountId, parsed.Amount, receivedAt, tagIds[tagAutoSms])
+		// (a half paired by its UTR still has its plain other half, so no transfer for that UTR
+		// exists yet; an equal transfer found by amount would be a different NEFT)
+		isDuplicate := false
+
+		if utrMatchedTransactionId == 0 {
+			isDuplicate, err = s.isDuplicateOwnTransfer(c, uid, srcAccountId, dstAccountId, parsed.Amount, receivedAt, utr, tagIds[tagAutoSms])
+		}
 
 		if err != nil {
 			return nil, s.failAfterStore(c, uid, message.AlertId, err)
@@ -342,7 +351,7 @@ func (s *AlertService) Ingest(c core.Context, uid int64, sender string, text str
 	} else if len(extraTags) == 0 {
 		// One side of an own-account transfer whose SMS doesn't name the other account (e.g. a
 		// credit "from JOHN DOE"): the other side's SMS may already have recorded the transfer.
-		isDuplicate, err := s.isDuplicateTransferSide(c, uid, account.AccountId, parsed.Direction, parsed.Amount, receivedAt, tagIds[tagAutoSms])
+		isDuplicate, err := s.isDuplicateTransferSide(c, uid, account.AccountId, parsed.Direction, parsed.Amount, receivedAt, utr, tagIds[tagAutoSms])
 
 		if err != nil {
 			return nil, s.failAfterStore(c, uid, message.AlertId, err)
@@ -620,15 +629,50 @@ func uniqueAccountByLast4(accounts []*models.Account, last4 string) *models.Acco
 // side's alert, within 3 days either side of this alert's received time. It is checked before
 // creating any own-account transfer, regardless of which side (debit or credit) is processed
 // first, so that whichever SMS arrives second is recognised as a duplicate rather than
-// recording the same physical transfer twice.
-func (s *AlertService) isDuplicateOwnTransfer(c core.Context, uid int64, srcAccountId int64, dstAccountId int64, amount int64, receivedAt time.Time, autoSmsTagId int64) (bool, error) {
+// recording the same physical transfer twice. A transfer recorded from an alert carrying a
+// different NEFT / RTGS UTR than this alert's (utr) is a different transfer and never matches.
+func (s *AlertService) isDuplicateOwnTransfer(c core.Context, uid int64, srcAccountId int64, dstAccountId int64, amount int64, receivedAt time.Time, utr string, autoSmsTagId int64) (bool, error) {
 	transfers, err := s.findAutoSmsTransfers(c, uid, "account_id=? AND related_account_id=?", []any{srcAccountId, dstAccountId}, amount, receivedAt, autoSmsTagId)
+
+	if err != nil || len(transfers) == 0 || utr == "" {
+		return len(transfers) > 0, err
+	}
+
+	messages, err := s.addedMessagesOf(c, uid, transfers)
 
 	if err != nil {
 		return false, err
 	}
 
-	return len(transfers) > 0, nil
+	otherUtr := make(map[int64]bool, len(messages))
+
+	for i := 0; i < len(messages); i++ {
+		if reference := alerts.TransferReference(messages[i].Text); reference != "" && reference != utr {
+			otherUtr[messages[i].TransactionId] = true
+		}
+	}
+
+	for i := 0; i < len(transfers); i++ {
+		if !otherUtr[transfers[i].TransactionId] {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+// addedMessagesOf returns this user's added alert rows that created the given transactions
+func (s *AlertService) addedMessagesOf(c core.Context, uid int64, transactions []*models.Transaction) ([]*models.AlertMessage, error) {
+	transactionIds := make([]int64, len(transactions))
+
+	for i := 0; i < len(transactions); i++ {
+		transactionIds[i] = transactions[i].TransactionId
+	}
+
+	var messages []*models.AlertMessage
+	err := s.UserDataDB(uid).NewSession(c).Where("uid=? AND outcome=?", uid, "added").In("transaction_id", transactionIds).Find(&messages)
+
+	return messages, err
 }
 
 // isDuplicateTransferSide reports whether an alert that is about to become a plain income /
@@ -637,7 +681,9 @@ func (s *AlertService) isDuplicateOwnTransfer(c core.Context, uid int64, srcAcco
 // into accountId matches a transfer *to* it recorded from a debit SMS, and a debit from accountId
 // matches a transfer *from* it recorded from a credit SMS. Without this, an SMS that doesn't name
 // the other account (e.g. "credited ... by IMPS from JOHN DOE") would count the money twice.
-func (s *AlertService) isDuplicateTransferSide(c core.Context, uid int64, accountId int64, direction alerts.Direction, amount int64, receivedAt time.Time, autoSmsTagId int64) (bool, error) {
+// A transfer recorded from an alert carrying a different NEFT / RTGS UTR than this alert's (utr)
+// is a different transfer of the same amount and never matches.
+func (s *AlertService) isDuplicateTransferSide(c core.Context, uid int64, accountId int64, direction alerts.Direction, amount int64, receivedAt time.Time, utr string, autoSmsTagId int64) (bool, error) {
 	condition, originDirection := "related_account_id=?", alerts.Debit
 
 	if direction == alerts.Debit {
@@ -650,20 +696,17 @@ func (s *AlertService) isDuplicateTransferSide(c core.Context, uid int64, accoun
 		return false, err
 	}
 
-	transferIds := make([]int64, len(transfers))
-
-	for i := 0; i < len(transfers); i++ {
-		transferIds[i] = transfers[i].TransactionId
-	}
-
-	var messages []*models.AlertMessage
-	err = s.UserDataDB(uid).NewSession(c).Where("uid=? AND outcome=?", uid, "added").In("transaction_id", transferIds).Find(&messages)
+	messages, err := s.addedMessagesOf(c, uid, transfers)
 
 	if err != nil {
 		return false, err
 	}
 
 	for i := 0; i < len(messages); i++ {
+		if reference := alerts.TransferReference(messages[i].Text); utr != "" && reference != "" && reference != utr {
+			continue
+		}
+
 		if alerts.Parse(messages[i].Sender, messages[i].Text).Direction == originDirection {
 			return true, nil
 		}
@@ -771,8 +814,8 @@ const transferReferenceWindow = 48 * time.Hour
 // direction is a repeat of this SMS (duplicate). The opposite direction on a different own
 // account B is the other half of a transfer when its transaction is still the plain expense /
 // income it created (B and that transaction's id are returned, and the caller replaces exactly
-// that transaction, see replaceTransferSide) or a transfer between this account and B (B alone
-// is returned, and isDuplicateOwnTransfer finds the existing transfer). Amount and time alone never pair.
+// that transaction, see replaceTransferSide); when it is already a transfer between this account
+// and B, this SMS is a repeat of that transfer's other half (duplicate). Amount and time alone never pair.
 func (s *AlertService) pairByTransferReference(c core.Context, uid int64, accountId int64, parsed alerts.ParsedAlert, utr string, receivedAt time.Time) (int64, int64, bool, error) {
 	if utr == "" {
 		return 0, 0, false, nil
@@ -836,12 +879,12 @@ func (s *AlertService) pairByTransferReference(c core.Context, uid int64, accoun
 		isPlain := transaction.Type == plainType && transaction.AccountId == other.AccountId
 		isTransfer := transaction.Type == models.TRANSACTION_DB_TYPE_TRANSFER_OUT && ((transaction.AccountId == accountId && transaction.RelatedAccountId == other.AccountId) || (transaction.AccountId == other.AccountId && transaction.RelatedAccountId == accountId))
 
-		if isPlain || isTransfer {
-			otherAccountId = other.AccountId
+		if isTransfer {
+			return 0, 0, true, nil
 		}
 
 		if isPlain {
-			plainTransactionId = transaction.TransactionId
+			otherAccountId, plainTransactionId = other.AccountId, transaction.TransactionId
 		}
 	}
 

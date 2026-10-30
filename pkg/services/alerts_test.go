@@ -606,3 +606,59 @@ func TestIngestNeftReplacesExactlyTheUtrHalf(t *testing.T) {
 	assert.Equal(t, models.TRANSACTION_DB_TYPE_TRANSFER_OUT, transfer.Type)
 	assert.NotContains(t, tagNamesOf(t, ctx, uid, r3.TransactionId), "Needs review")
 }
+
+// Two own-account NEFTs of the same amount between the same two accounts a day apart are two
+// transfers: the second must never be taken for a side of the first (different UTRs)
+func TestIngestNeftSameAmountTwiceIsTwoTransfers(t *testing.T) {
+	for _, firstCreditFirst := range []bool{false, true} {
+		for _, secondCreditFirst := range []bool{false, true} {
+			ctx, uid := newAlertTestUser(t, "PNB 4215", "HDFC Bank 7731")
+			at := time.Now().Add(-48 * time.Hour)
+			ingestPair := func(utr string, at time.Time, creditFirst bool) {
+				debit := strings.ReplaceAll(neftPnbDebit, "PUNBY26303389748", utr)
+				credit := strings.ReplaceAll(neftHdfcCredit, "PUNBY26303389748", utr)
+				first, second, firstSender, secondSender := debit, credit, "XX-PNBSMS", "XX-HDFCBK"
+				if creditFirst {
+					first, second, firstSender, secondSender = credit, debit, "XX-HDFCBK", "XX-PNBSMS"
+				}
+				r1, err := Alerts.Ingest(ctx, uid, firstSender, first, at)
+				assert.Nil(t, err)
+				assert.Equal(t, "added", r1.Outcome, "utr %s first half", utr)
+				r2, err := Alerts.Ingest(ctx, uid, secondSender, second, at.Add(30*time.Minute))
+				assert.Nil(t, err)
+				assert.Equal(t, "added", r2.Outcome, "utr %s second half", utr)
+			}
+			ingestPair("PUNBY26303389748", at, firstCreditFirst)
+			ingestPair("PUNBX26304969498", at.Add(24*time.Hour), secondCreditFirst)
+
+			var all []*models.Transaction
+			assert.Nil(t, datastore.Container.UserDataStore.Choose(uid).NewSession(ctx).Where("uid=? AND deleted=? AND type<>?", uid, false, models.TRANSACTION_DB_TYPE_TRANSFER_IN).Find(&all))
+			assert.Len(t, all, 2, "orders %v/%v", firstCreditFirst, secondCreditFirst)
+			for _, tx := range all {
+				assert.Equal(t, models.TRANSACTION_DB_TYPE_TRANSFER_OUT, tx.Type)
+				assert.Equal(t, accountIdByName(t, ctx, uid, "PNB 4215"), tx.AccountId)
+				assert.Equal(t, accountIdByName(t, ctx, uid, "HDFC Bank 7731"), tx.RelatedAccountId)
+			}
+		}
+	}
+}
+
+// A half whose account is unknown lands on "Unmatched alerts": it must not replace the real
+// half recorded on an own account with a transfer to the fallback account
+func TestIngestNeftUnmatchedAccountIsNotPaired(t *testing.T) {
+	ctx, uid := newAlertTestUser(t, "PNB 4215")
+	at := time.Now().Add(-time.Hour)
+	r1, _ := Alerts.Ingest(ctx, uid, "XX-PNBSMS", neftPnbDebit, at)
+	assert.Equal(t, "added", r1.Outcome)
+	r2, err := Alerts.Ingest(ctx, uid, "XX-HDFCBK", neftHdfcCredit, at.Add(43*time.Minute))
+	assert.Nil(t, err)
+	assert.Equal(t, "added", r2.Outcome)
+	assert.Equal(t, 2, countTransactions(t, ctx, uid))
+	kept, err := Transactions.GetTransactionByTransactionId(ctx, uid, r1.TransactionId)
+	assert.Nil(t, err)
+	assert.Equal(t, models.TRANSACTION_DB_TYPE_EXPENSE, kept.Type)
+	income, err := Transactions.GetTransactionByTransactionId(ctx, uid, r2.TransactionId)
+	assert.Nil(t, err)
+	assert.Equal(t, models.TRANSACTION_DB_TYPE_INCOME, income.Type)
+	assert.Equal(t, "Unmatched alerts", accountNameOf(t, ctx, uid, r2.TransactionId))
+}
