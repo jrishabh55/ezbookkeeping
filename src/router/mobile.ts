@@ -70,6 +70,7 @@ import InvoiceProductLinkPage from '@/views/mobile/invoices/ProductLinkPage.vue'
 import InvoiceProfilePage from '@/views/mobile/invoices/ProfilePage.vue';
 import InvoiceEmailTemplatePage from '@/views/mobile/invoices/EmailTemplatePage.vue';
 import InvoiceRecurringListPage from '@/views/mobile/invoices/RecurringListPage.vue';
+import InvoiceEstimateListPage from '@/views/mobile/invoices/EstimateListPage.vue';
 import InvoiceSendPage from '@/views/mobile/invoices/SendPage.vue';
 
 function asyncResolve(component: unknown): (ctx: Router.RouteCallbackCtx) => void {
@@ -502,6 +503,11 @@ const routes: Router.RouteParameters[] = [
     {
         path: '/invoice/recurring/list',
         async: asyncResolve(InvoiceRecurringListPage),
+        beforeEnter: [checkLogin]
+    },
+    {
+        path: '/invoice/estimate/list',
+        async: asyncResolve(InvoiceEstimateListPage),
         beforeEnter: [checkLogin]
     },
     {

@@ -18,6 +18,7 @@
         <template v-else>
             <f7-list form strong inset dividers class="margin-vertical">
                 <f7-list-item class="list-item-with-header-and-title" link="#"
+                              :class="{ 'disabled': !!invoice.estimateId }"
                               :header="tt('Customer')"
                               :title="selectedCustomerName"
                               @click="showCustomerPopup = true">
@@ -34,13 +35,13 @@
                     </list-item-selection-popup>
                 </f7-list-item>
                 <f7-list-input type="text" autocomplete="off" clear-button
-                               :label="tt('Invoice Number')" :placeholder="tt('Invoice Number')"
+                               :label="tt(numberLabel)" :placeholder="tt(numberLabel)"
                                v-model:value="invoice.number"></f7-list-input>
                 <!-- lines and payments are in this currency, so it is fixed once the invoice exists -->
                 <f7-list-item class="list-item-with-header-and-title list-item-no-item-after" link="#"
-                              :class="{ 'disabled': !!editInvoiceId }"
+                              :class="{ 'disabled': !!editInvoiceId || !!invoice.estimateId }"
                               :header="tt('Currency')"
-                              :no-chevron="!!editInvoiceId"
+                              :no-chevron="!!editInvoiceId || !!invoice.estimateId"
                               @click="showCurrencyPopup = true">
                     <template #title>
                         <div class="no-padding no-margin">
@@ -61,7 +62,7 @@
                     </list-item-selection-popup>
                 </f7-list-item>
                 <f7-list-item class="list-item-with-header-and-title" link="#" no-chevron
-                              :header="tt('Invoice Date')"
+                              :header="tt(dateLabel)"
                               :title="formatDate(invoice.invoiceDate)"
                               @click="showInvoiceDateSheet = true">
                     <date-selection-sheet v-model:show="showInvoiceDateSheet"
@@ -70,7 +71,7 @@
                     </date-selection-sheet>
                 </f7-list-item>
                 <f7-list-item class="list-item-with-header-and-title" link="#" no-chevron
-                              :header="tt('Payment Due')"
+                              :header="tt(dueDateLabel)"
                               :title="formatDate(invoice.dueDate)"
                               @click="showDueDateSheet = true">
                     <date-selection-sheet v-model:show="showDueDateSheet"
@@ -125,6 +126,29 @@
                 </f7-list>
             </f7-block>
 
+            <f7-list strong inset dividers class="margin-vertical" v-if="isEstimate">
+                <!-- list-number-input must go in #list, so the whole block goes there to keep its order -->
+                <template #list>
+                    <f7-list-item group-title>
+                        <small>{{ tt('Milestones') }}</small>
+                        <small v-if="invoice.milestones.length">{{ milestonesProblem ? tt(milestonesProblem) : formatMilestonePercent(milestonePercentTotal) + ' ✓' }}</small>
+                    </f7-list-item>
+                    <template :key="index" v-for="(milestone, index) in invoice.milestones">
+                        <f7-list-input type="text" autocomplete="off" clear-button
+                                       :label="tt('Milestone') + ' #' + (index + 1)" :placeholder="tt('Milestone')"
+                                       v-model:value="milestone.label"></f7-list-input>
+                        <list-number-input :label="tt('Percent (%)')" :placeholder="tt('Percent (%)')"
+                                           :min-value="0.01" :max-value="100" :max-decimal-count="2"
+                                           :model-value="milestone.percent / 100"
+                                           @update:model-value="milestone.percent = Math.round($event * 100)"></list-number-input>
+                        <f7-list-item :title="tt('Amount')" :after="formatAmount(milestoneAmounts[index] ?? 0)"></f7-list-item>
+                        <f7-list-button color="red" :title="tt('Remove')" @click="removeMilestone(index)"></f7-list-button>
+                    </template>
+                    <f7-list-button :class="{ 'disabled': invoice.milestones.length >= ESTIMATE_MAX_MILESTONES }"
+                                    :title="tt('Add Milestone')" @click="addMilestone"></f7-list-button>
+                </template>
+            </f7-list>
+
             <list-item-selection-popup value-type="item" key-field="id" value-field="id" title-field="name"
                                        :title="tt('Product')" :enable-filter="true"
                                        :filter-placeholder="tt('Product')" :filter-no-items-text="tt('No results')"
@@ -167,6 +191,7 @@
             <f7-actions-group>
                 <f7-actions-button @click="addLine">{{ tt('Add Line') }}</f7-actions-button>
                 <f7-actions-button @click="addCustomer">{{ tt('Add Customer') }}</f7-actions-button>
+                <f7-actions-button v-if="isEstimate" @click="addMilestone">{{ tt('Add Milestone') }}</f7-actions-button>
             </f7-actions-group>
             <f7-actions-group>
                 <f7-actions-button bold close>{{ tt('Cancel') }}</f7-actions-button>
@@ -190,6 +215,7 @@ import type { LocalizedCurrencyInfo } from '@/core/currency.ts';
 import { TRANSACTION_MAX_AMOUNT } from '@/consts/transaction.ts';
 import type { InvoiceProfile } from '@/models/invoice.ts';
 import { INVOICE_QUANTITY_SCALE } from '@/lib/invoice.ts';
+import { ESTIMATE_MAX_MILESTONES, formatMilestonePercent } from '@/lib/estimate.ts';
 
 const props = defineProps<{
     f7route: Router.Route;
@@ -205,7 +231,11 @@ const {
     invoice,
     allCustomers,
     allProducts,
+    isEstimate,
     title,
+    numberLabel,
+    dateLabel,
+    dueDateLabel,
     inputEmptyProblemMessage,
     inputIsEmpty,
     totals,
@@ -213,12 +243,18 @@ const {
     allTaxTypes,
     selectedTaxTypeName,
     taxRatePercent,
+    milestoneAmounts,
+    milestonePercentTotal,
+    milestonesProblem,
     addLine,
     selectProduct,
     getLinkedProductName,
     removeLine,
+    addMilestone,
+    removeMilestone,
     setInvoice,
     prepareNewInvoice,
+    prepareConvertedInvoice,
     setInvoiceDate,
     suggestNumber: loadSuggestedNumber,
     formatAmount,
@@ -269,19 +305,24 @@ function init(): void {
     loading.value = true;
     editInvoiceId.value = query['id'] || null;
 
+    const fromEstimate = query['fromEstimate'] || '';
+
     Promise.all([
         invoicesStore.loadAllCustomers({ force: false }),
         invoicesStore.loadInvoiceProfile({ force: false }),
         invoicesStore.loadAllProducts({ force: false }).catch(() => []),
-        query['id'] ? invoicesStore.getInvoice({ invoiceId: query['id'] }) : Promise.resolve(null),
+        query['id'] ? invoicesStore.getInvoice({ invoiceId: query['id'] })
+            : fromEstimate ? invoicesStore.getEstimateInvoiceDraft({ estimateId: fromEstimate, milestoneId: query['milestoneId'] || '' }) : Promise.resolve(null),
         query['duplicateFrom'] ? invoicesStore.getInvoice({ invoiceId: query['duplicateFrom'] }) : Promise.resolve(null)
     ]).then(([, loadedProfile, , loadedInvoice, duplicateFrom]) => {
         profile.value = loadedProfile;
 
-        if (loadedInvoice) {
+        if (loadedInvoice && query['id']) {
             setInvoice(loadedInvoice, loadedProfile);
+        } else if (loadedInvoice) {
+            prepareConvertedInvoice(loadedProfile, loadedInvoice);
         } else {
-            prepareNewInvoice(loadedProfile, duplicateFrom);
+            prepareNewInvoice(loadedProfile, duplicateFrom, query['kind'] === 'estimate' ? 'estimate' : 'invoice');
             suggestNumber();
         }
 
@@ -354,9 +395,11 @@ function save(): void {
     invoicesStore.saveInvoice({ invoice: invoice.value, isEdit: !!editInvoiceId.value }).then(saved => {
         submitting.value = false;
         hideLoading();
-        showToast(editInvoiceId.value ? 'You have saved this invoice' : 'You have added a new invoice');
+        showToast(isEstimate.value ?
+            (editInvoiceId.value ? 'You have saved this estimate' : 'You have added a new estimate') :
+            (editInvoiceId.value ? 'You have saved this invoice' : 'You have added a new invoice'));
 
-        if (props.f7route.query['duplicateFrom']) {
+        if (props.f7route.query['duplicateFrom'] || props.f7route.query['fromEstimate']) {
             router.navigate(`/invoice/detail?id=${saved.id}`, { reloadCurrent: true }); // open the copy in place of this page
         } else {
             router.back();

@@ -2,7 +2,7 @@
     <f7-page @page:afterin="onPageAfterIn">
         <f7-navbar>
             <f7-nav-left :class="{ 'disabled': loading || sending }" :back-link="tt('Back')"></f7-nav-left>
-            <f7-nav-title :title="tt('Send Invoice')"></f7-nav-title>
+            <f7-nav-title :title="tt(invoice?.kind === 'estimate' ? 'Send Estimate' : 'Send Invoice')"></f7-nav-title>
             <f7-nav-right :class="{ 'disabled': loading }">
                 <f7-link icon-f7="paperplane" :class="{ 'disabled': !sendRequest.to || sending || !emailTemplateValid }" :aria-label="tt('Send')" @click="send"></f7-link>
             </f7-nav-right>
@@ -109,7 +109,7 @@ function send(): void {
         sending.value = false;
         hideLoading();
         invoicesStore.loadAllRecurringInvoices({ force: false }).catch(() => []);
-        showToast('Invoice has been sent');
+        showToast(invoice.value?.kind === 'estimate' ? 'Estimate has been sent' : 'Invoice has been sent');
         router.back();
     }).catch(error => {
         sending.value = false;

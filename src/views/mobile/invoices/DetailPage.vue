@@ -18,7 +18,16 @@
             <f7-block>
                 <f7-button fill :disabled="downloadingPdf" @click="downloadPdf">{{ tt('Download PDF') }}</f7-button>
             </f7-block>
-            <f7-list strong inset dividers class="margin-vertical">
+            <f7-list strong inset dividers class="margin-vertical" v-if="isEstimate">
+                <f7-list-item :title="tt('Status')" :after="tt(estimateStatusName)"></f7-list-item>
+                <f7-list-item :title="tt('Sent on')" :after="sentOnText" v-if="sentOnText"></f7-list-item>
+                <f7-list-item :title="tt('Customer')" :after="invoice.billToName"></f7-list-item>
+                <f7-list-item :title="tt('Valid Until')" :after="formatDate(invoice.dueDate)"></f7-list-item>
+                <f7-list-item :title="tt('Total')" :after="formatAmount(invoice.total)"></f7-list-item>
+                <f7-list-item :title="estimateResponseText" v-if="estimateResponseText"></f7-list-item>
+                <f7-list-item :title="tt(`Client's note`)" :footer="invoice.responseNote" v-if="invoice.responseNote"></f7-list-item>
+            </f7-list>
+            <f7-list strong inset dividers class="margin-vertical" v-else>
                 <f7-list-item :title="tt('Status')" :after="tt(displayStatusName)"></f7-list-item>
                 <f7-list-item :title="tt('Sent on')" :after="sentOnText" v-if="sentOnText"></f7-list-item>
                 <f7-list-item :title="tt('Customer')" :after="invoice.billToName"></f7-list-item>
@@ -27,9 +36,36 @@
                 <f7-list-item :title="tt('Received')" :after="formatAmount(invoice.received)"></f7-list-item>
                 <f7-list-item :title="tt(shortfallName)" :after="formatAmount(shortfall)" v-if="shortfall > 0"></f7-list-item>
                 <f7-list-item :title="tt('Balance Due')" :after="formatAmount(balanceDue)" v-else></f7-list-item>
+                <f7-list-item :title="tt('format.misc.fromEstimate', { number: invoice.estimateNumber })"
+                              :link="'/invoice/detail?id=' + invoice.estimateId" v-if="invoice.estimateId"></f7-list-item>
             </f7-list>
 
-            <f7-list strong inset dividers class="margin-vertical">
+            <f7-list strong inset dividers class="margin-vertical" v-if="isEstimate">
+                <f7-list-item group-title>
+                    <small>{{ tt(invoice.milestones.length ? 'Milestones' : 'Invoices') }}</small>
+                </f7-list-item>
+                <template v-if="invoice.milestones.length">
+                    <f7-list-item :key="milestone.id" v-for="(milestone, index) in invoice.milestones"
+                                  :title="milestone.label"
+                                  :footer="`${formatMilestonePercent(milestone.percent)} · ${formatAmount(milestoneAmounts[index] ?? 0)}`"
+                                  :link="milestone.invoiceId ? '/invoice/detail?id=' + milestone.invoiceId : undefined">
+                        <template #after>
+                            <span v-if="milestone.invoiceId">{{ tt('format.misc.invoicedAs', { number: milestone.invoiceNumber }) }}</span>
+                            <f7-button small fill :class="{ 'disabled': updating || !canConvert }" :text="tt('Create Invoice')"
+                                       @click="convert(milestone.id)" v-else></f7-button>
+                        </template>
+                    </f7-list-item>
+                </template>
+                <template v-else>
+                    <f7-list-item :key="converted.id" v-for="converted in invoice.convertedInvoices"
+                                  :title="tt('format.misc.invoicedAs', { number: converted.number })"
+                                  :link="'/invoice/detail?id=' + converted.id"></f7-list-item>
+                    <f7-list-button :class="{ 'disabled': updating || !canConvert }" :title="tt('Convert to Invoice')"
+                                    @click="convert('')" v-if="!invoice.convertedInvoices.length"></f7-list-button>
+                </template>
+            </f7-list>
+
+            <f7-list strong inset dividers class="margin-vertical" v-if="!isEstimate">
                 <f7-list-item group-title>
                     <small>{{ tt('Payments') }}</small>
                 </f7-list-item>
@@ -60,7 +96,7 @@
                               @click="openEmail(email)"></f7-list-item>
             </f7-list>
 
-            <f7-list strong inset dividers class="margin-vertical" v-if="displayStatus !== 'paid'">
+            <f7-list strong inset dividers class="margin-vertical" v-if="!isEstimate && displayStatus !== 'paid'">
                 <f7-list-item group-title>
                     <small>{{ tt('Suggested Matches') }}</small>
                 </f7-list-item>
@@ -92,12 +128,15 @@
 
         <f7-actions close-by-outside-click close-on-escape :opened="showMoreActionSheet" @actions:closed="showMoreActionSheet = false">
             <f7-actions-group>
-                <f7-actions-button @click="f7router.navigate(`/invoice/edit?id=${invoiceId}`)">{{ tt('Edit') }}</f7-actions-button>
+                <f7-actions-button v-if="canEdit" @click="f7router.navigate(`/invoice/edit?id=${invoiceId}`)">{{ tt('Edit') }}</f7-actions-button>
                 <f7-actions-button @click="f7router.navigate(`/invoice/add?duplicateFrom=${invoiceId}`)">{{ tt('Duplicate') }}</f7-actions-button>
-                <f7-actions-button @click="regenerate">{{ tt('Regenerate with Current Customer Details') }}</f7-actions-button>
-                <f7-actions-button @click="toggleClosed">{{ invoice?.closedManually ? tt('Reopen') : tt('Mark as Paid') }}</f7-actions-button>
+                <f7-actions-button v-if="!isEstimate" @click="regenerate">{{ tt('Regenerate with Current Customer Details') }}</f7-actions-button>
+                <f7-actions-button v-if="!isEstimate" @click="toggleClosed">{{ invoice?.closedManually ? tt('Reopen') : tt('Mark as Paid') }}</f7-actions-button>
+                <f7-actions-button v-if="canMarkResponse" @click="markResponse('accepted')">{{ tt('Mark Accepted') }}</f7-actions-button>
+                <f7-actions-button v-if="canMarkDeclined" @click="markResponse('declined')">{{ tt('Mark Declined') }}</f7-actions-button>
+                <f7-actions-button v-if="canReopenEstimate" @click="reopen">{{ tt('Reopen') }}</f7-actions-button>
                 <f7-actions-button @click="printInvoice">{{ tt('Print') }}</f7-actions-button>
-                <f7-actions-button @click="showRepeatMonthlyPopup = true">{{ tt('Repeat') }}</f7-actions-button>
+                <f7-actions-button v-if="!isEstimate" @click="showRepeatMonthlyPopup = true">{{ tt('Repeat') }}</f7-actions-button>
                 <f7-actions-button @click="share">{{ tt('Share Link') }}</f7-actions-button>
                 <f7-actions-button @click="downloadPdf" :disabled="downloadingPdf">{{ tt('Download PDF') }}</f7-actions-button>
                 <f7-actions-button @click="f7router.navigate(`/invoice/send?id=${invoiceId}`)">{{ tt('Send') }}</f7-actions-button>
@@ -112,7 +151,7 @@
 
         <f7-actions close-by-outside-click close-on-escape :opened="showDeleteActionSheet" @actions:closed="showDeleteActionSheet = false">
             <f7-actions-group>
-                <f7-actions-label>{{ tt('Are you sure you want to delete this invoice?') }}</f7-actions-label>
+                <f7-actions-label>{{ tt(isEstimate ? 'Are you sure you want to delete this estimate?' : 'Are you sure you want to delete this invoice?') }}</f7-actions-label>
                 <f7-actions-button color="red" @click="remove">{{ tt('Delete') }}</f7-actions-button>
             </f7-actions-group>
             <f7-actions-group>
@@ -140,7 +179,7 @@
         </f7-popup>
         <f7-actions close-by-outside-click close-on-escape :opened="showShareActionSheet" @actions:closed="showShareActionSheet = false">
             <f7-actions-group>
-                <f7-actions-label>{{ tt('Anyone with this link can view this invoice.') }}</f7-actions-label>
+                <f7-actions-label>{{ tt(isEstimate ? 'Anyone with this link can view this estimate and accept or decline it.' : 'Anyone with this link can view this invoice.') }}</f7-actions-label>
                 <f7-actions-label class="invoice-public-link">{{ publicLinkUrl }}</f7-actions-label>
                 <f7-actions-button @click="copyLink">{{ tt('Copy') }}</f7-actions-button>
                 <f7-actions-button @click="updatePublicLink(true)">{{ tt('Reset Link') }}</f7-actions-button>
@@ -170,6 +209,7 @@ import { useAccountsStore } from '@/stores/account.ts';
 import { TextDirection } from '@/core/text.ts';
 import { TRANSACTION_MAX_AMOUNT } from '@/consts/transaction.ts';
 import type { InvoiceEmail, InvoicePayment } from '@/models/invoice.ts';
+import { formatMilestonePercent } from '@/lib/estimate.ts';
 
 const props = defineProps<{
     f7route: Router.Route;
@@ -194,6 +234,16 @@ const {
     sentOnText,
     viewedEmail,
     loadingEmail,
+    isEstimate,
+    estimateStatusName,
+    estimateResponseText,
+    canEdit,
+    canMarkResponse,
+    canMarkDeclined,
+    canReopenEstimate,
+    canConvert,
+    convertNeedsConfirm,
+    milestoneAmounts,
     formatAmount,
     formatDate,
     needsSettledAmount,
@@ -204,7 +254,9 @@ const {
     printInvoice,
     setPublicLink,
     copyPublicLink,
-    downloadInvoicePdf
+    downloadInvoicePdf,
+    setEstimateResponse,
+    reopenEstimate
 } = useInvoiceDetailPageBase();
 
 function downloadPdf(): void {
@@ -247,7 +299,7 @@ function load(): void {
         profile.value = loadedProfile;
         loading.value = false;
 
-        if (displayStatus.value === 'paid') {
+        if (displayStatus.value === 'paid' || loadedInvoice.kind === 'estimate') {
             suggestions.value = [];
             return;
         }
@@ -285,6 +337,29 @@ function runAndReload(action: () => Promise<unknown>): void {
             showToast(error.message || error);
         }
     });
+}
+
+function markResponse(status: 'accepted' | 'declined'): void {
+    showMoreActionSheet.value = false;
+    runAndReload(() => setEstimateResponse(status));
+}
+
+function reopen(): void {
+    showMoreActionSheet.value = false;
+    runAndReload(() => reopenEstimate());
+}
+
+// the editor opens with the invoice the estimate (milestoneId '') or a milestone turns into; saving it opens the new invoice
+function convert(milestoneId: string): void {
+    const open = (): void => {
+        props.f7router.navigate(`/invoice/add?fromEstimate=${invoiceId.value}&milestoneId=${milestoneId}`);
+    };
+
+    if (convertNeedsConfirm.value) {
+        showConfirm("This estimate isn't accepted yet. Convert anyway?", open);
+    } else {
+        open();
+    }
 }
 
 // a suggestion in another currency first asks what it settled in the invoice currency; same-currency links stay one tap
