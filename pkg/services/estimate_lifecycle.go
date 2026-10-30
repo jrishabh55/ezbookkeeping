@@ -18,6 +18,7 @@ func estimateHasInvoices(sess *xorm.Session, uid int64, estimateId int64) (bool,
 // lockInvoiceRow writes the (non-deleted) invoice or estimate row as the first statement of a transaction, so conversions, edits and
 // deletes of one estimate wait for each other and every read after it sees what the one before committed; the checks that follow
 // ("nothing invoiced yet", "milestone still open") are then not racy. It touches only updated_unix_time.
+// Lock order rule: when a transaction locks both, it locks the invoice's own row before its parent estimate's, never the reverse.
 func lockInvoiceRow(sess *xorm.Session, uid int64, invoiceId int64, now int64) error {
 	_, err := sess.Cols("updated_unix_time").Where("uid=? AND deleted=? AND invoice_id=?", uid, false, invoiceId).Update(&models.Invoice{UpdatedUnixTime: now})
 	return err

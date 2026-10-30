@@ -254,7 +254,9 @@ func (s *InvoiceService) CreateInvoiceFromEstimate(c core.Context, invoice *mode
 
 	return s.UserDataDB(invoice.Uid).DoTransaction(c, func(sess *xorm.Session) error {
 		// writing the estimate row first makes two conversions of the same estimate (or a conversion and an edit or delete of it)
-		// wait for each other; everything below then re-reads the estimate and its milestones as the previous one left them
+		// wait for each other; everything below then re-reads the estimate and its milestones as the previous one left them.
+		// Conversion locks only the estimate row: it reads existing invoices with plain SELECTs, writes milestone rows and inserts a
+		// new invoice, but never updates an existing invoice row, so it cannot invert the invoice → estimate lock order
 		if err := lockInvoiceRow(sess, invoice.Uid, estimateId, invoice.CreatedUnixTime); err != nil {
 			return err
 		}

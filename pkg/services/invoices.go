@@ -606,7 +606,12 @@ func (s *InvoiceService) ModifyInvoice(c core.Context, invoice *models.Invoice, 
 	invoice.UpdatedUnixTime = time.Now().Unix()
 
 	return s.UserDataDB(invoice.Uid).DoTransaction(c, func(sess *xorm.Session) error {
-		// an invoice made from an estimate also locks the estimate, so a conversion's remainder never reads a half-applied edit
+		// lock order (see lockInvoiceRow): the invoice row first, then its estimate. An invoice made from an estimate also locks the
+		// estimate, so a conversion's remainder never reads a half-applied edit
+		if err := lockInvoiceRow(sess, invoice.Uid, invoice.InvoiceId, invoice.UpdatedUnixTime); err != nil {
+			return err
+		}
+
 		stored := &models.Invoice{}
 		if _, err := sess.Cols("estimate_id").Where("uid=? AND deleted=? AND invoice_id=?", invoice.Uid, false, invoice.InvoiceId).Get(stored); err != nil {
 			return err
