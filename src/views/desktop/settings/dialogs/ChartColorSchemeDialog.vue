@@ -41,7 +41,7 @@
                                         ghost-class="dragging-item"
                                         v-model="chartColors">
                             <template #item="{ element, index }">
-                                <tr @mouseenter="hoveredIndex = index" @mouseleave="hoveredIndex = ''">
+                                <tr>
                                     <td>
                                         <div class="d-flex align-center">
                                             <div class="d-flex align-center">
@@ -53,14 +53,12 @@
 
                                             <v-spacer/>
 
-                                            <template v-if="hoveredIndex === index">
-                                                <v-btn class="px-2" color="default"
-                                                       density="comfortable" variant="text"
-                                                       :prepend-icon="mdiDeleteOutline"
-                                                       @click="removeChartColor(index)">
-                                                    {{ tt('Delete') }}
-                                                </v-btn>
-                                            </template>
+                                            <v-btn class="px-2" color="default"
+                                                   density="comfortable" variant="text"
+                                                   :prepend-icon="mdiDeleteOutline"
+                                                   @click="removeChartColor(index)">
+                                                {{ tt('Delete') }}
+                                            </v-btn>
 
                                             <span class="ms-1">
                                             <v-icon class="drag-handle" :aria-label="tt('Drag to Reorder')" :icon="mdiDrag"/>
@@ -125,7 +123,6 @@ let rejectFunc: (() => void) | null = null;
 
 const showState = ref<boolean>(false);
 const showRawData = ref<boolean>(false);
-const hoveredIndex = ref<string>('');
 
 function open(): Promise<void> {
     loadChartColorsFromSettings();

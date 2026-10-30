@@ -107,8 +107,7 @@
                                         </tr>
 
                                         <tr class="exchange-rates-table-row-data" :key="exchangeRate.currencyCode"
-                                            v-for="exchangeRate in availableExchangeRates"
-                                            @mouseenter="hoveredCurrency = exchangeRate.currencyCode" @mouseleave="hoveredCurrency = ''">
+                                            v-for="exchangeRate in availableExchangeRates">
                                             <td>
                                                 <div class="d-flex align-center">
                                                     <span>{{ exchangeRate.currencyDisplayName }}</span>
@@ -116,26 +115,24 @@
 
                                                     <v-spacer/>
 
-                                                    <template v-if="hoveredCurrency === exchangeRate.currencyCode && !loading">
-                                                        <v-btn class="px-2 ms-2" color="default"
-                                                               density="comfortable" variant="text"
-                                                               v-if="exchangeRate.currencyCode !== baseCurrency"
-                                                               @click="setAsBaseline(exchangeRate.currencyCode, getFinalConvertedAmount(exchangeRate, false))">
-                                                            {{ tt('Set as Base') }}
-                                                        </v-btn>
-                                                        <v-btn class="px-2" color="default"
-                                                               density="comfortable" variant="text"
-                                                               :prepend-icon="mdiDeleteOutline"
-                                                               :loading="customExchangeRateRemoving[exchangeRate.currencyCode]"
-                                                               :disabled="loading || updating"
-                                                               v-if="exchangeRate.currencyCode !== defaultCurrency && isUserCustomExchangeRates"
-                                                               @click="remove(exchangeRate.currencyCode)">
-                                                            <template #loader>
-                                                                <v-progress-circular indeterminate size="20" width="2"/>
-                                                            </template>
-                                                            {{ tt('Delete') }}
-                                                        </v-btn>
-                                                    </template>
+                                                    <v-btn class="px-2 ms-2" color="default"
+                                                           density="comfortable" variant="text"
+                                                           v-if="exchangeRate.currencyCode !== baseCurrency"
+                                                           @click="setAsBaseline(exchangeRate.currencyCode, getFinalConvertedAmount(exchangeRate, false))">
+                                                        {{ tt('Set as Base') }}
+                                                    </v-btn>
+                                                    <v-btn class="px-2" color="default"
+                                                           density="comfortable" variant="text"
+                                                           :prepend-icon="mdiDeleteOutline"
+                                                           :loading="customExchangeRateRemoving[exchangeRate.currencyCode]"
+                                                           :disabled="loading || updating"
+                                                           v-if="exchangeRate.currencyCode !== defaultCurrency && isUserCustomExchangeRates"
+                                                           @click="remove(exchangeRate.currencyCode)">
+                                                        <template #loader>
+                                                            <v-progress-circular indeterminate size="20" width="2"/>
+                                                        </template>
+                                                        {{ tt('Delete') }}
+                                                    </v-btn>
 
                                                     <span class="text-body-large ms-3">{{ getFinalConvertedAmount(exchangeRate, true) }}</span>
                                                 </div>
@@ -213,7 +210,6 @@ const updateDialog = useTemplateRef<UpdateDialogType>('updateDialog');
 const activeTab = ref<string>('exchangeRatesPage');
 const loading = ref<boolean>(true);
 const updating = ref<boolean>(false);
-const hoveredCurrency = ref<string>('');
 const customExchangeRateRemoving = ref<Record<string, boolean>>({});
 const alwaysShowNav = ref<boolean>(lgAndUp.value);
 const showNav = ref<boolean>(lgAndUp.value);

@@ -38,7 +38,7 @@
                                 <th>{{ tt('Product Name') }}</th>
                                 <th>{{ tt('Renews') }}</th>
                                 <th class="text-right">{{ tt('Default Rate') }}</th>
-                                <th class="text-right">{{ tt('Operation') }}</th>
+                                <th class="text-right text-no-wrap" style="width: 1%">{{ tt('Operation') }}</th>
                             </tr>
                             </thead>
 
@@ -47,23 +47,20 @@
                             </tbody>
 
                             <tbody>
-                            <tr :key="product.id" v-for="product in allProducts"
-                                @mouseover="hoveredProductId = product.id" @mouseleave="hoveredProductId = ''">
+                            <tr :key="product.id" v-for="product in allProducts">
                                 <td>
                                     <span :class="{ 'text-medium-emphasis': product.archived }">{{ product.name }}</span>
                                     <v-chip class="ms-2" size="x-small" variant="tonal" v-if="product.archived">{{ tt('Archived') }}</v-chip>
                                 </td>
                                 <td>{{ getProductSummary(product) }}</td>
                                 <td class="text-right">{{ formatRate(product) }}</td>
-                                <td class="text-right">
-                                    <template v-if="hoveredProductId === product.id && !loading">
-                                        <v-btn class="px-2" color="default" density="comfortable" variant="text"
-                                               :prepend-icon="mdiPencilOutline" :disabled="loading || updating"
-                                               @click="editProduct(product)">{{ tt('Edit') }}</v-btn>
-                                        <v-btn class="px-2" color="default" density="comfortable" variant="text"
-                                               :prepend-icon="mdiDeleteOutline" :disabled="loading || updating"
-                                               @click="removeProduct(product)">{{ tt('Delete') }}</v-btn>
-                                    </template>
+                                <td class="text-right text-no-wrap" style="width: 1%">
+                                    <v-btn class="px-2" color="default" density="comfortable" variant="text"
+                                           :prepend-icon="mdiPencilOutline" :disabled="loading || updating"
+                                           @click="editProduct(product)">{{ tt('Edit') }}</v-btn>
+                                    <v-btn class="px-2" color="default" density="comfortable" variant="text"
+                                           :prepend-icon="mdiDeleteOutline" :disabled="loading || updating"
+                                           @click="removeProduct(product)">{{ tt('Delete') }}</v-btn>
                                 </td>
                             </tr>
                             </tbody>
@@ -120,7 +117,6 @@ const productLinkDialog = useTemplateRef<ProductLinkDialogType>('productLinkDial
 
 const loading = ref<boolean>(true);
 const updating = ref<boolean>(false);
-const hoveredProductId = ref<string>('');
 
 const allProducts = computed<Product[]>(() => invoicesStore.allProducts);
 

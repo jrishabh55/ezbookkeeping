@@ -39,21 +39,18 @@
                             </tbody>
 
                             <tbody>
-                            <tr :key="customer.id" v-for="customer in allCustomers"
-                                @mouseover="hoveredCustomerId = customer.id" @mouseleave="hoveredCustomerId = ''">
+                            <tr :key="customer.id" v-for="customer in allCustomers">
                                 <td>
                                     <div class="d-flex align-center">
                                         <a class="cursor-pointer" @click="viewCustomer(customer)">{{ customer.name }}</a>
                                         <small class="text-medium-emphasis ms-2" v-if="customer.contactName">{{ customer.contactName }}</small>
                                         <v-spacer/>
-                                        <template v-if="hoveredCustomerId === customer.id && !loading">
-                                            <v-btn class="px-2" color="default" density="comfortable" variant="text"
-                                                   :prepend-icon="mdiPencilOutline" :disabled="loading || updating"
-                                                   @click="editCustomer(customer)">{{ tt('Edit') }}</v-btn>
-                                            <v-btn class="px-2" color="default" density="comfortable" variant="text"
-                                                   :prepend-icon="mdiDeleteOutline" :disabled="loading || updating"
-                                                   @click="removeCustomer(customer)">{{ tt('Delete') }}</v-btn>
-                                        </template>
+                                        <v-btn class="px-2" color="default" density="comfortable" variant="text"
+                                               :prepend-icon="mdiPencilOutline" :disabled="loading || updating"
+                                               @click="editCustomer(customer)">{{ tt('Edit') }}</v-btn>
+                                        <v-btn class="px-2" color="default" density="comfortable" variant="text"
+                                               :prepend-icon="mdiDeleteOutline" :disabled="loading || updating"
+                                               @click="removeCustomer(customer)">{{ tt('Delete') }}</v-btn>
                                     </div>
                                 </td>
                             </tr>
@@ -107,7 +104,6 @@ const customerDetailDialog = useTemplateRef<CustomerDetailDialogType>('customerD
 
 const loading = ref<boolean>(true);
 const updating = ref<boolean>(false);
-const hoveredCustomerId = ref<string>('');
 
 const allCustomers = computed<Customer[]>(() => invoicesStore.allCustomers);
 

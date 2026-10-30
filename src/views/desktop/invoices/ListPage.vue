@@ -134,7 +134,7 @@
                                 <th>{{ tt('Schedule') }}</th>
                                 <th>{{ tt('Next Date') }}</th>
                                 <th>{{ tt('Enabled') }}</th>
-                                <th class="text-right">{{ tt('Operation') }}</th>
+                                <th class="text-right text-no-wrap" style="width: 1%">{{ tt('Operation') }}</th>
                             </tr>
                             </thead>
 
@@ -143,8 +143,7 @@
                             </tbody>
 
                             <tbody>
-                            <tr :key="recurring.id" v-for="recurring in allRecurringInvoices"
-                                @mouseover="hoveredRecurringId = recurring.id" @mouseleave="hoveredRecurringId = ''">
+                            <tr :key="recurring.id" v-for="recurring in allRecurringInvoices">
                                 <td>{{ recurring.customerName }}</td>
                                 <td>
                                     <a class="cursor-pointer" @click="viewRecurringSource(recurring)" v-if="recurring.sourceInvoiceNumber">{{ recurring.sourceInvoiceNumber }}</a>
@@ -157,14 +156,12 @@
                                               :disabled="loading || updating" :model-value="recurring.enabled"
                                               @update:model-value="setRecurringEnabled(recurring, !!$event)" />
                                 </td>
-                                <td class="text-right">
+                                <td class="text-right text-no-wrap" style="width: 1%">
                                     <v-btn class="px-2" color="default" density="comfortable" variant="text"
                                            :prepend-icon="mdiPencilOutline" :disabled="loading || updating"
-                                           v-if="hoveredRecurringId === recurring.id && !loading"
                                            @click="editRecurring(recurring)">{{ tt('Edit') }}</v-btn>
                                     <v-btn class="px-2" color="default" density="comfortable" variant="text"
                                            :prepend-icon="mdiDeleteOutline" :disabled="loading || updating"
-                                           v-if="hoveredRecurringId === recurring.id && !loading"
                                            @click="removeRecurring(recurring)">{{ tt('Delete') }}</v-btn>
                                 </td>
                             </tr>
@@ -302,7 +299,6 @@ const statusColors: Record<InvoiceDisplayStatus, string> = { unpaid: 'warning', 
 
 const activeView = ref<'invoices' | 'recurring' | 'estimates'>('invoices');
 const updating = ref<boolean>(false);
-const hoveredRecurringId = ref<string>('');
 
 const VIEW_TITLES: Record<'invoices' | 'recurring' | 'estimates', string> = { invoices: 'Invoices', recurring: 'Recurring', estimates: 'Estimates' };
 const activeViewTitle = computed<string>(() => VIEW_TITLES[activeView.value]);

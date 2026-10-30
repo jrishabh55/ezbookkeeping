@@ -71,19 +71,17 @@
 
                                         <v-spacer/>
 
-                                        <template v-if="hoveredExplorationId === element.id && !loading">
-                                            <v-btn class="px-2 ms-2" color="default"
-                                                   density="compact" variant="text"
-                                                   :prepend-icon="element.hidden ? mdiEyeOutline : mdiEyeOffOutline"
-                                                   :loading="explorationHiding[element.id]"
-                                                   :disabled="loading || updating"
-                                                   @click="hide(element, !element.hidden)">
-                                                <template #loader>
-                                                    <v-progress-circular indeterminate size="20" width="2"/>
-                                                </template>
-                                                {{ element.hidden ? tt('Show') : tt('Hide') }}
-                                            </v-btn>
-                                        </template>
+                                        <v-btn class="px-2 ms-2" color="default"
+                                               density="compact" variant="text"
+                                               :prepend-icon="element.hidden ? mdiEyeOutline : mdiEyeOffOutline"
+                                               :loading="explorationHiding[element.id]"
+                                               :disabled="loading || updating"
+                                               @click="hide(element, !element.hidden)">
+                                            <template #loader>
+                                                <v-progress-circular indeterminate size="20" width="2"/>
+                                            </template>
+                                            {{ element.hidden ? tt('Show') : tt('Hide') }}
+                                        </v-btn>
 
                                         <span class="ms-2">
                                             <v-icon :class="!loading && !updating && !noAvailableExploration ? 'drag-handle' : 'disabled'"

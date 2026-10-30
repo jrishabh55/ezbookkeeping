@@ -176,56 +176,54 @@
 
                                                             <v-spacer/>
 
-                                                            <template v-if="hoveredTagId === element.id && !loading">
-                                                                <v-btn class="px-2 ms-2" color="default"
-                                                                       density="comfortable" variant="text"
-                                                                       :prepend-icon="element.hidden ? mdiEyeOutline : mdiEyeOffOutline"
-                                                                       :loading="tagHiding[element.id]"
-                                                                       :disabled="loading || updating"
-                                                                       v-if="editingTag.id !== element.id"
-                                                                       @click="hide(element, !element.hidden)">
-                                                                    <template #loader>
-                                                                        <v-progress-circular indeterminate size="20" width="2"/>
-                                                                    </template>
-                                                                    {{ element.hidden ? tt('Show') : tt('Hide') }}
-                                                                </v-btn>
-                                                                <v-btn class="px-2" color="default"
-                                                                       density="comfortable" variant="text"
-                                                                       :prepend-icon="mdiFolderMoveOutline"
-                                                                       :loading="tagMoving[element.id]"
-                                                                       :disabled="loading || updating || allTagGroupsWithDefault.length < 2"
-                                                                       v-if="editingTag.id !== element.id"
-                                                                       @click="showMoveTagDialog(element)">
-                                                                    <template #loader>
-                                                                        <v-progress-circular indeterminate size="20" width="2"/>
-                                                                    </template>
-                                                                    {{ tt('Move') }}
-                                                                </v-btn>
-                                                                <v-btn class="px-2" color="default"
-                                                                       density="comfortable" variant="text"
-                                                                       :prepend-icon="mdiPencilOutline"
-                                                                       :loading="tagUpdating[element.id]"
-                                                                       :disabled="loading || updating"
-                                                                       v-if="editingTag.id !== element.id"
-                                                                       @click="edit(element)">
-                                                                    <template #loader>
-                                                                        <v-progress-circular indeterminate size="20" width="2"/>
-                                                                    </template>
-                                                                    {{ tt('Edit') }}
-                                                                </v-btn>
-                                                                <v-btn class="px-2" color="default"
-                                                                       density="comfortable" variant="text"
-                                                                       :prepend-icon="mdiDeleteOutline"
-                                                                       :loading="tagRemoving[element.id]"
-                                                                       :disabled="loading || updating"
-                                                                       v-if="editingTag.id !== element.id"
-                                                                       @click="remove(element)">
-                                                                    <template #loader>
-                                                                        <v-progress-circular indeterminate size="20" width="2"/>
-                                                                    </template>
-                                                                    {{ tt('Delete') }}
-                                                                </v-btn>
-                                                            </template>
+                                                            <v-btn class="px-2 ms-2" color="default"
+                                                                   density="comfortable" variant="text"
+                                                                   :prepend-icon="element.hidden ? mdiEyeOutline : mdiEyeOffOutline"
+                                                                   :loading="tagHiding[element.id]"
+                                                                   :disabled="loading || updating"
+                                                                   v-if="editingTag.id !== element.id"
+                                                                   @click="hide(element, !element.hidden)">
+                                                                <template #loader>
+                                                                    <v-progress-circular indeterminate size="20" width="2"/>
+                                                                </template>
+                                                                {{ element.hidden ? tt('Show') : tt('Hide') }}
+                                                            </v-btn>
+                                                            <v-btn class="px-2" color="default"
+                                                                   density="comfortable" variant="text"
+                                                                   :prepend-icon="mdiFolderMoveOutline"
+                                                                   :loading="tagMoving[element.id]"
+                                                                   :disabled="loading || updating || allTagGroupsWithDefault.length < 2"
+                                                                   v-if="editingTag.id !== element.id"
+                                                                   @click="showMoveTagDialog(element)">
+                                                                <template #loader>
+                                                                    <v-progress-circular indeterminate size="20" width="2"/>
+                                                                </template>
+                                                                {{ tt('Move') }}
+                                                            </v-btn>
+                                                            <v-btn class="px-2" color="default"
+                                                                   density="comfortable" variant="text"
+                                                                   :prepend-icon="mdiPencilOutline"
+                                                                   :loading="tagUpdating[element.id]"
+                                                                   :disabled="loading || updating"
+                                                                   v-if="editingTag.id !== element.id"
+                                                                   @click="edit(element)">
+                                                                <template #loader>
+                                                                    <v-progress-circular indeterminate size="20" width="2"/>
+                                                                </template>
+                                                                {{ tt('Edit') }}
+                                                            </v-btn>
+                                                            <v-btn class="px-2" color="default"
+                                                                   density="comfortable" variant="text"
+                                                                   :prepend-icon="mdiDeleteOutline"
+                                                                   :loading="tagRemoving[element.id]"
+                                                                   :disabled="loading || updating"
+                                                                   v-if="editingTag.id !== element.id"
+                                                                   @click="remove(element)">
+                                                                <template #loader>
+                                                                    <v-progress-circular indeterminate size="20" width="2"/>
+                                                                </template>
+                                                                {{ tt('Delete') }}
+                                                            </v-btn>
 
                                                             <template v-if="editingTag.id === element.id">
                                                                 <v-btn class="px-2"

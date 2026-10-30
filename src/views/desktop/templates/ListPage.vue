@@ -90,40 +90,38 @@
 
                                         <v-spacer/>
 
-                                        <template v-if="hoveredTemplateId === element.id && !loading">
-                                            <v-btn class="px-2 ms-2" color="default"
-                                                   density="comfortable" variant="text"
-                                                   :prepend-icon="element.hidden ? mdiEyeOutline : mdiEyeOffOutline"
-                                                   :loading="templateHiding[element.id]"
-                                                   :disabled="loading || updating"
-                                                   @click="hide(element, !element.hidden)">
-                                                <template #loader>
-                                                    <v-progress-circular indeterminate size="20" width="2"/>
-                                                </template>
-                                                {{ element.hidden ? tt('Show') : tt('Hide') }}
-                                            </v-btn>
-                                            <v-btn class="px-2" color="default"
-                                                   density="comfortable" variant="text"
-                                                   :prepend-icon="mdiPencilOutline"
-                                                   :disabled="loading || updating"
-                                                   @click="edit(element)">
-                                                <template #loader>
-                                                    <v-progress-circular indeterminate size="20" width="2"/>
-                                                </template>
-                                                {{ tt('Edit') }}
-                                            </v-btn>
-                                            <v-btn class="px-2" color="default"
-                                                   density="comfortable" variant="text"
-                                                   :prepend-icon="mdiDeleteOutline"
-                                                   :loading="templateRemoving[element.id]"
-                                                   :disabled="loading || updating"
-                                                   @click="remove(element)">
-                                                <template #loader>
-                                                    <v-progress-circular indeterminate size="20" width="2"/>
-                                                </template>
-                                                {{ tt('Delete') }}
-                                            </v-btn>
-                                        </template>
+                                        <v-btn class="px-2 ms-2" color="default"
+                                               density="comfortable" variant="text"
+                                               :prepend-icon="element.hidden ? mdiEyeOutline : mdiEyeOffOutline"
+                                               :loading="templateHiding[element.id]"
+                                               :disabled="loading || updating"
+                                               @click="hide(element, !element.hidden)">
+                                            <template #loader>
+                                                <v-progress-circular indeterminate size="20" width="2"/>
+                                            </template>
+                                            {{ element.hidden ? tt('Show') : tt('Hide') }}
+                                        </v-btn>
+                                        <v-btn class="px-2" color="default"
+                                               density="comfortable" variant="text"
+                                               :prepend-icon="mdiPencilOutline"
+                                               :disabled="loading || updating"
+                                               @click="edit(element)">
+                                            <template #loader>
+                                                <v-progress-circular indeterminate size="20" width="2"/>
+                                            </template>
+                                            {{ tt('Edit') }}
+                                        </v-btn>
+                                        <v-btn class="px-2" color="default"
+                                               density="comfortable" variant="text"
+                                               :prepend-icon="mdiDeleteOutline"
+                                               :loading="templateRemoving[element.id]"
+                                               :disabled="loading || updating"
+                                               @click="remove(element)">
+                                            <template #loader>
+                                                <v-progress-circular indeterminate size="20" width="2"/>
+                                            </template>
+                                            {{ tt('Delete') }}
+                                        </v-btn>
 
                                         <span class="ms-2">
                                             <v-icon :class="!loading && !updating && availableTemplateCount > 1 ? 'drag-handle' : 'disabled'"
