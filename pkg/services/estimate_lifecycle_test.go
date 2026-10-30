@@ -62,7 +62,8 @@ func TestAnsweredOrInvoicedEstimatesAreLocked(t *testing.T) {
 	assert.Equal(t, 3, len(milestones)) // the refused edit left the payment terms alone
 
 	assert.Nil(t, Invoices.ReopenEstimate(ctx, uid, estimate.InvoiceId))
-	assert.Nil(t, Invoices.ModifyEstimate(ctx, estimate, testEstimateLines(), testEstimateMilestones()))
+	// reopened means sent again: still never edited in place (it is revised instead)
+	assert.Equal(t, errs.ErrEstimateLocked, Invoices.ModifyEstimate(ctx, estimate, testEstimateLines(), testEstimateMilestones()))
 
 	invoice := createTestInvoice(t, uid, customer.CustomerId, "INV/2026-27/01", 100)
 	linkTestInvoiceToEstimate(t, uid, invoice.InvoiceId, estimate.InvoiceId)

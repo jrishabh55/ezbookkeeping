@@ -1,12 +1,14 @@
 package models
 
 // Estimate statuses stored in Invoice.EstimateStatus. "expired" is never stored: a draft or sent estimate whose
-// valid-until date (DueDate) is before today shows as expired, and extending the date revives it.
+// valid-until date (DueDate) is before today shows as expired, and extending the date revives it. "superseded" is a version
+// a newer version (a revision) replaced: read-only history that keeps its lines, milestones, emails and recorded answer.
 const (
-	ESTIMATE_STATUS_DRAFT    = "draft"
-	ESTIMATE_STATUS_SENT     = "sent"
-	ESTIMATE_STATUS_ACCEPTED = "accepted"
-	ESTIMATE_STATUS_DECLINED = "declined"
+	ESTIMATE_STATUS_DRAFT      = "draft"
+	ESTIMATE_STATUS_SENT       = "sent"
+	ESTIMATE_STATUS_ACCEPTED   = "accepted"
+	ESTIMATE_STATUS_DECLINED   = "declined"
+	ESTIMATE_STATUS_SUPERSEDED = "superseded"
 )
 
 // EstimateNumberPrefixDefault is the estimate number prefix of a profile that has not set one

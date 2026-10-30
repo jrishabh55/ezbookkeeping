@@ -596,6 +596,7 @@ func startWebServer(c *core.CliContext) error {
 			apiV1Route.POST("/invoices/send.json", bindApi(api.Invoices.InvoiceSendHandler, config))
 			apiV1Route.POST("/estimates/respond.json", bindApi(api.Invoices.EstimateRespondHandler, config))
 			apiV1Route.POST("/estimates/reopen.json", bindApi(api.Invoices.EstimateReopenHandler, config))
+			apiV1Route.POST("/estimates/revise.json", bindApi(api.Invoices.EstimateReviseHandler, config))
 			apiV1Route.GET("/estimates/invoice_draft.json", bindApi(api.Invoices.EstimateInvoiceDraftHandler, config))
 			apiV1Route.GET("/estimates/to_invoice.json", bindApi(api.Invoices.EstimateToInvoiceListHandler, config))
 

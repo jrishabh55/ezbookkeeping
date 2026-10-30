@@ -44,6 +44,16 @@ func TestEstimatePublicAnswerHandlersRefuseBadRequestsWithoutTheDatabase(t *test
 	assert.NotNil(t, err)
 }
 
+func TestEstimateReviseHandlerRefusesABadRequestWithoutTheDatabase(t *testing.T) {
+	result, err := Invoices.EstimateReviseHandler(newTestJsonWebContext("/api/v1/estimates/revise.json", `{}`))
+	assert.Nil(t, result)
+	assert.NotNil(t, err)
+
+	result, err = Invoices.EstimateReviseHandler(newTestJsonWebContext("/api/v1/estimates/revise.json", `{"id":"0"}`))
+	assert.Nil(t, result)
+	assert.NotNil(t, err)
+}
+
 func TestPublicEstimateResponseCarriesStatusAndPaymentTerms(t *testing.T) {
 	estimate := &models.Invoice{InvoiceId: 1234, Kind: models.INVOICE_KIND_ESTIMATE, Number: "EST/2026-27/01", Currency: "INR", Total: 235999,
 		EstimateStatus: models.ESTIMATE_STATUS_SENT, ResponseNote: "private"}

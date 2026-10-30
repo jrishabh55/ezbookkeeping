@@ -133,7 +133,7 @@ type Customer struct {
 // Invoice represents an invoice stored in database
 type Invoice struct {
 	InvoiceId          int64  `xorm:"PK"`
-	Uid                int64  `xorm:"INDEX(IDX_invoice_uid_deleted) INDEX(IDX_invoice_uid_recurring_id) INDEX(IDX_invoice_uid_estimate_id) NOT NULL"`
+	Uid                int64  `xorm:"INDEX(IDX_invoice_uid_deleted) INDEX(IDX_invoice_uid_recurring_id) INDEX(IDX_invoice_uid_estimate_id) INDEX(IDX_invoice_uid_revision_of) NOT NULL"`
 	Deleted            bool   `xorm:"INDEX(IDX_invoice_uid_deleted) NOT NULL"`
 	Kind               string `xorm:"VARCHAR(16) NOT NULL"`
 	Number             string `xorm:"VARCHAR(64) NOT NULL"`
@@ -175,6 +175,12 @@ type Invoice struct {
 	ResponseNote string `xorm:"VARCHAR(512) NOT NULL DEFAULT ''"`
 	// EstimateId is the estimate this invoice was created from; 0 otherwise
 	EstimateId int64 `xorm:"INDEX(IDX_invoice_uid_estimate_id) NOT NULL DEFAULT 0"`
+	// RevisionOf is the first version of the estimate's revision chain; 0 on a first version and on every invoice
+	RevisionOf int64 `xorm:"INDEX(IDX_invoice_uid_revision_of) NOT NULL DEFAULT 0"`
+	// RevisionNumber is 0 on a first version, then 1, 2, … within the chain; never reused, deleted revisions included
+	RevisionNumber int32 `xorm:"NOT NULL DEFAULT 0"`
+	// SupersededFromStatus is the status a superseded version had when it was revised; deleting the draft revision restores it
+	SupersededFromStatus string `xorm:"VARCHAR(16) NOT NULL DEFAULT ''"`
 }
 
 // InvoicePublicTokenLength is the length of a public invoice token (32 random bytes, base64url without padding)
@@ -531,6 +537,7 @@ type InvoiceInfoResponse struct {
 	ConvertedInvoices  []*EstimateConvertedInvoiceResponse `json:"convertedInvoices,omitempty"` // estimates: invoices made from it
 	FullyInvoiced      bool                                `json:"fullyInvoiced,omitempty"`     // estimates
 	EstimateNumber     string                              `json:"estimateNumber,omitempty"`    // invoices made from an estimate
+	RevisionNumber     int32                               `json:"revisionNumber,omitempty"`    // estimates: 0 on a first version
 }
 
 // PublicInvoiceProfileResponse is the part of the invoice profile a recipient of a public link may see
@@ -663,6 +670,7 @@ func (i *Invoice) ToInvoiceInfoResponse(lines []*InvoiceLine, payments []*Invoic
 		RespondedUnixTime:  i.RespondedUnixTime,
 		RespondedByClient:  i.RespondedByClient,
 		ResponseNote:       i.ResponseNote,
+		RevisionNumber:     i.RevisionNumber,
 	}
 
 	if i.EstimateId > 0 {

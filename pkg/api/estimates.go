@@ -1,6 +1,8 @@
 package api
 
 import (
+	"time"
+
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/errs"
 	"github.com/mayswind/ezbookkeeping/pkg/log"
@@ -55,6 +57,27 @@ func (a *InvoicesApi) EstimateReopenHandler(c *core.WebContext) (any, *errs.Erro
 	}
 
 	return a.estimateResponse(c, "EstimateReopenHandler", uid, req.Id)
+}
+
+// EstimateReviseHandler creates the next version of a sent or answered estimate of current user as a new draft and returns it;
+// the old version is superseded and stays as it was sent
+func (a *InvoicesApi) EstimateReviseHandler(c *core.WebContext) (any, *errs.Error) {
+	var req models.InvoiceIdRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Warnf(c, "[estimates.EstimateReviseHandler] parse request failed, because %s", err.Error())
+		return nil, errs.NewIncompleteOrIncorrectSubmissionError(err)
+	}
+
+	uid := c.GetCurrentUid()
+	revision, err := a.invoices.ReviseEstimate(c, uid, req.Id, time.Now().Format("2006-01-02"))
+
+	if err != nil {
+		log.Errorf(c, "[estimates.EstimateReviseHandler] failed to revise estimate \"id:%d\" for user \"uid:%d\", because %s", req.Id, uid, err.Error())
+		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+
+	return a.estimateResponse(c, "EstimateReviseHandler", uid, revision.InvoiceId)
 }
 
 // EstimateToInvoiceListHandler returns the accepted, not fully invoiced estimates of current user for the home card

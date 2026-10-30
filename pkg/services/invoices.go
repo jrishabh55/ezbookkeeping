@@ -361,7 +361,14 @@ func nextInvoiceSequence(numbers []string, base string) int {
 			continue
 		}
 
-		sequence, err := strconv.Atoi(number[len(base):])
+		rest := number[len(base):]
+
+		// a revision (EST/2026-27/01-R2) counts as the estimate it revises, so the suffix never moves the sequence
+		if idx := strings.Index(rest, "-R"); idx > 0 {
+			rest = rest[:idx]
+		}
+
+		sequence, err := strconv.Atoi(rest)
 
 		if err == nil && sequence > maxSequence {
 			maxSequence = sequence
@@ -569,6 +576,9 @@ func (s *InvoiceService) prepareNewInvoice(c core.Context, invoice *models.Invoi
 	invoice.RespondedByClient = false
 	invoice.ResponseNote = ""
 	invoice.EstimateId = 0
+	invoice.RevisionOf = 0
+	invoice.RevisionNumber = 0
+	invoice.SupersededFromStatus = ""
 	invoice.CreatedUnixTime = time.Now().Unix()
 	invoice.UpdatedUnixTime = invoice.CreatedUnixTime
 	invoice.DeletedUnixTime = 0

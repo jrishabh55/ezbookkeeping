@@ -38,9 +38,10 @@ func getEstimateInSession(sess *xorm.Session, uid int64, estimateId int64) (*mod
 	return estimate, nil
 }
 
-// checkEstimateEditable returns ErrEstimateLocked once the estimate is accepted or declined or anything was invoiced from it
+// checkEstimateEditable returns ErrEstimateLocked unless the estimate is a draft with nothing invoiced from it: once the client
+// may have seen it (sent, answered, superseded) it is changed only through ReviseEstimate
 func checkEstimateEditable(sess *xorm.Session, estimate *models.Invoice) error {
-	if estimate.EstimateStatus != models.ESTIMATE_STATUS_DRAFT && estimate.EstimateStatus != models.ESTIMATE_STATUS_SENT {
+	if estimate.EstimateStatus != models.ESTIMATE_STATUS_DRAFT {
 		return errs.ErrEstimateLocked
 	}
 
@@ -55,8 +56,8 @@ func checkEstimateEditable(sess *xorm.Session, estimate *models.Invoice) error {
 	return nil
 }
 
-// ModifyEstimate saves an editable estimate and replaces its lines and milestones, like ModifyInvoice does for lines.
-// The update is conditional on the status still being draft or sent, so an answer that lands meanwhile wins.
+// ModifyEstimate saves a draft estimate and replaces its lines and milestones, like ModifyInvoice does for lines.
+// The update is conditional on the status still being draft, so a send or an answer that lands meanwhile wins.
 func (s *InvoiceService) ModifyEstimate(c core.Context, estimate *models.Invoice, lines []*models.InvoiceLine, milestones []*models.EstimateMilestone) error {
 	if estimate.Uid <= 0 {
 		return errs.ErrUserIdInvalid
@@ -101,8 +102,7 @@ func (s *InvoiceService) ModifyEstimate(c core.Context, estimate *models.Invoice
 		}
 
 		updatedRows, err := sess.Cols(invoiceModifyColumns...).
-			Where("uid=? AND deleted=? AND kind=? AND invoice_id=?", estimate.Uid, false, models.INVOICE_KIND_ESTIMATE, estimate.InvoiceId).
-			In("estimate_status", models.ESTIMATE_STATUS_DRAFT, models.ESTIMATE_STATUS_SENT).
+			Where("uid=? AND deleted=? AND kind=? AND invoice_id=? AND estimate_status=?", estimate.Uid, false, models.INVOICE_KIND_ESTIMATE, estimate.InvoiceId, models.ESTIMATE_STATUS_DRAFT).
 			Update(estimate)
 
 		if err != nil {

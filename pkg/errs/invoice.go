@@ -36,7 +36,7 @@ var (
 	ErrInvoiceLineProductInvalid = NewNormalError(NormalSubcategoryInvoice, 53, http.StatusBadRequest, "invoice line product is invalid")
 	// estimates start at 60
 	ErrEstimateMilestonesInvalid                = NewNormalError(NormalSubcategoryInvoice, 60, http.StatusBadRequest, "estimate milestones must be 1 to 10 with labels and add up to 100%")
-	ErrEstimateLocked                           = NewNormalError(NormalSubcategoryInvoice, 61, http.StatusBadRequest, "estimate is accepted, declined or invoiced and cannot be edited")
+	ErrEstimateLocked                           = NewNormalError(NormalSubcategoryInvoice, 61, http.StatusBadRequest, "only a draft estimate can be edited, revise it instead")
 	ErrEstimateHasInvoices                      = NewNormalError(NormalSubcategoryInvoice, 62, http.StatusBadRequest, "estimate has invoices created from it")
 	ErrEstimateStatusInvalid                    = NewNormalError(NormalSubcategoryInvoice, 63, http.StatusBadRequest, "estimate status does not allow this action")
 	ErrNotAvailableForEstimate                  = NewNormalError(NormalSubcategoryInvoice, 64, http.StatusBadRequest, "this action is not available for estimates")
@@ -45,4 +45,5 @@ var (
 	ErrEstimateCannotBeAnswered                 = NewNormalError(NormalSubcategoryInvoice, 67, http.StatusBadRequest, "this estimate can no longer be answered")
 	ErrEstimateResponseNoteTooLong              = NewNormalError(NormalSubcategoryInvoice, 68, http.StatusBadRequest, "response note must be at most 500 characters")
 	ErrEstimateMilestoneInvoiceLineCountInvalid = NewNormalError(NormalSubcategoryInvoice, 69, http.StatusBadRequest, "a milestone invoice has exactly one line")
+	ErrEstimateCannotBeRevised                  = NewNormalError(NormalSubcategoryInvoice, 70, http.StatusBadRequest, "estimate cannot be revised")
 )
