@@ -369,6 +369,8 @@ type InvoiceCreateRequest struct {
 	Currency    string                      `json:"currency" binding:"max=3"`                        // empty means the profile's default currency; not editable afterwards
 	Kind        string                      `json:"kind" binding:"omitempty,oneof=invoice estimate"` // empty means invoice
 	Milestones  []*EstimateMilestoneRequest `json:"milestones" binding:"omitempty,max=10,dive"`      // estimates only
+	EstimateId  int64                       `json:"estimateId,string" binding:"min=0"`               // the invoice is made from this estimate; 0 = typed by hand
+	MilestoneId int64                       `json:"milestoneId,string" binding:"min=0"`              // and from this milestone of it; 0 = the whole estimate
 }
 
 // InvoiceModifyRequest represents all parameters of invoice modification request
@@ -516,6 +518,7 @@ type InvoiceInfoResponse struct {
 	RespondedByClient  bool                                `json:"respondedByClient,omitempty"`
 	ResponseNote       string                              `json:"responseNote,omitempty"`
 	EstimateId         string                              `json:"estimateId,omitempty"`        // invoices made from an estimate
+	MilestoneId        string                              `json:"milestoneId,omitempty"`       // conversion drafts of one milestone
 	Milestones         []*EstimateMilestoneResponse        `json:"milestones,omitempty"`        // estimates
 	ConvertedInvoices  []*EstimateConvertedInvoiceResponse `json:"convertedInvoices,omitempty"` // estimates: invoices made from it
 	FullyInvoiced      bool                                `json:"fullyInvoiced,omitempty"`     // estimates

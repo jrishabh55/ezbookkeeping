@@ -72,3 +72,9 @@ type EstimateRespondRequest struct {
 	Id     int64  `json:"id,string" binding:"required,min=1"`
 	Status string `json:"status" binding:"required,oneof=accepted declined"`
 }
+
+// EstimateInvoiceDraftRequest asks for the unsaved invoice an estimate (no milestone) or one of its milestones turns into
+type EstimateInvoiceDraftRequest struct {
+	Id          int64 `form:"id" binding:"required,min=1"`
+	MilestoneId int64 `form:"milestone_id" binding:"min=0"`
+}

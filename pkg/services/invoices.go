@@ -642,6 +642,11 @@ func (s *InvoiceService) DeleteInvoice(c core.Context, uid int64, invoiceId int6
 	now := time.Now().Unix()
 
 	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+		// an estimate's "nothing invoiced" check below must not race a conversion
+		if err := lockInvoiceRow(sess, uid, invoiceId, now); err != nil {
+			return err
+		}
+
 		invoice := &models.Invoice{}
 		has, err := sess.Where("uid=? AND deleted=? AND invoice_id=?", uid, false, invoiceId).Get(invoice)
 

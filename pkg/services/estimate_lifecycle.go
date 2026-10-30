@@ -15,6 +15,14 @@ func estimateHasInvoices(sess *xorm.Session, uid int64, estimateId int64) (bool,
 	return sess.Where("uid=? AND deleted=? AND kind=? AND estimate_id=?", uid, false, models.INVOICE_KIND_INVOICE, estimateId).Exist(&models.Invoice{})
 }
 
+// lockInvoiceRow writes the (non-deleted) invoice or estimate row as the first statement of a transaction, so conversions, edits and
+// deletes of one estimate wait for each other and every read after it sees what the one before committed; the checks that follow
+// ("nothing invoiced yet", "milestone still open") are then not racy. It touches only updated_unix_time.
+func lockInvoiceRow(sess *xorm.Session, uid int64, invoiceId int64, now int64) error {
+	_, err := sess.Cols("updated_unix_time").Where("uid=? AND deleted=? AND invoice_id=?", uid, false, invoiceId).Update(&models.Invoice{UpdatedUnixTime: now})
+	return err
+}
+
 // getEstimateInSession reads an owned, non-deleted estimate with the caller's session; an invoice id is not found
 func getEstimateInSession(sess *xorm.Session, uid int64, estimateId int64) (*models.Invoice, error) {
 	estimate := &models.Invoice{}
@@ -73,6 +81,10 @@ func (s *InvoiceService) ModifyEstimate(c core.Context, estimate *models.Invoice
 	estimate.UpdatedUnixTime = time.Now().Unix()
 
 	return s.UserDataDB(estimate.Uid).DoTransaction(c, func(sess *xorm.Session) error {
+		if err := lockInvoiceRow(sess, estimate.Uid, estimate.InvoiceId, estimate.UpdatedUnixTime); err != nil {
+			return err
+		}
+
 		stored, err := getEstimateInSession(sess, estimate.Uid, estimate.InvoiceId)
 
 		if err != nil {

@@ -40,4 +40,6 @@ var (
 	ErrEstimateHasInvoices       = NewNormalError(NormalSubcategoryInvoice, 62, http.StatusBadRequest, "estimate has invoices created from it")
 	ErrEstimateStatusInvalid     = NewNormalError(NormalSubcategoryInvoice, 63, http.StatusBadRequest, "estimate status does not allow this action")
 	ErrNotAvailableForEstimate   = NewNormalError(NormalSubcategoryInvoice, 64, http.StatusBadRequest, "this action is not available for estimates")
+	ErrEstimateAlreadyConverted  = NewNormalError(NormalSubcategoryInvoice, 65, http.StatusBadRequest, "estimate or milestone has already been invoiced")
+	ErrEstimateMilestoneNotFound = NewNormalError(NormalSubcategoryInvoice, 66, http.StatusBadRequest, "estimate milestone not found")
 )

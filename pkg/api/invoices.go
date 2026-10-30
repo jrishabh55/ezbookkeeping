@@ -456,6 +456,8 @@ func (a *InvoicesApi) InvoiceCreateHandler(c *core.WebContext) (any, *errs.Error
 		err = a.invoices.CreateEstimate(c, invoice, lines, estimateMilestonesFromRequest(req.Milestones))
 	} else if len(req.Milestones) > 0 {
 		err = errs.ErrEstimateMilestonesInvalid // only an estimate has payment terms
+	} else if req.EstimateId > 0 {
+		err = a.invoices.CreateInvoiceFromEstimate(c, invoice, lines, req.EstimateId, req.MilestoneId)
 	} else {
 		err = a.invoices.CreateInvoice(c, invoice, lines)
 	}
