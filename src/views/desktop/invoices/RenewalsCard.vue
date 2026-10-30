@@ -1,6 +1,6 @@
 <template>
-    <v-card class="mb-4" v-if="renewals.length">
-        <template #title>{{ tt('Renewals') }}</template>
+    <v-card class="mb-4" v-if="renewals.length || estimates.length">
+        <template #title>{{ tt('Needs Attention') }}</template>
         <v-list density="compact">
             <v-list-item :key="renewal.invoice.id" v-for="renewal in renewals"
                          :title="`${renewal.invoice.billToName} · ${renewal.invoice.number}`"
@@ -10,6 +10,13 @@
                            :loading="sendingId === renewal.invoice.id" :disabled="sendingId !== ''"
                            @click="sendRenewal(renewal)">{{ tt('Send') }}</v-btn>
                     <v-btn variant="text" size="small" :to="'/invoice/list?invoiceId=' + renewal.invoice.id">{{ tt('Open') }}</v-btn>
+                </template>
+            </v-list-item>
+            <v-list-item :key="estimate.id" v-for="estimate in estimates"
+                         :title="`${getEstimateTitle(estimate)} · ${estimate.number}`"
+                         :subtitle="formatAmount(estimate)">
+                <template #append>
+                    <v-btn color="primary" variant="tonal" size="small" :to="'/invoice/list?invoiceId=' + estimate.id">{{ tt('Convert') }}</v-btn>
                 </template>
             </v-list-item>
         </v-list>
@@ -31,7 +38,7 @@ import type { InvoiceRenewal } from '@/models/invoice.ts';
 type SnackBarType = InstanceType<typeof SnackBar>;
 
 const { tt } = useI18n();
-const { renewals, sendingId, load, canSend, send, getStateName, formatAmount, formatDate } = useRenewalsCardBase();
+const { renewals, estimates, sendingId, load, canSend, send, getStateName, getEstimateTitle, formatAmount, formatDate } = useRenewalsCardBase();
 
 const snackbar = useTemplateRef<SnackBarType>('snackbar');
 

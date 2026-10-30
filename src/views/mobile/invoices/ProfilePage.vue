@@ -54,6 +54,12 @@
                 <f7-list-input type="text" autocomplete="off" clear-button
                                :label="tt('Invoice Number Prefix')" :placeholder="tt('Invoice Number Prefix')"
                                v-model:value="newProfile.numberPrefix"></f7-list-input>
+                <f7-list-input type="text" autocomplete="off" clear-button
+                               :label="tt('Estimate Number Prefix')" :placeholder="tt('Estimate Number Prefix')"
+                               v-model:value="newProfile.estimateNumberPrefix"></f7-list-input>
+                <list-number-input :label="tt('Estimate Valid For (days)')" :placeholder="tt('Estimate Valid For (days)')"
+                                   :min-value="1" :max-value="365" :max-decimal-count="0"
+                                   v-model="newProfile.estimateValidDays"></list-number-input>
                 <list-number-input :label="tt('Payment Terms (days)')" :placeholder="tt('Payment Terms (days)')"
                                    :min-value="0" :max-value="365" :max-decimal-count="0"
                                    v-model="newProfile.defaultTermsDays"></list-number-input>

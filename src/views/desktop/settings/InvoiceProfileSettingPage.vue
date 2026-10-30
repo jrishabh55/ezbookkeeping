@@ -81,6 +81,22 @@
                                           v-model="newProfile.numberPrefix" />
                         </div>
                         <div class="setting-item">
+                            <span>{{ tt('Estimate Number Prefix') }}</span>
+                            <v-spacer/>
+                            <v-text-field class="ms-4" density="compact" type="text" autocomplete="off"
+                                          persistent-placeholder max-width="400px"
+                                          :disabled="loading || saving" :placeholder="tt('Estimate Number Prefix')"
+                                          v-model="newProfile.estimateNumberPrefix" />
+                        </div>
+                        <div class="setting-item">
+                            <span>{{ tt('Estimate Valid For (days)') }}</span>
+                            <v-spacer/>
+                            <number-input class="ms-4" density="compact" max-width="400px"
+                                          :disabled="loading || saving"
+                                          :min-value="1" :max-value="365" :max-decimal-count="0"
+                                          v-model="newProfile.estimateValidDays" />
+                        </div>
+                        <div class="setting-item">
                             <span>{{ tt('Payment Terms (days)') }}</span>
                             <v-spacer/>
                             <number-input class="ms-4" density="compact" max-width="400px"

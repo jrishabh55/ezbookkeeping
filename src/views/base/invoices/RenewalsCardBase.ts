@@ -16,20 +16,24 @@ const STATE_NAMES: Record<InvoiceRenewal['state'], string> = {
     auto_sent: 'Sent automatically'
 };
 
-// the home card: drafts waiting to be sent, failed auto-sends, and recent auto-sends; hidden when empty or when loading fails
+// the home "Needs attention" card: renewal drafts, failed and recent auto-sends, and accepted estimates not fully invoiced
 export function useRenewalsCardBase() {
     const { tt, formatAmountToLocalizedNumeralsWithCurrency, formatGregorianTextualYearMonthDayToLongDate } = useI18n();
 
     const invoicesStore = useInvoicesStore();
 
     const renewals = ref<InvoiceRenewal[]>([]);
+    const estimates = ref<Invoice[]>([]);
     const sendingId = ref<string>('');
 
+    // renewals and accepted estimates load independently; a failing list just leaves its rows out
     function load(): Promise<void> {
-        return invoicesStore.loadInvoiceRenewals().then(loaded => {
-            renewals.value = loaded;
-        }).catch(() => {
-            renewals.value = []; // the card simply disappears; the invoice page still has everything
+        return Promise.all([
+            invoicesStore.loadInvoiceRenewals().catch(() => [] as InvoiceRenewal[]),
+            invoicesStore.loadEstimatesToInvoice().catch(() => [] as Invoice[])
+        ]).then(([loadedRenewals, loadedEstimates]) => {
+            renewals.value = loadedRenewals;
+            estimates.value = loadedEstimates;
         });
     }
 
@@ -53,6 +57,10 @@ export function useRenewalsCardBase() {
         return tt(STATE_NAMES[renewal.state]);
     }
 
+    function getEstimateTitle(estimate: Invoice): string {
+        return tt('format.misc.estimateAcceptedBy', { customer: estimate.billToName });
+    }
+
     function formatAmount(invoice: Invoice): string {
         return formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(invoice.total), invoice.currency);
     }
@@ -64,12 +72,14 @@ export function useRenewalsCardBase() {
     return {
         // states
         renewals,
+        estimates,
         sendingId,
         // functions
         load,
         canSend,
         send,
         getStateName,
+        getEstimateTitle,
         formatAmount,
         formatDate
     };

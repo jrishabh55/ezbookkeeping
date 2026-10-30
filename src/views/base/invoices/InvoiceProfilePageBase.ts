@@ -20,6 +20,10 @@ export function useInvoiceProfilePageBase() {
             return 'Invoice number prefix cannot be blank';
         } else if (newProfile.value.defaultTermsDays < 0 || newProfile.value.defaultTermsDays > 365) {
             return 'Payment terms must be between 0 and 365 days';
+        } else if (!newProfile.value.estimateNumberPrefix.trim()) {
+            return 'Estimate number prefix cannot be blank';
+        } else if (newProfile.value.estimateValidDays < 1 || newProfile.value.estimateValidDays > 365) {
+            return 'Estimate validity must be between 1 and 365 days';
         }
 
         return null;

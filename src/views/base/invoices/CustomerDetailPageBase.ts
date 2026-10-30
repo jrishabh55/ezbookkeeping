@@ -20,7 +20,7 @@ export function useCustomerDetailPageBase() {
     const customer = ref<Customer | null>(null);
     const overview = ref<CustomerOverview>({ products: [], timeline: [] });
 
-    const invoices = computed<Invoice[]>(() => customer.value ? invoicesStore.allInvoices.filter(invoice => invoice.customerId === customer.value?.id) : []);
+    const invoices = computed<Invoice[]>(() => customer.value ? invoicesStore.allInvoices.filter(invoice => invoice.kind === 'invoice' && invoice.customerId === customer.value?.id) : []);
     const recurrings = computed<RecurringInvoice[]>(() => customer.value ? invoicesStore.allRecurringInvoices.filter(recurring => recurring.customerId === customer.value?.id) : []);
 
     // one line per currency the customer was billed in
@@ -84,7 +84,17 @@ export function useCustomerDetailPageBase() {
                 return tt('format.misc.timelineEmail', { number: item.invoiceNumber, subject: item.text });
             case 'payment':
                 return tt('format.misc.timelinePayment', { number: item.invoiceNumber });
+            case 'estimate':
+                return tt('format.misc.timelineEstimate', { number: item.invoiceNumber });
+            case 'estimate_accepted':
+                return tt(item.byClient ? 'format.misc.timelineEstimateAcceptedByClient' : 'format.misc.timelineEstimateAccepted', { number: item.invoiceNumber });
+            case 'estimate_declined':
+                return tt(item.byClient ? 'format.misc.timelineEstimateDeclinedByClient' : 'format.misc.timelineEstimateDeclined', { number: item.invoiceNumber });
             default:
+                if (item.estimateNumber) {
+                    return tt('format.misc.timelineInvoiceFromEstimate', { number: item.invoiceNumber, estimate: item.estimateNumber });
+                }
+
                 return tt(item.renewal ? 'format.misc.timelineRenewal' : 'format.misc.timelineInvoice', { number: item.invoiceNumber });
         }
     }
