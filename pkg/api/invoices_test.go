@@ -4,14 +4,18 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
+	"github.com/go-playground/validator/v10"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/errs"
 	"github.com/mayswind/ezbookkeeping/pkg/models"
+	"github.com/mayswind/ezbookkeeping/pkg/validators"
 )
 
 // newTestWebContext wraps a GET request to path (with its query string) in a web context, like bindApi does
@@ -109,4 +113,22 @@ func TestPublicInvoiceResponseHasNoIdsOrPayments(t *testing.T) {
 	}
 
 	assert.NotContains(t, string(data), "secret")
+}
+
+func TestInvoiceCreateHandlerRefusesAMilestoneWithoutItsEstimate(t *testing.T) {
+	// the web server registers this at startup; the request below must bind so the handler's own check is what refuses it
+	if v, ok := binding.Validator.Engine().(*validator.Validate); ok {
+		_ = v.RegisterValidation("notBlank", validators.NotBlank)
+	}
+
+	body := `{"number":"INV/2026-27/01","customerId":"1","invoiceDate":"2026-10-30","dueDate":"2026-11-06","milestoneId":"5",` +
+		`"lines":[{"itemName":"Advance","quantity":100,"rate":66660}]}`
+	ginContext, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ginContext.Request = httptest.NewRequest(http.MethodPost, "/api/v1/invoices/add.json", strings.NewReader(body))
+	ginContext.Request.Header.Set("Content-Type", "application/json")
+
+	_, err := Invoices.InvoiceCreateHandler(&core.WebContext{Context: ginContext})
+	assert.NotNil(t, err)
+	assert.Equal(t, errs.ErrIncompleteOrIncorrectSubmission.Code(), err.Code())
+	assert.Equal(t, http.StatusBadRequest, err.HttpStatusCode)
 }

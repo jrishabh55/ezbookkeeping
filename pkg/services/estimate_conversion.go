@@ -218,8 +218,8 @@ func (s *InvoiceService) GetEstimateInvoiceDraft(c core.Context, uid int64, esti
 }
 
 // CreateInvoiceFromEstimate saves an invoice made from an estimate (milestoneId 0 = the whole estimate). It bills the estimate's customer
-// in the estimate's currency. For a milestone the one line's quantity and rate are rebuilt from the estimate inside the transaction, so a
-// client cannot change the amount and the remainder rule sees every other conversion; the milestone is marked invoiced in the same
+// in the estimate's currency. For a milestone the one line (text, SAC, quantity and rate) and the tax settings are rebuilt from the
+// estimate inside the transaction, so a client cannot change the amount and the remainder rule sees every other conversion; the milestone is marked invoiced in the same
 // transaction, conditional on still being open, so a second click cannot invoice it twice. A whole-estimate conversion keeps the lines as
 // edited and is refused while another invoice made from the estimate exists.
 func (s *InvoiceService) CreateInvoiceFromEstimate(c core.Context, invoice *models.Invoice, lines []*models.InvoiceLine, estimateId int64, milestoneId int64) error {
@@ -227,7 +227,11 @@ func (s *InvoiceService) CreateInvoiceFromEstimate(c core.Context, invoice *mode
 		return errs.ErrUserIdInvalid
 	}
 
-	estimate, estimateLines, err := s.GetInvoice(c, invoice.Uid, estimateId)
+	if estimateId <= 0 {
+		return errs.ErrInvoiceIdInvalid
+	}
+
+	estimate, err := s.getInvoiceHeader(c, invoice.Uid, estimateId)
 
 	if err != nil {
 		return err
@@ -261,6 +265,11 @@ func (s *InvoiceService) CreateInvoiceFromEstimate(c core.Context, invoice *mode
 			return err
 		}
 
+		var estimateLines []*models.InvoiceLine
+		if err := sess.Where("uid=? AND invoice_id=?", invoice.Uid, estimateId).OrderBy("display_order asc").Find(&estimateLines); err != nil {
+			return err
+		}
+
 		expected, err := estimateInvoiceLines(sess, stored, estimateLines, milestoneId)
 
 		if err != nil {
@@ -268,8 +277,11 @@ func (s *InvoiceService) CreateInvoiceFromEstimate(c core.Context, invoice *mode
 		}
 
 		if milestoneId > 0 {
-			lines[0].Quantity = expected[0].Quantity
-			lines[0].Rate = expected[0].Rate
+			// the server owns the whole milestone line and bills it with the estimate's tax
+			line := lines[0]
+			line.ItemName, line.Description, line.Sac, line.ProductId = expected[0].ItemName, expected[0].Description, expected[0].Sac, expected[0].ProductId
+			line.Quantity, line.Rate = expected[0].Quantity, expected[0].Rate
+			invoice.TaxType, invoice.TaxRate = stored.TaxType, stored.TaxRate
 			totals := computeInvoiceTotals(lines, invoice.TaxType, invoice.TaxRate)
 			invoice.Subtotal, invoice.TaxAmount, invoice.Total = totals.Subtotal, totals.TaxAmount, totals.Total
 

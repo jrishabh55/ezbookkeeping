@@ -606,6 +606,16 @@ func (s *InvoiceService) ModifyInvoice(c core.Context, invoice *models.Invoice, 
 	invoice.UpdatedUnixTime = time.Now().Unix()
 
 	return s.UserDataDB(invoice.Uid).DoTransaction(c, func(sess *xorm.Session) error {
+		// an invoice made from an estimate also locks the estimate, so a conversion's remainder never reads a half-applied edit
+		stored := &models.Invoice{}
+		if _, err := sess.Cols("estimate_id").Where("uid=? AND deleted=? AND invoice_id=?", invoice.Uid, false, invoice.InvoiceId).Get(stored); err != nil {
+			return err
+		} else if stored.EstimateId > 0 {
+			if err := lockInvoiceRow(sess, invoice.Uid, stored.EstimateId, invoice.UpdatedUnixTime); err != nil {
+				return err
+			}
+		}
+
 		if err := checkInvoiceNumberUnique(sess, invoice); err != nil {
 			return err
 		}
@@ -654,6 +664,14 @@ func (s *InvoiceService) DeleteInvoice(c core.Context, uid int64, invoiceId int6
 			return err
 		} else if !has {
 			return errs.ErrInvoiceNotFound
+		}
+
+		// an invoice made from an estimate also locks the estimate, so a conversion of its last open milestone sees this delete
+		// either fully (milestone freed) or not at all
+		if invoice.EstimateId > 0 {
+			if err := lockInvoiceRow(sess, uid, invoice.EstimateId, now); err != nil {
+				return err
+			}
 		}
 
 		if invoice.Kind == models.INVOICE_KIND_ESTIMATE {

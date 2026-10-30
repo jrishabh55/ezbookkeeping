@@ -434,6 +434,12 @@ func (a *InvoicesApi) InvoiceCreateHandler(c *core.WebContext) (any, *errs.Error
 		return nil, errs.NewIncompleteOrIncorrectSubmissionError(err)
 	}
 
+	// a milestone only exists on an estimate, and an estimate is never made from another estimate
+	if (req.MilestoneId > 0 && req.EstimateId == 0) || (req.EstimateId > 0 && req.Kind == models.INVOICE_KIND_ESTIMATE) {
+		log.Warnf(c, "[invoices.InvoiceCreateHandler] estimate \"id:%d\" and milestone \"id:%d\" do not go with kind \"%s\"", req.EstimateId, req.MilestoneId, req.Kind)
+		return nil, errs.ErrIncompleteOrIncorrectSubmission
+	}
+
 	taxType, err := validateInvoiceTax(req.TaxType, req.TaxRate)
 
 	if err != nil {

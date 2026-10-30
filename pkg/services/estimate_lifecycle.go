@@ -149,8 +149,23 @@ func (s *InvoiceService) SetEstimateResponse(c core.Context, uid int64, estimate
 	now := time.Now().Unix()
 
 	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+		if err := lockInvoiceRow(sess, uid, estimateId, now); err != nil {
+			return err
+		}
+
 		if _, err := getEstimateInSession(sess, uid, estimateId); err != nil {
 			return err
+		}
+
+		// an estimate something was invoiced from can still be accepted, never declined
+		if status == models.ESTIMATE_STATUS_DECLINED {
+			invoiced, err := estimateHasInvoices(sess, uid, estimateId)
+
+			if err != nil {
+				return err
+			} else if invoiced {
+				return errs.ErrEstimateHasInvoices
+			}
 		}
 
 		updatedRows, err := sess.Cols("estimate_status", "responded_unix_time", "responded_by_client", "response_note", "updated_unix_time").
@@ -181,6 +196,10 @@ func (s *InvoiceService) ReopenEstimate(c core.Context, uid int64, estimateId in
 	now := time.Now().Unix()
 
 	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+		if err := lockInvoiceRow(sess, uid, estimateId, now); err != nil {
+			return err
+		}
+
 		if _, err := getEstimateInSession(sess, uid, estimateId); err != nil {
 			return err
 		}

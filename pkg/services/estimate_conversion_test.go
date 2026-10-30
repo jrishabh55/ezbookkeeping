@@ -132,10 +132,19 @@ func TestCreateInvoiceFromMilestoneRecomputesTheRateAndInvoicesEachMilestoneOnce
 	assert.Nil(t, err)
 
 	// the client sends a tampered rate, quantity and customer; the server bills the estimate's customer the milestone's share
+	// and a tampered tax and line text: the server owns the whole milestone line and uses the estimate's tax (none here)
 	advance := newTestInvoiceDraft(uid, other.CustomerId, "INV/2026-27/01")
-	assert.Nil(t, Invoices.CreateInvoiceFromEstimate(ctx, advance, []*models.InvoiceLine{{ItemName: "Advance", Quantity: 500, Rate: 1}}, estimate.InvoiceId, milestones[0].MilestoneId))
+	advance.TaxType, advance.TaxRate = models.INVOICE_TAX_TYPE_IGST, 1800
+	assert.Nil(t, Invoices.CreateInvoiceFromEstimate(ctx, advance, []*models.InvoiceLine{{ItemName: "Tampered", Description: "x", Sac: "000000", Quantity: 500, Rate: 1}}, estimate.InvoiceId, milestones[0].MilestoneId))
 	saved, lines, err := Invoices.GetInvoice(ctx, uid, advance.InvoiceId)
 	assert.Nil(t, err)
+	assert.Equal(t, models.INVOICE_TAX_TYPE_NONE, saved.TaxType)
+	assert.Equal(t, int32(0), saved.TaxRate)
+	assert.Equal(t, int64(0), saved.TaxAmount)
+	assert.Equal(t, int64(66660), saved.Total)
+	assert.Equal(t, "Advance: 33.33% of Estimate EST/2026-27/01", lines[0].ItemName)
+	assert.Equal(t, "", lines[0].Description)
+	assert.Equal(t, "998314", lines[0].Sac)
 	assert.Equal(t, int64(100), lines[0].Quantity)
 	assert.Equal(t, int64(66660), lines[0].Rate)
 	assert.Equal(t, int64(66660), saved.Subtotal)
@@ -244,4 +253,49 @@ func TestConcurrentConversionsOfTheSameMilestoneOrEstimateMakeAtMostOneInvoice(t
 	assert.Nil(t, err)
 	assert.Equal(t, milestoneWins, len(progress[withMilestones.InvoiceId].Invoices))
 	assert.Equal(t, wholeWins, len(progress[whole.InvoiceId].Invoices))
+}
+
+func TestMilestoneInvoiceUsesTheEstimateTaxAndEditsMoveTheRemainder(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	customer := createTestCustomer(t, uid)
+	estimate := &models.Invoice{Uid: uid, Number: "EST/2026-27/01", CustomerId: customer.CustomerId, InvoiceDate: "2026-04-23", DueDate: "2099-12-31",
+		TaxType: models.INVOICE_TAX_TYPE_IGST, TaxRate: 1800}
+	assert.Nil(t, Invoices.CreateEstimate(ctx, estimate, testEstimateLines(), []*models.EstimateMilestone{{Label: "Advance", Percent: 5000}, {Label: "Go-live", Percent: 5000}}))
+	milestones, err := Invoices.GetEstimateMilestones(ctx, uid, estimate.InvoiceId)
+	assert.Nil(t, err)
+
+	advance := newTestInvoiceDraft(uid, customer.CustomerId, "INV/2026-27/01") // the client sends no tax
+	assert.Nil(t, Invoices.CreateInvoiceFromEstimate(ctx, advance, []*models.InvoiceLine{{ItemName: "Advance", Quantity: 100, Rate: 1}}, estimate.InvoiceId, milestones[0].MilestoneId))
+	assert.Equal(t, models.INVOICE_TAX_TYPE_IGST, advance.TaxType)
+	assert.Equal(t, int32(1800), advance.TaxRate)
+	assert.Equal(t, int64(100000), advance.Subtotal) // 1,999.99 × 50% rounds up to 1,000.00
+	assert.Equal(t, int64(18000), advance.TaxAmount)
+
+	// editing the milestone invoice (it takes the estimate row lock) moves what the last milestone gets
+	_, advanceLines, err := Invoices.GetInvoice(ctx, uid, advance.InvoiceId)
+	assert.Nil(t, err)
+	advanceLines[0].Rate = 90000
+	assert.Nil(t, Invoices.ModifyInvoice(ctx, advance, advanceLines))
+
+	goLive := newTestInvoiceDraft(uid, customer.CustomerId, "INV/2026-27/02")
+	assert.Nil(t, Invoices.CreateInvoiceFromEstimate(ctx, goLive, []*models.InvoiceLine{{ItemName: "Go-live", Quantity: 100, Rate: 1}}, estimate.InvoiceId, milestones[1].MilestoneId))
+	assert.Equal(t, int64(109999), goLive.Subtotal)
+}
+
+func TestAnInvoicedEstimateCanBeAcceptedButNotDeclinedOrReopened(t *testing.T) {
+	ctx, uid := newAlertTestUser(t)
+	customer := createTestCustomer(t, uid)
+	estimate := createTestEstimate(t, uid, customer.CustomerId, "EST/2026-27/01", testEstimateLines(), nil)
+
+	invoice := newTestInvoiceDraft(uid, customer.CustomerId, "INV/2026-27/01")
+	assert.Nil(t, Invoices.CreateInvoiceFromEstimate(ctx, invoice, testEstimateLines(), estimate.InvoiceId, 0))
+
+	assert.Equal(t, errs.ErrEstimateHasInvoices, Invoices.SetEstimateResponse(ctx, uid, estimate.InvoiceId, models.ESTIMATE_STATUS_DECLINED))
+	assert.Nil(t, Invoices.SetEstimateResponse(ctx, uid, estimate.InvoiceId, models.ESTIMATE_STATUS_ACCEPTED))
+	assert.Equal(t, errs.ErrEstimateHasInvoices, Invoices.ReopenEstimate(ctx, uid, estimate.InvoiceId))
+
+	// once the invoice is deleted, the estimate can be reopened and declined again
+	assert.Nil(t, Invoices.DeleteInvoice(ctx, uid, invoice.InvoiceId))
+	assert.Nil(t, Invoices.ReopenEstimate(ctx, uid, estimate.InvoiceId))
+	assert.Nil(t, Invoices.SetEstimateResponse(ctx, uid, estimate.InvoiceId, models.ESTIMATE_STATUS_DECLINED))
 }
