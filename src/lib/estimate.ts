@@ -1,8 +1,9 @@
 import type { TextualYearMonthDay } from '@/core/datetime.ts';
 
-// mirror models.EstimateMilestonePercentTotal / models.EstimateMaxMilestones in pkg/models/estimate.go
+// mirror models.EstimateMilestonePercentTotal / models.EstimateMaxMilestones / models.EstimateMilestoneLabelMaxLength in pkg/models/estimate.go
 export const ESTIMATE_MILESTONE_PERCENT_TOTAL = 10000;
 export const ESTIMATE_MAX_MILESTONES = 10;
+export const ESTIMATE_MILESTONE_LABEL_MAX_LENGTH = 128;
 
 // mirrors models.ESTIMATE_STATUS_*; expired and invoiced are only ever displayed
 export type EstimateStatus = 'draft' | 'sent' | 'accepted' | 'declined';
@@ -83,6 +84,8 @@ export function getMilestonesProblem(milestones: readonly { readonly label: stri
         return 'An estimate can have at most 10 milestones';
     } else if (milestones.some(milestone => !milestone.label.trim())) {
         return 'Milestone label cannot be blank';
+    } else if (milestones.some(milestone => milestone.label.trim().length > ESTIMATE_MILESTONE_LABEL_MAX_LENGTH)) {
+        return 'Milestone label cannot be longer than 128 characters';
     } else if (milestones.some(milestone => milestone.percent <= 0)) {
         return 'Milestone percent must be greater than zero';
     } else if (getMilestonePercentTotal(milestones) !== ESTIMATE_MILESTONE_PERCENT_TOTAL) {

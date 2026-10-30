@@ -8,7 +8,7 @@
                     <v-row>
                         <v-col cols="12" md="6">
                             <v-autocomplete item-title="name" item-value="id" persistent-placeholder
-                                            :disabled="loading || submitting"
+                                            :disabled="loading || submitting || !!invoice.estimateId"
                                             :label="tt('Customer')" :placeholder="tt('Customer')"
                                             :items="allCustomers" :no-data-text="tt('No results')"
                                             v-model="invoice.customerId">
@@ -24,24 +24,24 @@
                         <v-col cols="12" md="3">
                             <v-text-field type="text" autocomplete="off" persistent-placeholder
                                           :disabled="loading || submitting"
-                                          :label="tt('Invoice Number')" :placeholder="tt('Invoice Number')"
+                                          :label="tt(numberLabel)" :placeholder="tt(numberLabel)"
                                           v-model="invoice.number" />
                         </v-col>
                         <v-col cols="12" md="3">
                             <!-- lines and payments are in this currency, so it is fixed once the invoice exists -->
-                            <currency-select :disabled="loading || submitting || !!editInvoiceId"
+                            <currency-select :disabled="loading || submitting || !!editInvoiceId || !!invoice.estimateId"
                                              :label="tt('Currency')" :placeholder="tt('Currency')"
                                              v-model="invoice.currency" />
                         </v-col>
                         <v-col cols="12" md="6">
                             <date-select :disabled="loading || submitting"
-                                         :label="tt('Invoice Date')"
+                                         :label="tt(dateLabel)"
                                          :model-value="invoice.invoiceDate"
                                          @update:model-value="onInvoiceDateChanged" />
                         </v-col>
                         <v-col cols="12" md="6">
                             <date-select :disabled="loading || submitting"
-                                         :label="tt('Payment Due')"
+                                         :label="tt(dueDateLabel)"
                                          v-model="invoice.dueDate" />
                         </v-col>
 
@@ -99,6 +99,42 @@
                             <v-btn color="primary" variant="text" density="comfortable" :prepend-icon="mdiPlus"
                                    :disabled="loading || submitting" @click="addLine">{{ tt('Add Line') }}</v-btn>
                         </v-col>
+
+                        <template v-if="isEstimate">
+                            <v-col cols="12" class="d-flex align-center">
+                                <span class="text-title-small">{{ tt('Milestones') }}</span>
+                                <v-chip class="ms-3" size="small" variant="tonal" :color="milestonesProblem ? 'warning' : 'success'"
+                                        v-if="invoice.milestones.length">
+                                    {{ milestonesProblem ? tt(milestonesProblem) : formatMilestonePercent(milestonePercentTotal) + ' ✓' }}
+                                </v-chip>
+                            </v-col>
+                            <template :key="index" v-for="(milestone, index) in invoice.milestones">
+                                <v-col cols="12" md="6">
+                                    <v-text-field type="text" autocomplete="off" persistent-placeholder
+                                                  :disabled="loading || submitting"
+                                                  :label="tt('Milestone')" :placeholder="tt('Milestone')"
+                                                  v-model="milestone.label" />
+                                </v-col>
+                                <v-col cols="5" md="2">
+                                    <number-input :disabled="loading || submitting" :persistent-placeholder="true"
+                                                  :label="tt('Percent (%)')" :min-value="0.01" :max-value="100" :max-decimal-count="2"
+                                                  :model-value="milestone.percent / 100"
+                                                  @update:model-value="milestone.percent = Math.round($event * 100)" />
+                                </v-col>
+                                <v-col cols="5" md="3" class="d-flex align-center justify-end">
+                                    <span class="text-body-large">{{ formatAmount(milestoneAmounts[index] ?? 0) }}</span>
+                                </v-col>
+                                <v-col cols="2" md="1" class="d-flex align-center justify-center">
+                                    <v-btn color="error" variant="text" density="comfortable" :icon="mdiDeleteOutline" :aria-label="tt('Remove')"
+                                           :disabled="loading || submitting" @click="removeMilestone(index)"></v-btn>
+                                </v-col>
+                            </template>
+                            <v-col cols="12">
+                                <v-btn color="primary" variant="text" density="comfortable" :prepend-icon="mdiPlus"
+                                       :disabled="loading || submitting || invoice.milestones.length >= ESTIMATE_MAX_MILESTONES"
+                                       @click="addMilestone">{{ tt('Add Milestone') }}</v-btn>
+                            </v-col>
+                        </template>
 
                         <v-col cols="6" md="3">
                             <v-select item-title="displayName" item-value="type" persistent-placeholder
@@ -174,11 +210,12 @@ import { useInvoiceEditPageBase } from '@/views/base/invoices/InvoiceEditPageBas
 import { useInvoicesStore } from '@/stores/invoice.ts';
 
 import type { TextualYearMonthDay } from '@/core/datetime.ts';
-import { type InvoiceProfile, type InvoiceLine, Invoice } from '@/models/invoice.ts';
+import { type InvoiceProfile, type InvoiceLine, type InvoiceKind, Invoice } from '@/models/invoice.ts';
 import type { Product } from '@/models/product.ts';
 
 import { isEquals } from '@/lib/common.ts';
 import { INVOICE_QUANTITY_SCALE } from '@/lib/invoice.ts';
+import { ESTIMATE_MAX_MILESTONES, formatMilestonePercent } from '@/lib/estimate.ts';
 
 type SnackBarType = InstanceType<typeof SnackBar>;
 type CustomerEditDialogType = InstanceType<typeof CustomerEditDialog>;
@@ -195,7 +232,11 @@ const {
     submitting,
     invoice,
     allCustomers,
+    isEstimate,
     title,
+    numberLabel,
+    dateLabel,
+    dueDateLabel,
     saveButtonTitle,
     inputEmptyProblemMessage,
     inputIsEmpty,
@@ -203,13 +244,19 @@ const {
     taxRows,
     allTaxTypes,
     taxRatePercent,
+    milestoneAmounts,
+    milestonePercentTotal,
+    milestonesProblem,
     addLine,
     getProductSuggestions,
     selectProduct,
     getLinkedProductName,
     removeLine,
+    addMilestone,
+    removeMilestone,
     setInvoice,
     prepareNewInvoice,
+    prepareConvertedInvoice,
     setInvoiceDate,
     suggestNumber: loadSuggestedNumber,
     formatAmount
@@ -241,7 +288,7 @@ function suggestNumber(): void {
     });
 }
 
-function open(options: { id?: string, currentInvoice?: Invoice, duplicateFrom?: Invoice }): Promise<InvoiceEditResponse> {
+function open(options: { id?: string, currentInvoice?: Invoice, duplicateFrom?: Invoice, kind?: InvoiceKind, convertFrom?: { estimateId: string, milestoneId: string } }): Promise<InvoiceEditResponse> {
     showState.value = true;
     loading.value = true;
     submitting.value = false;
@@ -251,18 +298,26 @@ function open(options: { id?: string, currentInvoice?: Invoice, duplicateFrom?: 
         setInvoice(options.currentInvoice);
     }
 
+    const loadInvoice = options.id
+        ? invoicesStore.getInvoice({ invoiceId: options.id })
+        : options.convertFrom
+            ? invoicesStore.getEstimateInvoiceDraft({ estimateId: options.convertFrom.estimateId, milestoneId: options.convertFrom.milestoneId })
+            : Promise.resolve(null);
+
     Promise.all([
         invoicesStore.loadAllCustomers({ force: false }),
         invoicesStore.loadInvoiceProfile({ force: false }),
         invoicesStore.loadAllProducts({ force: false }).catch(() => []),
-        options.id ? invoicesStore.getInvoice({ invoiceId: options.id }) : Promise.resolve(null)
+        loadInvoice
     ]).then(([, loadedProfile, , loadedInvoice]) => {
         profile.value = loadedProfile;
 
-        if (loadedInvoice) {
+        if (loadedInvoice && options.id) {
             setInvoice(loadedInvoice, loadedProfile);
+        } else if (loadedInvoice) {
+            prepareConvertedInvoice(loadedProfile, loadedInvoice);
         } else {
-            prepareNewInvoice(loadedProfile, options.duplicateFrom);
+            prepareNewInvoice(loadedProfile, options.duplicateFrom, options.kind ?? 'invoice');
             suggestNumber();
         }
 
@@ -327,7 +382,12 @@ function save(): void {
 
     invoicesStore.saveInvoice({ invoice: invoice.value, isEdit: !!editInvoiceId.value }).then(saved => {
         submitting.value = false;
-        resolveFunc?.({ message: editInvoiceId.value ? 'You have saved this invoice' : 'You have added a new invoice', invoice: saved });
+        resolveFunc?.({
+            message: isEstimate.value
+                ? (editInvoiceId.value ? 'You have saved this estimate' : 'You have added a new estimate')
+                : (editInvoiceId.value ? 'You have saved this invoice' : 'You have added a new invoice'),
+            invoice: saved
+        });
         showState.value = false;
     }).catch(error => {
         submitting.value = false;

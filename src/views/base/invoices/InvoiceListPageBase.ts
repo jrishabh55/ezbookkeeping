@@ -38,7 +38,8 @@ export function useInvoiceListPageBase() {
     const showPaid = ref<boolean>(true);
     const today = getTodayTextualDate();
 
-    const allInvoices = computed<Invoice[]>(() => invoicesStore.allInvoices);
+    // invoices only: an estimate is never outstanding or overdue
+    const allInvoices = computed<Invoice[]>(() => invoicesStore.allInvoices.filter(invoice => invoice.kind === 'invoice'));
     const displayInvoices = computed<Invoice[]>(() => showPaid.value ? allInvoices.value : allInvoices.value.filter(invoice => getInvoiceStatus(invoice) !== 'paid'));
     const noAvailableInvoice = computed<boolean>(() => displayInvoices.value.length < 1);
 

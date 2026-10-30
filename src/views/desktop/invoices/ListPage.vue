@@ -36,6 +36,14 @@
                     <span class="nav-item-title">{{ tt('Recurring') }}</span>
                 </a>
             </li>
+            <li class="nav-link">
+                <a class="d-flex align-center cursor-pointer"
+                   :class="{ 'router-link-active router-link-exact-active': activeView === 'estimates', 'disabled': loading }"
+                   @click="activeView = 'estimates'">
+                    <v-icon class="nav-item-icon" :icon="mdiFileDocumentCheckOutline"/>
+                    <span class="nav-item-title">{{ tt('Estimates') }}</span>
+                </a>
+            </li>
         </template>
 
         <template #content>
@@ -66,6 +74,10 @@
                                                          v-if="activeView === 'invoices' && !showPaid" @click="showPaid = true"></v-list-item>
                                             <v-list-item :prepend-icon="mdiEyeOffOutline" :title="tt('Hide Paid Invoices')"
                                                          v-if="activeView === 'invoices' && showPaid" @click="showPaid = false"></v-list-item>
+                                            <v-list-item :prepend-icon="mdiEyeOutline" :title="tt('Show Closed Estimates')"
+                                                         v-if="activeView === 'estimates' && !showClosed" @click="showClosed = true"></v-list-item>
+                                            <v-list-item :prepend-icon="mdiEyeOffOutline" :title="tt('Hide Closed Estimates')"
+                                                         v-if="activeView === 'estimates' && showClosed" @click="showClosed = false"></v-list-item>
                                             <v-list-item :prepend-icon="mdiFileDocumentEditOutline" :title="tt('Invoice Profile')"
                                                          to="/settings/invoice_profile"></v-list-item>
                                             <v-list-item :prepend-icon="mdiEmailEditOutline" :title="tt('Invoice Email Template')"
@@ -158,6 +170,42 @@
                             </tr>
                             </tbody>
                         </v-table>
+
+                        <v-table class="table-striped" :hover="!loading" v-if="activeView === 'estimates'">
+                            <thead>
+                            <tr>
+                                <th>{{ tt('Estimate Number') }}</th>
+                                <th>{{ tt('Customer') }}</th>
+                                <th>{{ tt('Estimate Date') }}</th>
+                                <th>{{ tt('Valid Until') }}</th>
+                                <th class="text-right">{{ tt('Total') }}</th>
+                                <th>{{ tt('Status') }}</th>
+                            </tr>
+                            </thead>
+
+                            <tbody v-if="loading && noAvailableEstimate">
+                            <tr :key="itemIdx" v-for="itemIdx in [ 1, 2, 3 ]">
+                                <td class="px-0" colspan="6"><v-skeleton-loader type="text" :loading="true"></v-skeleton-loader></td>
+                            </tr>
+                            </tbody>
+
+                            <tbody v-if="!loading && noAvailableEstimate">
+                            <tr><td colspan="6">{{ tt('No available estimate') }}</td></tr>
+                            </tbody>
+
+                            <tbody v-if="!noAvailableEstimate">
+                            <tr class="cursor-pointer" :key="estimate.id" v-for="estimate in displayEstimates" @click="view(estimate)">
+                                <td>{{ estimate.number }}</td>
+                                <td>{{ estimate.billToName }}</td>
+                                <td>{{ formatDate(estimate.invoiceDate) }}</td>
+                                <td>{{ formatDate(estimate.dueDate) }}</td>
+                                <td class="text-right">{{ formatAmount(estimate.total, estimate.currency) }}</td>
+                                <td>
+                                    <v-chip size="small" variant="tonal" :color="ESTIMATE_STATUS_COLORS[getEstimateStatus(estimate)]">{{ tt(getEstimateStatusName(estimate)) }}</v-chip>
+                                </td>
+                            </tr>
+                            </tbody>
+                        </v-table>
                     </v-card>
                 </v-col>
             </v-row>
@@ -184,6 +232,7 @@ import {
     mdiDeleteOutline,
     mdiFileDocumentOutline,
     mdiFileDocumentEditOutline,
+    mdiFileDocumentCheckOutline,
     mdiEmailEditOutline,
     mdiRepeat
 } from '@mdi/js';
@@ -197,6 +246,7 @@ import RecurringInvoiceEditDialog from './dialogs/RecurringInvoiceEditDialog.vue
 import { useI18n } from '@/locales/helpers.ts';
 import { useInvoiceListPageBase } from '@/views/base/invoices/InvoiceListPageBase.ts';
 import { useRecurringInvoiceListPageBase } from '@/views/base/invoices/RecurringInvoiceListPageBase.ts';
+import { useEstimateListPageBase, ESTIMATE_STATUS_COLORS } from '@/views/base/invoices/EstimateListPageBase.ts';
 
 import { useInvoicesStore } from '@/stores/invoice.ts';
 
@@ -230,6 +280,13 @@ const {
     getSourceNumber,
     getScheduleText
 } = useRecurringInvoiceListPageBase();
+const {
+    showClosed,
+    displayEstimates,
+    noAvailableEstimate,
+    getStatus: getEstimateStatus,
+    getStatusName: getEstimateStatusName
+} = useEstimateListPageBase();
 
 const invoicesStore = useInvoicesStore();
 const route = useRoute();
@@ -243,11 +300,12 @@ const recurringInvoiceEditDialog = useTemplateRef<RecurringInvoiceEditDialogType
 
 const statusColors: Record<InvoiceDisplayStatus, string> = { unpaid: 'warning', partial: 'primary', paid: 'success', overdue: 'error' };
 
-const activeView = ref<'invoices' | 'recurring'>('invoices');
+const activeView = ref<'invoices' | 'recurring' | 'estimates'>('invoices');
 const updating = ref<boolean>(false);
 const hoveredRecurringId = ref<string>('');
 
-const activeViewTitle = computed<string>(() => activeView.value === 'invoices' ? 'Invoices' : 'Recurring');
+const VIEW_TITLES: Record<'invoices' | 'recurring' | 'estimates', string> = { invoices: 'Invoices', recurring: 'Recurring', estimates: 'Estimates' };
+const activeViewTitle = computed<string>(() => VIEW_TITLES[activeView.value]);
 
 function reload(force: boolean): void {
     loading.value = true;
@@ -255,7 +313,8 @@ function reload(force: boolean): void {
     Promise.all([
         invoicesStore.loadAllInvoices({ force: force }),
         invoicesStore.loadAllRecurringInvoices({ force: force }),
-        invoicesStore.loadInvoiceProfile({ force: false })
+        invoicesStore.loadInvoiceProfile({ force: false }),
+        invoicesStore.loadAllEstimates({ force: force })
     ]).then(() => {
         loading.value = false;
 
@@ -274,7 +333,7 @@ function reload(force: boolean): void {
 }
 
 function add(): void {
-    invoiceEditDialog.value?.open({}).then(result => {
+    invoiceEditDialog.value?.open({ kind: activeView.value === 'estimates' ? 'estimate' : 'invoice' }).then(result => {
         snackbar.value?.showMessage(result.message);
         reload(false);
         view(result.invoice);

@@ -5,12 +5,13 @@ import { useI18n } from '@/locales/helpers.ts';
 import { useInvoicesStore } from '@/stores/invoice.ts';
 
 import type { TextualYearMonthDay } from '@/core/datetime.ts';
-import { type Customer, type InvoiceProfile, type InvoiceTaxType, type InvoiceLine, Invoice, INVOICE_TAX_TYPES } from '@/models/invoice.ts';
+import { type Customer, type InvoiceProfile, type InvoiceTaxType, type InvoiceLine, type InvoiceKind, Invoice, INVOICE_TAX_TYPES } from '@/models/invoice.ts';
 import type { Product } from '@/models/product.ts';
 
 import { parseBigDecimal } from '@/lib/numeral.ts';
 import { type InvoiceTotals, INVOICE_DEFAULT_CURRENCY, computeInvoiceTotals, getInvoiceTaxRows, formatInvoiceTaxRate, addDaysToDate, getDaysBetweenDates, getTodayTextualDate } from '@/lib/invoice.ts';
 import { filterProductSuggestions, applyProductToLine } from '@/lib/product.ts';
+import { ESTIMATE_MAX_MILESTONES, ESTIMATE_MILESTONE_PERCENT_TOTAL, getMilestoneAmounts, getMilestonePercentTotal, getMilestonesProblem } from '@/lib/estimate.ts';
 
 export function useInvoiceEditPageBase() {
     const { tt, formatAmountToLocalizedNumeralsWithCurrency, formatGregorianTextualYearMonthDayToLongDate } = useI18n();
@@ -24,14 +25,33 @@ export function useInvoiceEditPageBase() {
     const lastSuggestedNumber = ref<string>('');
     const profileTermsDays = ref<number>(7);
     const profileDefaultSac = ref<string>('');
+    const profileEstimateValidDays = ref<number>(30);
 
     const allCustomers = computed<Customer[]>(() => invoicesStore.allCustomers);
     const allProducts = computed<Product[]>(() => invoicesStore.allProducts.filter(product => !product.archived));
 
-    const title = computed<string>(() => editInvoiceId.value ? 'Edit Invoice' : 'Add Invoice');
+    const isEstimate = computed<boolean>(() => invoice.value.kind === 'estimate');
+
+    const title = computed<string>(() => {
+        if (isEstimate.value) {
+            return editInvoiceId.value ? 'Edit Estimate' : 'Add Estimate';
+        }
+
+        return editInvoiceId.value ? 'Edit Invoice' : 'Add Invoice';
+    });
+
+    const numberLabel = computed<string>(() => isEstimate.value ? 'Estimate Number' : 'Invoice Number');
+    const dateLabel = computed<string>(() => isEstimate.value ? 'Estimate Date' : 'Invoice Date');
+    const dueDateLabel = computed<string>(() => isEstimate.value ? 'Valid Until' : 'Payment Due');
+
     const saveButtonTitle = computed<string>(() => editInvoiceId.value ? 'Save' : 'Add');
 
     const totals = computed<InvoiceTotals>(() => computeInvoiceTotals(invoice.value.lines, invoice.value.taxType, invoice.value.taxRate));
+
+    // what each milestone comes to out of the total incl. tax, as the Payment Terms table prints it
+    const milestoneAmounts = computed<number[]>(() => getMilestoneAmounts(totals.value.total, invoice.value.milestones.map(milestone => milestone.percent)));
+    const milestonePercentTotal = computed<number>(() => getMilestonePercentTotal(invoice.value.milestones));
+    const milestonesProblem = computed<string | null>(() => isEstimate.value ? getMilestonesProblem(invoice.value.milestones) : null);
 
     // the tax lines shown under the subtotal, e.g. "IGST (18%)" or "CGST (9%)" + "SGST (9%)"
     const taxRows = computed<{ label: string, amount: number }[]>(() => getInvoiceTaxRows(invoice.value.taxType, invoice.value.taxRate, totals.value.taxAmount)
@@ -50,11 +70,11 @@ export function useInvoiceEditPageBase() {
         if (!invoice.value.customerId) {
             return 'Customer cannot be blank';
         } else if (!invoice.value.number.trim()) {
-            return 'Invoice number cannot be blank';
+            return isEstimate.value ? 'Estimate number cannot be blank' : 'Invoice number cannot be blank';
         } else if (!invoice.value.invoiceDate || !invoice.value.dueDate) {
             return 'Invoice date cannot be blank';
         } else if (invoice.value.dueDate < invoice.value.invoiceDate) {
-            return 'Due date cannot be before the invoice date';
+            return isEstimate.value ? 'Valid until cannot be before the estimate date' : 'Due date cannot be before the invoice date';
         } else if (invoice.value.lines.length < 1) {
             return 'Invoice must have at least one line';
         } else if (invoice.value.taxType !== 'none' && invoice.value.taxRate <= 0) {
@@ -67,6 +87,10 @@ export function useInvoiceEditPageBase() {
             } else if (line.quantity < 1 || line.rate <= 0) {
                 return 'Quantity and rate must be greater than zero';
             }
+        }
+
+        if (milestonesProblem.value) {
+            return milestonesProblem.value;
         }
 
         return null;
@@ -94,6 +118,7 @@ export function useInvoiceEditPageBase() {
     function setProfileDefaults(profile: InvoiceProfile): void {
         profileTermsDays.value = profile.defaultTermsDays;
         profileDefaultSac.value = profile.defaultSac;
+        profileEstimateValidDays.value = profile.estimateValidDays;
     }
 
     // a new invoice takes its tax type and rate from the customer
@@ -107,6 +132,19 @@ export function useInvoiceEditPageBase() {
         invoice.value.lines.splice(index, 1);
     }
 
+    // a new milestone gets whatever percent is still missing, so two clicks on a fresh estimate give a sensible 50 / 50 start
+    function addMilestone(): void {
+        if (invoice.value.milestones.length >= ESTIMATE_MAX_MILESTONES) {
+            return;
+        }
+
+        invoice.value.milestones.push(Invoice.createNewMilestone(Math.max(ESTIMATE_MILESTONE_PERCENT_TOTAL - milestonePercentTotal.value, 0)));
+    }
+
+    function removeMilestone(index: number): void {
+        invoice.value.milestones.splice(index, 1);
+    }
+
     function setInvoice(source: Invoice, profile?: InvoiceProfile): void {
         if (profile) {
             setProfileDefaults(profile);
@@ -116,14 +154,14 @@ export function useInvoiceEditPageBase() {
         lastSuggestedNumber.value = '';
     }
 
-    // a new invoice dated today with the profile's terms and notes, optionally copying another invoice
-    function prepareNewInvoice(profile: InvoiceProfile, duplicateFrom?: Invoice | null): void {
-        const newInvoice = duplicateFrom ? duplicateFrom.duplicate() : Invoice.createNewInvoice();
+    // a new invoice (or estimate) dated today with the profile's terms (or validity) and notes, optionally copying another one
+    function prepareNewInvoice(profile: InvoiceProfile, duplicateFrom?: Invoice | null, kind: InvoiceKind = 'invoice'): void {
+        const newInvoice = duplicateFrom ? duplicateFrom.duplicate() : (kind === 'estimate' ? Invoice.createNewEstimate() : Invoice.createNewInvoice());
         const today = getTodayTextualDate();
 
         setProfileDefaults(profile);
         newInvoice.invoiceDate = today;
-        newInvoice.dueDate = addDaysToDate(today, getTermsDays(newInvoice.customerId, profile.defaultTermsDays));
+        newInvoice.dueDate = addDaysToDate(today, newInvoice.kind === 'estimate' ? profile.estimateValidDays : getTermsDays(newInvoice.customerId, profile.defaultTermsDays));
         applyCustomerTaxDefaults(newInvoice, newInvoice.customerId);
 
         if (!duplicateFrom) {
@@ -136,6 +174,16 @@ export function useInvoiceEditPageBase() {
         lastSuggestedNumber.value = '';
     }
 
+    // the unsaved invoice an estimate turned into; its customer, currency and (for a milestone) amount are set by the server
+    function prepareConvertedInvoice(profile: InvoiceProfile, draft: Invoice): void {
+        setProfileDefaults(profile);
+
+        const converted = draft.clone();
+        converted.id = '';
+        invoice.value = converted;
+        lastSuggestedNumber.value = converted.number;
+    }
+
     // the customer's own terms when set (above 0), otherwise the profile's
     function getTermsDays(customerId: string, defaultTermsDays: number): number {
         return invoicesStore.allCustomersMap[customerId]?.termsDays || defaultTermsDays;
@@ -145,18 +193,24 @@ export function useInvoiceEditPageBase() {
     function setInvoiceDate(date: TextualYearMonthDay, termsDays: number): void {
         const days = editInvoiceId.value && invoice.value.invoiceDate && invoice.value.dueDate
             ? getDaysBetweenDates(invoice.value.invoiceDate, invoice.value.dueDate)
-            : getTermsDays(invoice.value.customerId, termsDays);
+            : (isEstimate.value ? profileEstimateValidDays.value : getTermsDays(invoice.value.customerId, termsDays));
 
         invoice.value.invoiceDate = date;
         invoice.value.dueDate = addDaysToDate(date, Math.max(days, 0));
     }
 
-    // choosing a customer on a new invoice re-applies the due date from its terms and its tax defaults; an existing invoice is never changed silently
+    // choosing a customer on a new invoice re-applies the due date from its terms and its tax defaults (an estimate keeps its validity);
+    // an existing invoice, or one made from an estimate, is never changed silently
     watch(() => invoice.value.customerId, customerId => {
-        if (!editInvoiceId.value && invoice.value.invoiceDate) {
-            invoice.value.dueDate = addDaysToDate(invoice.value.invoiceDate, getTermsDays(customerId, profileTermsDays.value));
-            applyCustomerTaxDefaults(invoice.value, customerId);
+        if (editInvoiceId.value || invoice.value.estimateId || !invoice.value.invoiceDate) {
+            return;
         }
+
+        if (!isEstimate.value) {
+            invoice.value.dueDate = addDaysToDate(invoice.value.invoiceDate, getTermsDays(customerId, profileTermsDays.value));
+        }
+
+        applyCustomerTaxDefaults(invoice.value, customerId);
     });
 
     // the suggested number replaces the number only while it is blank or still the last suggestion; resolves whether it was applied
@@ -167,7 +221,7 @@ export function useInvoiceEditPageBase() {
             return Promise.resolve(false);
         }
 
-        return invoicesStore.getNextInvoiceNumber({ invoiceDate: invoice.value.invoiceDate }).then(number => {
+        return invoicesStore.getNextInvoiceNumber({ invoiceDate: invoice.value.invoiceDate, kind: invoice.value.kind }).then(number => {
             if (invoice.value.number !== numberAtRequest) {
                 return false; // the user typed while the suggestion was loading
             }
@@ -195,7 +249,11 @@ export function useInvoiceEditPageBase() {
         // computed states
         allCustomers,
         allProducts,
+        isEstimate,
         title,
+        numberLabel,
+        dateLabel,
+        dueDateLabel,
         saveButtonTitle,
         inputEmptyProblemMessage,
         inputIsEmpty,
@@ -204,14 +262,20 @@ export function useInvoiceEditPageBase() {
         allTaxTypes,
         selectedTaxTypeName,
         taxRatePercent,
+        milestoneAmounts,
+        milestonePercentTotal,
+        milestonesProblem,
         // functions
         addLine,
         getProductSuggestions,
         selectProduct,
         getLinkedProductName,
         removeLine,
+        addMilestone,
+        removeMilestone,
         setInvoice,
         prepareNewInvoice,
+        prepareConvertedInvoice,
         setInvoiceDate,
         suggestNumber,
         formatAmount,

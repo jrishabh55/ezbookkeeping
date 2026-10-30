@@ -39,6 +39,8 @@ describe('getMilestonesProblem', () => {
         expect(getMilestonesProblem([])).toBeNull();
         expect(getMilestonesProblem([{ label: 'Advance', percent: 3000 }, { label: 'Delivery', percent: 7000 }])).toBeNull();
         expect(getMilestonesProblem([{ label: ' ', percent: 10000 }])).toBe('Milestone label cannot be blank');
+        expect(getMilestonesProblem([{ label: 'A'.repeat(129), percent: 10000 }])).toBe('Milestone label cannot be longer than 128 characters');
+        expect(getMilestonesProblem([{ label: 'A'.repeat(128), percent: 10000 }])).toBeNull();
         expect(getMilestonesProblem([{ label: 'Advance', percent: 0 }, { label: 'Delivery', percent: 10000 }])).toBe('Milestone percent must be greater than zero');
         expect(getMilestonesProblem([{ label: 'Advance', percent: 5000 }, { label: 'Delivery', percent: 4999 }])).toBe('Milestones must add up to 100%');
         expect(getMilestonesProblem(Array.from({ length: 11 }, () => ({ label: 'Part', percent: 909 })))).toBe('An estimate can have at most 10 milestones');
