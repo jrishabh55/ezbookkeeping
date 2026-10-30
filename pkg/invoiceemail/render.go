@@ -22,6 +22,17 @@ const MaxBodyLength = 32000
 const DefaultSubjectTemplate = "Invoice {{invoice_number}} from {{business_name}}"
 const DefaultBodyTemplate = `<h1><span data-invoice-variable="business_name">{{business_name}}</span> sent you an invoice</h1><p>Hello <span data-invoice-variable="contact_name">{{contact_name}}</span>,</p><p>Please find your invoice attached.</p><h2>Amount due: <span data-invoice-variable="amount_due">{{amount_due}}</span></h2><p>Due <span data-invoice-variable="due_date">{{due_date}}</span></p><div data-invoice-button="true" style="text-align: center">View Invoice</div><p>Thank you for your business.</p><p><strong><span data-invoice-variable="business_name">{{business_name}}</span></strong><br><span data-invoice-variable="business_address">{{business_address}}</span><br><span data-invoice-variable="business_phone">{{business_phone}}</span><br><span data-invoice-variable="business_website">{{business_website}}</span></p>`
 
+// DefaultEstimateSubjectTemplate and DefaultEstimateBodyTemplate are the built-in preset worded for an estimate
+const DefaultEstimateSubjectTemplate = "Estimate {{invoice_number}} from {{business_name}}"
+
+var DefaultEstimateBodyTemplate = strings.NewReplacer(
+	"sent you an invoice", "sent you an estimate",
+	"Please find your invoice attached.", "Please find your estimate attached. You can accept or decline it online.",
+	`Amount due: <span data-invoice-variable="amount_due">{{amount_due}}</span>`, `Estimate total: <span data-invoice-variable="invoice_total">{{invoice_total}}</span>`,
+	`<p>Due <span data-invoice-variable="due_date">`, `<p>Valid until <span data-invoice-variable="due_date">`,
+	">View Invoice</div>", ">View Estimate</div>",
+).Replace(DefaultBodyTemplate)
+
 // Variable is the stable key, English catalog label and resolved text for an editor.
 type Variable struct {
 	Key   string `json:"key"`
@@ -43,6 +54,7 @@ var catalog = []Variable{
 	{Key: "invoice_total", Label: "Invoice Total"}, {Key: "amount_paid", Label: "Amount Paid"}, {Key: "amount_due", Label: "Amount Due"},
 	{Key: "currency", Label: "Currency"}, {Key: "invoice_url", Label: "Invoice URL"}, {Key: "business_name", Label: "Business Name"},
 	{Key: "business_address", Label: "Business Address"}, {Key: "business_phone", Label: "Business Phone"}, {Key: "business_website", Label: "Business Website"},
+	{Key: "document_type", Label: "Document Type"},
 }
 
 var emptyInline = regexp.MustCompile(`<(strong|b|em|i|u|span)>\s*</(strong|b|em|i|u|span)>`)
@@ -86,6 +98,39 @@ func EffectiveTemplates(subject, body string) (string, string) {
 func PresetWithoutBusinessName() (string, string) {
 	return strings.Replace(DefaultSubjectTemplate, " from {{business_name}}", "", 1),
 		strings.Replace(DefaultBodyTemplate, `<span data-invoice-variable="business_name">{{business_name}}</span> sent you an invoice`, "You have received an invoice", 1)
+}
+
+// EstimateTemplates rewords the built-in invoice preset (with or without the business name) for an estimate. Bodies are compared in
+// their sanitized form, so the preset still matches after a round trip through the editor; a template the user wrote is returned unchanged.
+func EstimateTemplates(subject, body string) (string, string) {
+	bareSubject, bareBody := PresetWithoutBusinessName()
+
+	switch strings.TrimSpace(subject) {
+	case DefaultSubjectTemplate:
+		subject = DefaultEstimateSubjectTemplate
+	case bareSubject:
+		subject = strings.Replace(DefaultEstimateSubjectTemplate, " from {{business_name}}", "", 1)
+	}
+
+	switch canonicalTemplate(body) {
+	case canonicalTemplate(DefaultBodyTemplate):
+		body = DefaultEstimateBodyTemplate
+	case canonicalTemplate(bareBody):
+		body = strings.Replace(DefaultEstimateBodyTemplate, `<span data-invoice-variable="business_name">{{business_name}}</span> sent you an estimate`, "You have received an estimate", 1)
+	}
+
+	return subject, body
+}
+
+// canonicalTemplate is a body as SanitizeTemplate stores it; an unparsable body is compared as it is
+func canonicalTemplate(body string) string {
+	sanitized, err := SanitizeTemplate(body)
+
+	if err != nil {
+		return body
+	}
+
+	return sanitized
 }
 
 // ValidateSubject checks the template and expanded subject without interpreting inserted values again.

@@ -691,7 +691,20 @@ func (a *InvoicesApi) InvoicePublicViewHandler(c *core.WebContext) (any, *errs.E
 		return nil, errs.Or(err, errs.ErrOperationFailed)
 	}
 
-	return invoice.ToPublicInvoiceResponse(lines, received, profile), nil
+	resp := invoice.ToPublicInvoiceResponse(lines, received, profile)
+
+	if invoice.Kind == models.INVOICE_KIND_ESTIMATE {
+		milestones, err := a.invoices.GetEstimateMilestones(c, invoice.Uid, invoice.InvoiceId)
+
+		if err != nil {
+			log.Errorf(c, "[invoices.InvoicePublicViewHandler] failed to get milestones of estimate \"id:%d\", because %s", invoice.InvoiceId, err.Error())
+			return nil, errs.Or(err, errs.ErrOperationFailed)
+		}
+
+		resp.Milestones = models.ToPublicEstimateMilestoneResponses(milestones)
+	}
+
+	return resp, nil
 }
 
 // InvoicePdfHandler returns the PDF document of one invoice of current user (GET /api/v1/invoices/pdf/:id).
@@ -726,15 +739,26 @@ func (a *InvoicesApi) InvoicePdfHandler(c *core.WebContext) ([]byte, string, *er
 
 	received := models.InvoiceReceivedAmount(payments[invoiceId])
 
+	var milestones []*models.EstimateMilestone
+
+	if invoice.Kind == models.INVOICE_KIND_ESTIMATE {
+		milestones, err = a.invoices.GetEstimateMilestones(c, invoice.Uid, invoice.InvoiceId)
+
+		if err != nil {
+			log.Errorf(c, "[invoices.InvoicePdfHandler] failed to get milestones of estimate \"id:%d\", because %s", invoice.InvoiceId, err.Error())
+			return nil, "", errs.Or(err, errs.ErrOperationFailed)
+		}
+	}
+
 	// the footer prints the public link when the invoice has one; InvoicePublicUrl returns "" otherwise
-	pdf, err := invoicepdf.Render(profile, invoice, lines, received, a.invoices.InvoicePublicUrl(invoice.PublicToken))
+	pdf, err := invoicepdf.RenderWithMilestones(profile, invoice, lines, milestones, received, a.invoices.InvoicePublicUrl(invoice.PublicToken))
 
 	if err != nil {
 		log.Errorf(c, "[invoices.InvoicePdfHandler] failed to render invoice \"id:%d\" for user \"uid:%d\", because %s", invoiceId, uid, err.Error())
 		return nil, "", errs.ErrOperationFailed
 	}
 
-	return pdf, invoicepdf.FileName(invoice.Number, invoice.DueDate), nil
+	return pdf, invoicepdf.DocumentFileName(invoice), nil
 }
 
 // InvoiceSendHandler emails an invoice of current user (public link in the body, PDF attached) and returns the invoice with its sent time
@@ -789,14 +813,25 @@ func (a *InvoicesApi) InvoicePublicPdfHandler(c *core.WebContext) ([]byte, strin
 		return nil, "", errs.Or(err, errs.ErrOperationFailed)
 	}
 
-	pdf, err := invoicepdf.Render(profile, invoice, lines, received, a.invoices.InvoicePublicUrl(invoice.PublicToken))
+	var milestones []*models.EstimateMilestone
+
+	if invoice.Kind == models.INVOICE_KIND_ESTIMATE {
+		milestones, err = a.invoices.GetEstimateMilestones(c, invoice.Uid, invoice.InvoiceId)
+
+		if err != nil {
+			log.Errorf(c, "[invoices.InvoicePublicPdfHandler] failed to get milestones of estimate \"id:%d\", because %s", invoice.InvoiceId, err.Error())
+			return nil, "", errs.Or(err, errs.ErrOperationFailed)
+		}
+	}
+
+	pdf, err := invoicepdf.RenderWithMilestones(profile, invoice, lines, milestones, received, a.invoices.InvoicePublicUrl(invoice.PublicToken))
 
 	if err != nil {
 		log.Errorf(c, "[invoices.InvoicePublicPdfHandler] failed to render invoice \"id:%d\", because %s", invoice.InvoiceId, err.Error())
 		return nil, "", errs.ErrOperationFailed
 	}
 
-	return pdf, invoicepdf.FileName(invoice.Number, invoice.DueDate), nil
+	return pdf, invoicepdf.DocumentFileName(invoice), nil
 }
 
 // InvoiceEmailPreviewHandler renders an unsaved draft using owned invoice data or deterministic samples.

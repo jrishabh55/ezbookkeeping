@@ -157,3 +157,24 @@ func balanceDue(invoice *models.Invoice, received int64) int64 {
 
 	return due
 }
+
+// DocumentTitle is the word a row is printed under: "Estimate" for an estimate, otherwise "Invoice"
+func DocumentTitle(invoice *models.Invoice) string {
+	if invoice.Kind == models.INVOICE_KIND_ESTIMATE {
+		return "Estimate"
+	}
+
+	return "Invoice"
+}
+
+// DocumentFileName is FileName led by the document title, e.g. Estimate_EST_2026-27_01_<valid until>.pdf;
+// mirrors getInvoicePdfFileName(number, dueDate, kind) in src/lib/invoice.ts
+func DocumentFileName(invoice *models.Invoice) string {
+	return DocumentTitle(invoice) + "_" + fileNameUnsafeChars.ReplaceAllString(invoice.Number, "_") + "_" + invoice.DueDate + ".pdf"
+}
+
+// milestoneShare is amount × basisPoints / 10000 rounded half up, mirroring getEstimateShare in src/lib/estimate.ts
+func milestoneShare(amount int64, basisPoints int32) int64 {
+	whole, rest := amount/models.EstimateMilestonePercentTotal, amount%models.EstimateMilestonePercentTotal
+	return whole*int64(basisPoints) + (rest*int64(basisPoints)+models.EstimateMilestonePercentTotal/2)/models.EstimateMilestonePercentTotal
+}

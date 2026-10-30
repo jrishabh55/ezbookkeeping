@@ -86,3 +86,20 @@ type EstimatePublicRespondRequest struct {
 	// enforces the real 500-rune limit (EstimateResponseNoteMaxLength), so an over-long note gets ErrEstimateResponseNoteTooLong
 	// rather than the generic submission error, and a 500-rune note padded with whitespace is still accepted.
 }
+
+// PublicEstimateMilestoneResponse is a payment term as the client sees it: no ids, no invoices
+type PublicEstimateMilestoneResponse struct {
+	Label   string `json:"label"`
+	Percent int32  `json:"percent"`
+}
+
+// ToPublicEstimateMilestoneResponses returns the milestones served through a public estimate link
+func ToPublicEstimateMilestoneResponses(milestones []*EstimateMilestone) []*PublicEstimateMilestoneResponse {
+	resps := make([]*PublicEstimateMilestoneResponse, len(milestones))
+
+	for idx, milestone := range milestones {
+		resps[idx] = &PublicEstimateMilestoneResponse{Label: milestone.Label, Percent: milestone.Percent}
+	}
+
+	return resps
+}

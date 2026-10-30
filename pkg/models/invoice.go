@@ -559,6 +559,11 @@ type PublicInvoiceResponse struct {
 	ClosedManually     bool                          `json:"closedManually"`
 	Lines              []*InvoiceLineResponse        `json:"lines"`
 	Profile            *PublicInvoiceProfileResponse `json:"profile"`
+
+	Kind              string                             `json:"kind,omitempty"` // "estimate" only; an invoice's link stays as it was
+	EstimateStatus    string                             `json:"estimateStatus,omitempty"`
+	RespondedUnixTime int64                              `json:"respondedUnixTime,omitempty"`
+	Milestones        []*PublicEstimateMilestoneResponse `json:"milestones,omitempty"`
 }
 
 // ToInvoiceProfileResponse returns a view-object according to database model
@@ -721,6 +726,12 @@ func (i *Invoice) ToPublicInvoiceResponse(lines []*InvoiceLine, received int64, 
 			LogoDataUrl:  logoDataUrl,
 			Gstin:        profile.Gstin,
 		},
+	}
+
+	if i.Kind == INVOICE_KIND_ESTIMATE {
+		resp.Kind = i.Kind
+		resp.EstimateStatus = i.EstimateStatus
+		resp.RespondedUnixTime = i.RespondedUnixTime
 	}
 
 	for idx, line := range lines {

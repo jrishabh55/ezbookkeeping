@@ -61,14 +61,26 @@ type renderer struct {
 	breakY     float64 // y beyond which content must go to a new page
 }
 
-// Render draws the invoice on A4 pages and returns the PDF bytes.
-// received is the sum of linked payments; verifyUrl, when not empty, is printed in the footer of every page.
+// Render draws an invoice (or an estimate without payment terms) on A4 pages and returns the PDF bytes
 func Render(profile *models.InvoiceProfile, invoice *models.Invoice, lines []*models.InvoiceLine, received int64, verifyUrl string) ([]byte, error) {
+	return RenderWithMilestones(profile, invoice, lines, nil, received, verifyUrl)
+}
+
+// RenderWithMilestones draws the document on A4 pages; an estimate's milestones print as a Payment Terms table under the totals.
+// received is the sum of linked payments; verifyUrl, when not empty, is printed in the footer of every page.
+func RenderWithMilestones(profile *models.InvoiceProfile, invoice *models.Invoice, lines []*models.InvoiceLine, milestones []*models.EstimateMilestone, received int64, verifyUrl string) ([]byte, error) {
 	pdf := fpdf.New("P", "mm", "A4", "")
 	pdf.SetMargins(pageMargin, pageMargin, pageMargin)
 	pdf.SetAutoPageBreak(false, bottomMargin)
 	regular, bold, fontFamily := fontRegular, fontBold, "DejaVuSerif"
-	if invoiceNeedsFallbackFont(profile, invoice, lines, verifyUrl) {
+	fontLines := make([]*models.InvoiceLine, 0, len(lines)+len(milestones))
+	fontLines = append(fontLines, lines...)
+
+	for _, milestone := range milestones {
+		fontLines = append(fontLines, &models.InvoiceLine{ItemName: milestone.Label})
+	}
+
+	if invoiceNeedsFallbackFont(profile, invoice, fontLines, verifyUrl) {
 		regular, bold, fontFamily = fallbackRegular, fallbackBold, "DejaVuSans"
 	}
 	pdf.AddUTF8FontFromBytes(fontFamily, "", regular)
@@ -89,17 +101,22 @@ func Render(profile *models.InvoiceProfile, invoice *models.Invoice, lines []*mo
 		pdf.SetFooterFunc(func() {
 			pdf.SetY(-13)
 			r.font(false, 8, colorMuted)
-			pdf.CellFormat(0, 4, "Verify this invoice at "+verifyUrl, "", 0, "C", false, 0, verifyUrl)
+			pdf.CellFormat(0, 4, "Verify this "+strings.ToLower(DocumentTitle(invoice))+" at "+verifyUrl, "", 0, "C", false, 0, verifyUrl)
 		})
 	}
 
 	pdf.AddPage()
 
 	y := r.drawHeader(profile)
-	y = r.drawBanner(y + 10)
+	y = r.drawBanner(y+10, DocumentTitle(invoice))
 	y = r.drawParties(invoice, received, y+14)
 	y = r.drawLines(invoice, lines, y+10)
 	y = r.drawTotals(invoice, received, y+4)
+
+	if len(milestones) > 0 {
+		y = r.drawPaymentTerms(invoice, milestones, y+10)
+	}
+
 	r.drawNotes(invoice, y+14)
 
 	var buf bytes.Buffer
@@ -303,8 +320,8 @@ func (r *renderer) titleFrame(x, y, width, height, radius float64) {
 	p.DrawPath("D")
 }
 
-// drawBanner prints "Invoice" in a double-bordered box between two double rules; it returns the y below it
-func (r *renderer) drawBanner(y float64) float64 {
+// drawBanner prints the title ("Invoice" / "Estimate") in a double-bordered box between two double rules; it returns the y below it
+func (r *renderer) drawBanner(y float64, title string) float64 {
 	const (
 		titleSize  = 22.0
 		paddingX   = 9.0 // 34px
@@ -315,7 +332,7 @@ func (r *renderer) drawBanner(y float64) float64 {
 	)
 
 	r.font(false, titleSize, colorAccent)
-	textWidth := r.pdf.GetStringWidth("Invoice")
+	textWidth := r.pdf.GetStringWidth(title)
 	textHeight := titleSize * 0.3528 // pt to mm
 	boxWidth, boxHeight := textWidth+2*paddingX, textHeight+2*paddingY
 	boxX := r.left + (r.width-boxWidth)/2
@@ -326,7 +343,7 @@ func (r *renderer) drawBanner(y float64) float64 {
 	r.titleFrame(boxX-outlineGap, y-outlineGap, boxWidth+2*outlineGap, boxHeight+2*outlineGap, 3.5)
 
 	r.pdf.SetXY(boxX, y)
-	r.pdf.CellFormat(boxWidth, boxHeight, "Invoice", "", 0, "C", false, 0, "")
+	r.pdf.CellFormat(boxWidth, boxHeight, title, "", 0, "C", false, 0, "")
 
 	middle := y + boxHeight/2
 
@@ -336,6 +353,32 @@ func (r *renderer) drawBanner(y float64) float64 {
 	}
 
 	return y + boxHeight + outlineGap
+}
+
+// metaRow is one row of the table beside BILL TO
+type metaRow struct {
+	label     string
+	value     string
+	highlight bool
+}
+
+// metaRows mirrors the meta table of InvoiceDocumentContent.vue: an estimate shows its valid-until date and total, never an amount due
+func metaRows(invoice *models.Invoice, received int64) []metaRow {
+	if invoice.Kind == models.INVOICE_KIND_ESTIMATE {
+		return []metaRow{
+			{"Estimate Number:", invoice.Number, false},
+			{"Estimate Date:", formatDate(invoice.InvoiceDate), false},
+			{"Valid Until:", formatDate(invoice.DueDate), false},
+			{"Total (" + invoice.Currency + "):", formatAmount(invoice.Total, invoice.Currency), true},
+		}
+	}
+
+	return []metaRow{
+		{"Invoice Number:", invoice.Number, false},
+		{"Invoice Date:", formatDate(invoice.InvoiceDate), false},
+		{"Payment Due:", formatDate(invoice.DueDate), false},
+		{"Amount Due (" + invoice.Currency + "):", formatAmount(balanceDue(invoice, received), invoice.Currency), true},
+	}
 }
 
 // drawParties prints the BILL TO block on the left and the meta table on the right; it returns the y below both
@@ -383,16 +426,7 @@ func (r *renderer) drawParties(invoice *models.Invoice, received int64, y float6
 		left = r.column(r.left, left, width, "GSTIN: "+invoice.BillToGstin, "L")
 	}
 
-	rows := []struct {
-		label     string
-		value     string
-		highlight bool
-	}{
-		{"Invoice Number:", invoice.Number, false},
-		{"Invoice Date:", formatDate(invoice.InvoiceDate), false},
-		{"Payment Due:", formatDate(invoice.DueDate), false},
-		{"Amount Due (" + invoice.Currency + "):", formatAmount(balanceDue(invoice, received), invoice.Currency), true},
-	}
+	rows := metaRows(invoice, received)
 
 	tableX := r.right - labelWidth - valueWidth
 	rowHeight := lineHeight + 2*rowPadding
@@ -554,6 +588,10 @@ func totalsRows(invoice *models.Invoice, received int64) []totalsRow {
 		}
 	}
 
+	if invoice.Kind == models.INVOICE_KIND_ESTIMATE {
+		return append(rows, totalsRow{"Total (" + invoice.Currency + "):", formatAmount(invoice.Total, invoice.Currency), true})
+	}
+
 	rows = append(rows, totalsRow{"Total:", formatAmount(invoice.Total, invoice.Currency), false})
 
 	if received > 0 {
@@ -620,4 +658,66 @@ func (r *renderer) drawNotes(invoice *models.Invoice, y float64) {
 		r.cell(r.left, y, r.width, line, "L")
 		y += lineHeight
 	}
+}
+
+// paymentTermRow is one milestone of an estimate's Payment Terms table
+type paymentTermRow struct {
+	label   string
+	percent string
+	amount  string
+}
+
+// paymentTermsRows mirrors the Payment Terms table of InvoiceDocumentContent.vue: each milestone's share of the estimate total
+// (incl. tax), rounded half up, the last taking what is left so the amounts add up to the total
+func paymentTermsRows(invoice *models.Invoice, milestones []*models.EstimateMilestone) []paymentTermRow {
+	rows := make([]paymentTermRow, len(milestones))
+	allocated := int64(0)
+
+	for idx, milestone := range milestones {
+		amount := milestoneShare(invoice.Total, milestone.Percent)
+
+		if idx == len(milestones)-1 {
+			amount = invoice.Total - allocated
+		}
+
+		allocated += amount
+		rows[idx] = paymentTermRow{milestone.Label, formatTaxRate(float64(milestone.Percent)), formatAmount(amount, invoice.Currency)}
+	}
+
+	return rows
+}
+
+// drawPaymentTerms prints the Payment Terms table (milestone, %, amount) under the totals; it returns the y below it
+func (r *renderer) drawPaymentTerms(invoice *models.Invoice, milestones []*models.EstimateMilestone, y float64) float64 {
+	const (
+		padding      = 2.0 // 8px
+		percentWidth = 24.0
+		amountWidth  = 40.0
+	)
+
+	rows := paymentTermsRows(invoice, milestones)
+	labelWidth := r.width - percentWidth - amountWidth
+
+	y = r.ensureSpace(y, 3*(lineHeight+2*padding))
+	r.font(true, baseFontSize, colorBlack)
+	r.cell(r.left, y, r.width, "Payment Terms", "L")
+	y += lineHeight + padding
+	r.cell(r.left, y+padding, labelWidth, "Milestone", "L")
+	r.cell(r.left+labelWidth, y+padding, percentWidth, "%", "R")
+	r.cell(r.left+labelWidth+percentWidth, y+padding, amountWidth, "Amount", "R")
+	y += lineHeight + 2*padding
+	r.dottedLine(y)
+
+	for _, row := range rows {
+		r.font(false, baseFontSize, colorBlack)
+		height := float64(len(r.wrap(row.label, labelWidth-3)))*lineHeight + 2*padding
+		y = r.ensureSpace(y, height)
+		r.column(r.left, y+padding, labelWidth-3, row.label, "L")
+		r.cell(r.left+labelWidth, y+padding, percentWidth, row.percent, "R")
+		r.cell(r.left+labelWidth+percentWidth, y+padding, amountWidth, row.amount, "R")
+		y += height
+		r.dottedLine(y)
+	}
+
+	return y
 }

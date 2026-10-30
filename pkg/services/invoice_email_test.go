@@ -68,7 +68,7 @@ func TestInvoiceEmailPreviewSampleIsDeterministicAndUnsavedOverridesAreNotStored
 	require.True(t, first.Sample)
 	require.Contains(t, first.Subject, "INV-2026-001")
 	require.Contains(t, first.BodyHtml, "Sample Business")
-	require.Len(t, first.Variables, 15)
+	require.Len(t, first.Variables, 16)
 	empty, err := Invoices.PreviewInvoiceEmail(ctx, uid, 0, stringPointer("Unsaved subject"), stringPointer(""))
 	require.NoError(t, err)
 	require.Empty(t, empty.BodyHtml)

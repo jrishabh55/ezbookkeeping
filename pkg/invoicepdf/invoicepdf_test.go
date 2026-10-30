@@ -287,3 +287,57 @@ func TestRenderGstInvoiceText(t *testing.T) {
 		assert.Contains(t, text, expected)
 	}
 }
+
+func sampleEstimate() (*models.Invoice, []*models.InvoiceLine, []*models.EstimateMilestone) {
+	estimate, lines := sampleInvoice()
+	estimate.Kind = models.INVOICE_KIND_ESTIMATE
+	estimate.Number = "EST/2026-27/01"
+	estimate.DueDate = "2026-05-01"
+	estimate.Total = 235999
+
+	return estimate, lines, []*models.EstimateMilestone{{Label: "Advance", Percent: 3333}, {Label: "Design sign-off", Percent: 3333}, {Label: "Go-live", Percent: 3334}}
+}
+
+func TestEstimateDocumentTitleMetaAndTotals(t *testing.T) {
+	estimate, _, _ := sampleEstimate()
+	assert.Equal(t, "Estimate", DocumentTitle(estimate))
+	assert.Equal(t, "Estimate_EST_2026-27_01_2026-05-01.pdf", DocumentFileName(estimate))
+	assert.Equal(t, []metaRow{
+		{"Estimate Number:", "EST/2026-27/01", false},
+		{"Estimate Date:", "April 1, 2026", false},
+		{"Valid Until:", "May 1, 2026", false},
+		{"Total (INR):", "₹2,359.99", true},
+	}, metaRows(estimate, 0))
+	// no Payments received / Amount Due on an estimate
+	assert.Equal(t, []totalsRow{{"Total (INR):", "₹2,359.99", true}}, totalsRows(estimate, 0))
+
+	invoice, _ := sampleInvoice()
+	assert.Equal(t, "Invoice", DocumentTitle(invoice))
+	assert.Equal(t, "Invoice_CA_2026-27_01_2026-04-30.pdf", DocumentFileName(invoice))
+	assert.Equal(t, "Payment Due:", metaRows(invoice, 0)[2].label)
+	rows := totalsRows(invoice, 10000000)
+	assert.Equal(t, "Payments received:", rows[len(rows)-2].label)
+}
+
+func TestPaymentTermsRowsAddUpToTheEstimateTotal(t *testing.T) {
+	estimate, _, milestones := sampleEstimate()
+
+	assert.Equal(t, []paymentTermRow{
+		{"Advance", "33.33%", "₹786.58"},
+		{"Design sign-off", "33.33%", "₹786.58"},
+		{"Go-live", "33.34%", "₹786.83"}, // 2,359.99 − 786.58 − 786.58
+	}, paymentTermsRows(estimate, milestones))
+	assert.Empty(t, paymentTermsRows(estimate, nil))
+}
+
+func TestRenderEstimateWithPaymentTerms(t *testing.T) {
+	estimate, lines, milestones := sampleEstimate()
+
+	pdf, err := RenderWithMilestones(sampleProfile(), estimate, lines, milestones, 0, "https://books.codeation.io/i/abc")
+	assert.Nil(t, err)
+	assert.True(t, bytes.HasPrefix(pdf, []byte("%PDF")))
+
+	if dir := os.Getenv("INVOICE_PDF_SAMPLE_DIR"); dir != "" {
+		assert.Nil(t, os.WriteFile(filepath.Join(dir, "estimate-sample.pdf"), pdf, 0644))
+	}
+}

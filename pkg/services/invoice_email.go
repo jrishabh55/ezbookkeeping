@@ -38,6 +38,7 @@ func invoiceEmailValues(profile *models.InvoiceProfile, invoice *models.Invoice,
 		"invoice_total": invoicepdf.FormatAmount(invoice.Total, invoice.Currency), "amount_paid": invoicepdf.FormatAmount(received, invoice.Currency),
 		"amount_due": invoicepdf.FormatAmount(invoicepdf.BalanceDue(invoice, received), invoice.Currency), "currency": invoice.Currency, "invoice_url": publicURL,
 		"business_name": profile.BusinessName, "business_address": profile.AddressLines, "business_phone": profile.Phone, "business_website": profile.Website,
+		"document_type": invoicepdf.DocumentTitle(invoice),
 	}
 }
 
@@ -51,6 +52,9 @@ func renderInvoiceEmail(profile *models.InvoiceProfile, invoice *models.Invoice,
 	}
 	if body != nil {
 		bodyTemplate = *body
+	}
+	if invoice.Kind == models.INVOICE_KIND_ESTIMATE {
+		subjectTemplate, bodyTemplate = invoiceemail.EstimateTemplates(subjectTemplate, bodyTemplate)
 	}
 	rendered, err := invoiceemail.Render(subjectTemplate, bodyTemplate, invoiceEmailValues(profile, invoice, received, publicURL))
 	if err != nil {
@@ -156,7 +160,7 @@ func (s *InvoiceService) SendInvoiceWithContent(c core.Context, uid, invoiceID i
 				}
 				subject = resolved.Subject
 			} else {
-				subject = invoiceEmailSubject(invoice.Number, profile.BusinessName)
+				subject = invoiceEmailSubject(invoice.Kind, invoice.Number, profile.BusinessName)
 			}
 		}
 		rendered, err = invoiceemail.RenderPlainText(subject, *message, values)
@@ -173,7 +177,13 @@ func (s *InvoiceService) SendInvoiceWithContent(c core.Context, uid, invoiceID i
 			return err
 		}
 	}
-	pdf, err := invoicepdf.Render(profile, invoice, lines, received, publicURL)
+	var milestones []*models.EstimateMilestone
+	if invoice.Kind == models.INVOICE_KIND_ESTIMATE {
+		if milestones, err = s.GetEstimateMilestones(c, uid, invoiceID); err != nil {
+			return err
+		}
+	}
+	pdf, err := invoicepdf.RenderWithMilestones(profile, invoice, lines, milestones, received, publicURL)
 	if err != nil {
 		return err
 	}
@@ -182,7 +192,7 @@ func (s *InvoiceService) SendInvoiceWithContent(c core.Context, uid, invoiceID i
 			return err
 		}
 	}
-	err = s.SendMail(&mail.MailMessage{To: to, Subject: rendered.Subject, Body: rendered.EmailHTML, Attachments: []mail.MailAttachment{{Name: invoicepdf.FileName(invoice.Number, invoice.DueDate), Content: pdf}}})
+	err = s.SendMail(&mail.MailMessage{To: to, Subject: rendered.Subject, Body: rendered.EmailHTML, Attachments: []mail.MailAttachment{{Name: invoicepdf.DocumentFileName(invoice), Content: pdf}}})
 	if err != nil {
 		return err
 	}
@@ -192,7 +202,12 @@ func (s *InvoiceService) SendInvoiceWithContent(c core.Context, uid, invoiceID i
 		if _, err := sess.Insert(sent); err != nil {
 			return err
 		}
-		_, err := sess.Cols("sent_unix_time", "updated_unix_time").Where("uid=? AND deleted=? AND invoice_id=?", uid, false, invoiceID).Update(&models.Invoice{SentUnixTime: now, UpdatedUnixTime: now})
+		if _, err := sess.Cols("sent_unix_time", "updated_unix_time").Where("uid=? AND deleted=? AND invoice_id=?", uid, false, invoiceID).Update(&models.Invoice{SentUnixTime: now, UpdatedUnixTime: now}); err != nil {
+			return err
+		}
+		// emailing a draft estimate sends it; an answered one keeps its answer
+		_, err := sess.Cols("estimate_status").Where("uid=? AND deleted=? AND invoice_id=? AND kind=? AND estimate_status=?", uid, false, invoiceID, models.INVOICE_KIND_ESTIMATE, models.ESTIMATE_STATUS_DRAFT).
+			Update(&models.Invoice{EstimateStatus: models.ESTIMATE_STATUS_SENT})
 		return err
 	})
 }

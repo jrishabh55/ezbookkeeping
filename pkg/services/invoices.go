@@ -60,14 +60,20 @@ func (s *InvoiceService) InvoicePublicUrl(token string) string {
 	return s.CurrentConfig().RootUrl + "i/" + url.PathEscape(token)
 }
 
-// invoiceEmailSubject is the default subject of an invoice email: "Invoice <number> from <business name>"
-// (just "Invoice <number>" when the profile has no business name); the UI prefills the same text
-func invoiceEmailSubject(number string, businessName string) string {
-	if businessName == "" {
-		return "Invoice " + number
+// invoiceEmailSubject is the default subject of a plain-text email: "Invoice <number> from <business name>" ("Estimate ..." for an
+// estimate; without " from ..." when the profile has no business name)
+func invoiceEmailSubject(kind string, number string, businessName string) string {
+	title := "Invoice"
+
+	if kind == models.INVOICE_KIND_ESTIMATE {
+		title = "Estimate"
 	}
 
-	return "Invoice " + number + " from " + businessName
+	if businessName == "" {
+		return title + " " + number
+	}
+
+	return title + " " + number + " from " + businessName
 }
 
 // SendInvoice preserves the legacy plain-text service contract.

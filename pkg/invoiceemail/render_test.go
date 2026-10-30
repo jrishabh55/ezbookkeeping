@@ -8,7 +8,7 @@ import (
 )
 
 func testValues() map[string]string {
-	return map[string]string{"customer_name": "A <Customer>", "contact_name": "Alex", "customer_email": "alex@example.com", "invoice_number": "INV-42", "invoice_date": "October 1, 2026", "due_date": "October 15, 2026", "invoice_total": "₹1,000.00", "amount_paid": "₹250.00", "amount_due": "₹750.00", "currency": "INR", "invoice_url": "https://books.example/i/trusted", "business_name": "Business & Co", "business_address": "First floor\nMain Street", "business_phone": "", "business_website": "https://example.com"}
+	return map[string]string{"customer_name": "A <Customer>", "contact_name": "Alex", "customer_email": "alex@example.com", "invoice_number": "INV-42", "invoice_date": "October 1, 2026", "due_date": "October 15, 2026", "invoice_total": "₹1,000.00", "amount_paid": "₹250.00", "amount_due": "₹750.00", "currency": "INR", "invoice_url": "https://books.example/i/trusted", "business_name": "Business & Co", "business_address": "First floor\nMain Street", "business_phone": "", "business_website": "https://example.com", "document_type": "Invoice"}
 }
 
 // Replacing variables with raw HTML, omitting a catalog key, or recursively expanding values breaks this test.
@@ -16,13 +16,13 @@ func TestRenderExpandsCatalogAsEscapedNonRecursiveText(t *testing.T) {
 	values := testValues()
 	values["business_name"] = "{{invoice_number}} & Co"
 	var body strings.Builder
-	for _, key := range []string{"customer_name", "contact_name", "customer_email", "invoice_number", "invoice_date", "due_date", "invoice_total", "amount_paid", "amount_due", "currency", "invoice_url", "business_name", "business_address", "business_phone", "business_website"} {
+	for _, key := range []string{"customer_name", "contact_name", "customer_email", "invoice_number", "invoice_date", "due_date", "invoice_total", "amount_paid", "amount_due", "currency", "invoice_url", "business_name", "business_address", "business_phone", "business_website", "document_type"} {
 		body.WriteString(`<p><span data-invoice-variable="` + key + `">ignored editor label</span></p>`)
 	}
 	result, err := Render("Invoice {{invoice_number}}", body.String(), values)
 	require.NoError(t, err)
 	require.Equal(t, "Invoice INV-42", result.Subject)
-	require.Len(t, result.Variables, 15)
+	require.Len(t, result.Variables, 16)
 	for _, value := range []string{"A &lt;Customer&gt;", "Alex", "alex@example.com", "October 1, 2026", "October 15, 2026", "₹1,000.00", "₹250.00", "₹750.00", "INR", "{{invoice_number}} &amp; Co", "First floor<br/>Main Street"} {
 		require.Contains(t, result.BodyHTML, value)
 	}
@@ -131,4 +131,32 @@ func TestRenderHandlesEmptyValuesFormattingWhitespaceAndEmptyButtons(t *testing.
 
 	_, err = SanitizeTemplate(`<div data-invoice-button="true"> </div>`)
 	require.Error(t, err)
+}
+
+// Swapping a template the user wrote, or missing the preset after an editor round trip, breaks this test.
+func TestEstimateTemplatesSwapOnlyTheBuiltInPreset(t *testing.T) {
+	subject, body := EstimateTemplates(DefaultSubjectTemplate, DefaultBodyTemplate)
+	require.Equal(t, "Estimate {{invoice_number}} from {{business_name}}", subject)
+	require.Contains(t, body, "sent you an estimate")
+	require.Contains(t, body, "Valid until")
+	require.Contains(t, body, "View Estimate")
+	require.NotContains(t, body, "amount_due")
+
+	bareSubject, bareBody := PresetWithoutBusinessName()
+	subject, body = EstimateTemplates(bareSubject, bareBody)
+	require.Equal(t, "Estimate {{invoice_number}}", subject)
+	require.Contains(t, body, "You have received an estimate")
+
+	sanitized, err := SanitizeTemplate(DefaultBodyTemplate)
+	require.NoError(t, err)
+	_, body = EstimateTemplates(DefaultSubjectTemplate, sanitized)
+	require.Contains(t, body, "sent you an estimate")
+
+	subject, body = EstimateTemplates("Your quote {{invoice_number}}", "<p>Custom</p>")
+	require.Equal(t, "Your quote {{invoice_number}}", subject)
+	require.Equal(t, "<p>Custom</p>", body)
+
+	rendered, err := Render("{{document_type}} {{invoice_number}}", "<p>x</p>", map[string]string{"document_type": "Estimate", "invoice_number": "EST/2026-27/01"})
+	require.NoError(t, err)
+	require.Equal(t, "Estimate EST/2026-27/01", rendered.Subject)
 }
