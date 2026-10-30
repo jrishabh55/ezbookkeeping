@@ -56,3 +56,23 @@ func (a *InvoicesApi) EstimateReopenHandler(c *core.WebContext) (any, *errs.Erro
 
 	return a.estimateResponse(c, "EstimateReopenHandler", uid, req.Id)
 }
+
+// EstimateToInvoiceListHandler returns the accepted, not fully invoiced estimates of current user for the home card
+func (a *InvoicesApi) EstimateToInvoiceListHandler(c *core.WebContext) (any, *errs.Error) {
+	uid := c.GetCurrentUid()
+	estimates, progress, err := a.invoices.GetEstimatesToInvoice(c, uid)
+
+	if err != nil {
+		log.Errorf(c, "[estimates.EstimateToInvoiceListHandler] failed to get estimates to invoice for user \"uid:%d\", because %s", uid, err.Error())
+		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+
+	resps := make([]*models.InvoiceInfoResponse, len(estimates))
+
+	for idx, estimate := range estimates {
+		resps[idx] = estimate.ToInvoiceInfoResponse(nil, nil)
+		resps[idx].SetEstimateProgress(progress[estimate.InvoiceId])
+	}
+
+	return resps, nil
+}

@@ -23,9 +23,12 @@ const (
 
 // Customer timeline entry kinds
 const (
-	CUSTOMER_TIMELINE_KIND_INVOICE = "invoice"
-	CUSTOMER_TIMELINE_KIND_EMAIL   = "email"
-	CUSTOMER_TIMELINE_KIND_PAYMENT = "payment"
+	CUSTOMER_TIMELINE_KIND_INVOICE           = "invoice"
+	CUSTOMER_TIMELINE_KIND_EMAIL             = "email"
+	CUSTOMER_TIMELINE_KIND_PAYMENT           = "payment"
+	CUSTOMER_TIMELINE_KIND_ESTIMATE          = "estimate"
+	CUSTOMER_TIMELINE_KIND_ESTIMATE_ACCEPTED = "estimate_accepted"
+	CUSTOMER_TIMELINE_KIND_ESTIMATE_DECLINED = "estimate_declined"
 )
 
 // CustomerTimelineMaxItems is how many of the newest timeline entries the customer page shows
@@ -50,6 +53,9 @@ type CustomerTimelineItemResponse struct {
 	Currency      string `json:"currency"`
 	Text          string `json:"text"`    // the email subject for emails
 	Renewal       bool   `json:"renewal"` // the invoice was created by a recurring schedule
+
+	EstimateNumber string `json:"estimateNumber,omitempty"` // an invoice made from this estimate
+	ByClient       bool   `json:"byClient,omitempty"`       // an estimate answered through the public link
 }
 
 // CustomerOverviewResponse is what the customer page shows besides the customer, invoices and recurring invoices it already has
