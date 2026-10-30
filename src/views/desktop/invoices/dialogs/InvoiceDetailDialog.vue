@@ -4,19 +4,24 @@
                                   :title="invoice ? invoice.number : tt('Invoice')" :cancel-button-title="tt('Close')"
                                   @cancel="close">
             <template #after-title>
+                <v-chip class="ms-3" size="small" variant="tonal" :color="ESTIMATE_STATUS_COLORS[estimateStatus ?? 'draft']"
+                        v-if="invoice && estimateStatus">{{ tt(estimateStatusName) }}</v-chip>
                 <v-chip class="ms-3" size="small" variant="tonal" :color="displayStatus ? statusColors[displayStatus] : 'default'"
-                        v-if="invoice">{{ tt(displayStatusName) }}</v-chip>
+                        v-else-if="invoice">{{ tt(displayStatusName) }}</v-chip>
                 <span class="text-caption text-medium-emphasis ms-2" v-if="sentOnText">{{ tt('Sent on') }} {{ sentOnText }}</span>
+                <a class="text-caption ms-2 cursor-pointer" v-if="invoice?.estimateId"
+                   @click="openOther(invoice.estimateId)">{{ tt('format.misc.fromEstimate', { number: invoice.estimateNumber }) }}</a>
             </template>
 
             <template #toolbar>
                 <v-btn density="comfortable" color="default" variant="text" class="ms-1" :icon="true"
-                       :aria-label="tt('Edit')" :disabled="!invoice || loading || updating" @click="edit">
+                       :aria-label="tt('Edit')" :disabled="!invoice || loading || updating || !canEdit" @click="edit">
                     <v-icon :icon="mdiPencilOutline" />
                     <v-tooltip activator="parent">{{ tt('Edit') }}</v-tooltip>
                 </v-btn>
                 <v-btn density="comfortable" color="default" variant="text" class="ms-1" :icon="true"
-                       :aria-label="tt('Regenerate with Current Customer Details')" :disabled="!invoice || loading || updating" @click="regenerate">
+                       :aria-label="tt('Regenerate with Current Customer Details')" :disabled="!invoice || loading || updating" @click="regenerate"
+                       v-if="!isEstimate">
                     <v-icon :icon="mdiRefresh" />
                     <v-tooltip activator="parent">{{ tt('Regenerate with Current Customer Details') }}</v-tooltip>
                 </v-btn>
@@ -27,7 +32,8 @@
                 </v-btn>
                 <v-btn density="comfortable" color="default" variant="text" class="ms-1" :icon="true"
                        :aria-label="invoice?.closedManually ? tt('Reopen') : tt('Mark as Paid')"
-                       :disabled="!invoice || loading || updating" @click="toggleClosed">
+                       :disabled="!invoice || loading || updating" @click="toggleClosed"
+                       v-if="!isEstimate">
                     <v-icon :icon="invoice?.closedManually ? mdiLockOpenVariantOutline : mdiCheckDecagramOutline" />
                     <v-tooltip activator="parent">{{ invoice?.closedManually ? tt('Reopen') : tt('Mark as Paid') }}</v-tooltip>
                 </v-btn>
@@ -42,7 +48,8 @@
                     <v-tooltip activator="parent">{{ tt('Print') }}</v-tooltip>
                 </v-btn>
                 <v-btn density="comfortable" color="default" variant="text" class="ms-1" :icon="true"
-                       :aria-label="tt('Repeat')" :disabled="!invoice || loading || updating" @click="repeatMonthly">
+                       :aria-label="tt('Repeat')" :disabled="!invoice || loading || updating" @click="repeatMonthly"
+                       v-if="!isEstimate">
                     <v-icon :icon="mdiRepeat" />
                     <v-tooltip activator="parent">{{ tt('Repeat') }}</v-tooltip>
                 </v-btn>
@@ -68,36 +75,89 @@
                     </v-col>
 
                     <v-col cols="12" lg="4">
-                        <v-list density="compact">
-                            <v-list-item :title="tt('Total')">
-                                <template #append><span>{{ formatAmount(invoice.total) }}</span></template>
-                            </v-list-item>
-                            <v-list-item :title="tt('Received')">
-                                <template #append><span>{{ formatAmount(invoice.received) }}</span></template>
-                            </v-list-item>
-                            <v-list-item :title="tt(shortfallName)" v-if="shortfall > 0">
-                                <template #append><span>{{ formatAmount(shortfall) }}</span></template>
-                            </v-list-item>
-                            <v-list-item :title="tt('Balance Due')" v-else>
-                                <template #append><span class="font-weight-bold">{{ formatAmount(balanceDue) }}</span></template>
-                            </v-list-item>
-                        </v-list>
+                        <template v-if="isEstimate">
+                            <v-list density="compact">
+                                <v-list-item :title="tt('Total')">
+                                    <template #append><span class="font-weight-bold">{{ formatAmount(invoice.total) }}</span></template>
+                                </v-list-item>
+                                <v-list-item :title="tt('Valid Until')">
+                                    <template #append><span>{{ formatDate(invoice.dueDate) }}</span></template>
+                                </v-list-item>
+                            </v-list>
 
-                        <v-divider class="my-2" />
-                        <div class="text-title-small px-4 py-2">{{ tt('Payments') }}</div>
-                        <v-list density="compact" v-if="invoice.payments.length">
-                            <v-list-item :key="payment.transactionId" v-for="payment in invoice.payments"
-                                         :title="formatPaymentAmount(payment)" :subtitle="formatPaymentDescription(payment)">
-                                <template #append>
-                                    <v-btn density="comfortable" color="default" variant="text" :icon="true"
-                                           :aria-label="tt('Unlink')" :disabled="updating" @click="unlink(payment)">
-                                        <v-icon :icon="mdiLinkOff" />
-                                        <v-tooltip activator="parent">{{ tt('Unlink') }}</v-tooltip>
-                                    </v-btn>
-                                </template>
-                            </v-list-item>
-                        </v-list>
-                        <div class="text-body-medium px-4 pb-2" v-else>{{ tt('No payments linked yet.') }}</div>
+                            <v-divider class="my-2" />
+                            <div class="text-title-small px-4 py-2">{{ tt('Status') }}</div>
+                            <div class="text-body-medium px-4 pb-2">{{ estimateResponseText || tt('No response yet') }}</div>
+                            <div class="text-body-medium px-4 pb-2" style="white-space: pre-line" v-if="invoice.responseNote">{{ tt("Client's note") }}: {{ invoice.responseNote }}</div>
+                            <div class="px-4 pb-2" v-if="canMarkResponse || canReopenEstimate">
+                                <v-btn class="me-2" color="success" variant="tonal" size="small" :disabled="updating"
+                                       v-if="canMarkResponse" @click="markResponse('accepted')">{{ tt('Mark Accepted') }}</v-btn>
+                                <v-btn class="me-2" color="error" variant="tonal" size="small" :disabled="updating"
+                                       v-if="canMarkResponse" @click="markResponse('declined')">{{ tt('Mark Declined') }}</v-btn>
+                                <v-btn color="default" variant="tonal" size="small" :disabled="updating"
+                                       v-if="canReopenEstimate" @click="reopen">{{ tt('Reopen') }}</v-btn>
+                            </div>
+
+                            <v-divider class="my-2" />
+                            <template v-if="invoice.milestones.length">
+                                <div class="text-title-small px-4 py-2">{{ tt('Milestones') }}</div>
+                                <v-list density="compact">
+                                    <v-list-item :key="milestone.id" v-for="(milestone, index) in invoice.milestones"
+                                                 :title="milestone.label"
+                                                 :subtitle="`${formatMilestonePercent(milestone.percent)} · ${formatAmount(milestoneAmounts[index] ?? 0)}`">
+                                        <template #append>
+                                            <a class="cursor-pointer text-body-medium" v-if="milestone.invoiceId"
+                                               @click="openOther(milestone.invoiceId)">{{ tt('format.misc.invoicedAs', { number: milestone.invoiceNumber }) }}</a>
+                                            <v-btn color="primary" variant="tonal" size="small" :disabled="updating || !canConvert"
+                                                   v-else @click="convert(milestone.id)">{{ tt('Create Invoice') }}</v-btn>
+                                        </template>
+                                    </v-list-item>
+                                </v-list>
+                            </template>
+                            <template v-else>
+                                <div class="text-title-small px-4 py-2">{{ tt('Invoices') }}</div>
+                                <v-list density="compact" v-if="invoice.convertedInvoices.length">
+                                    <v-list-item :key="converted.id" v-for="converted in invoice.convertedInvoices" link
+                                                 :title="tt('format.misc.invoicedAs', { number: converted.number })"
+                                                 @click="openOther(converted.id)"></v-list-item>
+                                </v-list>
+                                <div class="px-4 pb-2" v-else>
+                                    <v-btn color="primary" variant="tonal" :disabled="updating || !canConvert" @click="convert('')">{{ tt('Convert to Invoice') }}</v-btn>
+                                </div>
+                            </template>
+                        </template>
+                        <template v-else>
+                            <v-list density="compact">
+                                <v-list-item :title="tt('Total')">
+                                    <template #append><span>{{ formatAmount(invoice.total) }}</span></template>
+                                </v-list-item>
+                                <v-list-item :title="tt('Received')">
+                                    <template #append><span>{{ formatAmount(invoice.received) }}</span></template>
+                                </v-list-item>
+                                <v-list-item :title="tt(shortfallName)" v-if="shortfall > 0">
+                                    <template #append><span>{{ formatAmount(shortfall) }}</span></template>
+                                </v-list-item>
+                                <v-list-item :title="tt('Balance Due')" v-else>
+                                    <template #append><span class="font-weight-bold">{{ formatAmount(balanceDue) }}</span></template>
+                                </v-list-item>
+                            </v-list>
+
+                            <v-divider class="my-2" />
+                            <div class="text-title-small px-4 py-2">{{ tt('Payments') }}</div>
+                            <v-list density="compact" v-if="invoice.payments.length">
+                                <v-list-item :key="payment.transactionId" v-for="payment in invoice.payments"
+                                             :title="formatPaymentAmount(payment)" :subtitle="formatPaymentDescription(payment)">
+                                    <template #append>
+                                        <v-btn density="comfortable" color="default" variant="text" :icon="true"
+                                               :aria-label="tt('Unlink')" :disabled="updating" @click="unlink(payment)">
+                                            <v-icon :icon="mdiLinkOff" />
+                                            <v-tooltip activator="parent">{{ tt('Unlink') }}</v-tooltip>
+                                        </v-btn>
+                                    </template>
+                                </v-list-item>
+                            </v-list>
+                            <div class="text-body-medium px-4 pb-2" v-else>{{ tt('No payments linked yet.') }}</div>
+                        </template>
 
                         <v-divider class="my-2" />
                         <div class="text-title-small px-4 py-2">{{ tt('Emails') }}</div>
@@ -110,7 +170,7 @@
                         </v-list>
                         <div class="text-body-medium px-4 pb-2" v-else>{{ tt('No emails sent yet.') }}</div>
 
-                        <template v-if="displayStatus !== 'paid'">
+                        <template v-if="!isEstimate && displayStatus !== 'paid'">
                             <v-divider class="my-2" />
                             <div class="text-title-small px-4 py-2">{{ tt('Suggested Matches') }}</div>
                             <v-list density="compact" v-if="suggestions.length">
@@ -159,7 +219,7 @@
                 <v-toolbar-title>{{ tt('Share Link') }}</v-toolbar-title>
             </v-toolbar>
             <v-card-text class="pa-4">
-                <div class="text-body-medium mb-3">{{ tt('Anyone with this link can view this invoice.') }}</div>
+                <div class="text-body-medium mb-3">{{ tt(isEstimate ? 'Anyone with this link can view this estimate and accept or decline it.' : 'Anyone with this link can view this invoice.') }}</div>
                 <v-text-field readonly density="comfortable" :model-value="publicLinkUrl" @focus="selectLinkField" />
             </v-card-text>
             <v-card-actions class="px-4 pb-4">
@@ -175,7 +235,7 @@
     <v-dialog width="1200" :persistent="sending" v-model="showSendDialog">
         <v-card class="dialog-layout-card">
             <v-toolbar color="primary">
-                <v-toolbar-title>{{ tt('Send Invoice') }}</v-toolbar-title>
+                <v-toolbar-title>{{ tt(isEstimate ? 'Send Estimate' : 'Send Invoice') }}</v-toolbar-title>
             </v-toolbar>
             <v-card-text class="pa-4">
                 <v-text-field type="email" autocomplete="off" persistent-placeholder class="mb-2"
@@ -234,6 +294,7 @@ import RecurringInvoiceEditDialog from './RecurringInvoiceEditDialog.vue';
 
 import { useI18n } from '@/locales/helpers.ts';
 import { useInvoiceDetailPageBase } from '@/views/base/invoices/InvoiceDetailPageBase.ts';
+import { ESTIMATE_STATUS_COLORS } from '@/views/base/invoices/EstimateListPageBase.ts';
 
 import { useInvoicesStore } from '@/stores/invoice.ts';
 import { useAccountsStore } from '@/stores/account.ts';
@@ -241,6 +302,7 @@ import { useAccountsStore } from '@/stores/account.ts';
 import type { InvoiceEmail, InvoicePayment, InvoiceSendForm } from '@/models/invoice.ts';
 
 import type { InvoiceDisplayStatus } from '@/lib/invoice.ts';
+import { formatMilestonePercent } from '@/lib/estimate.ts';
 
 type ConfirmDialogType = InstanceType<typeof ConfirmDialog>;
 type AmountInputDialogType = InstanceType<typeof AmountInputDialog>;
@@ -272,6 +334,19 @@ const {
     viewedEmail,
     loadingEmail,
     formatAmount,
+    formatDate,
+    isEstimate,
+    estimateStatus,
+    estimateStatusName,
+    estimateResponseText,
+    canEdit,
+    canMarkResponse,
+    canReopenEstimate,
+    canConvert,
+    convertNeedsConfirm,
+    milestoneAmounts,
+    setEstimateResponse,
+    reopenEstimate,
     needsSettledAmount,
     formatPaymentAmount,
     formatPaymentDescription,
@@ -343,7 +418,7 @@ function load(): void {
         profile.value = loadedProfile;
         loading.value = false;
 
-        if (displayStatus.value === 'paid') {
+        if (displayStatus.value === 'paid' || loadedInvoice.kind === 'estimate') {
             suggestions.value = [];
             return;
         }
@@ -468,7 +543,7 @@ function duplicate(): void {
 }
 
 function remove(): void {
-    confirmDialog.value?.open('Are you sure you want to delete this invoice?').then(() => {
+    confirmDialog.value?.open(isEstimate.value ? 'Are you sure you want to delete this estimate?' : 'Are you sure you want to delete this invoice?').then(() => {
         if (!invoice.value) {
             return;
         }
@@ -584,7 +659,7 @@ function send(): void {
         sending.value = false;
         showSendDialog.value = false;
         changed.value = true;
-        snackbar.value?.showMessage('Invoice has been sent');
+        snackbar.value?.showMessage(isEstimate.value ? 'Estimate has been sent' : 'Invoice has been sent');
     }).catch(error => {
         sending.value = false;
 
@@ -592,6 +667,49 @@ function send(): void {
             snackbar.value?.showError(error);
         }
     });
+}
+
+// opens another document in this dialog: the estimate an invoice came from, or an invoice made from this estimate
+function openOther(id: string): void {
+    invoiceId.value = id;
+    invoice.value = null;
+    suggestions.value = [];
+    load();
+}
+
+function markResponse(status: 'accepted' | 'declined'): void {
+    runAndReload(() => setEstimateResponse(status));
+}
+
+function reopen(): void {
+    runAndReload(() => reopenEstimate());
+}
+
+// opens the editor with the invoice the estimate (milestoneId '') or a milestone turns into; saving it opens the new invoice here
+function convert(milestoneId: string): void {
+    const current = invoice.value;
+
+    if (!current) {
+        return;
+    }
+
+    const start = (): void => {
+        invoiceEditDialog.value?.open({ convertFrom: { estimateId: current.id, milestoneId } }).then(result => {
+            snackbar.value?.showMessage(result.message);
+            changed.value = true;
+            openOther(result.invoice.id);
+        }).catch(error => {
+            if (error && !error.processed) {
+                snackbar.value?.showError(error);
+            }
+        });
+    };
+
+    if (convertNeedsConfirm.value) {
+        confirmDialog.value?.open("This estimate isn't accepted yet. Convert anyway?").then(start);
+    } else {
+        start();
+    }
 }
 
 function close(): void {

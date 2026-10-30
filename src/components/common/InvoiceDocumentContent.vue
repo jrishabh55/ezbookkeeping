@@ -20,7 +20,7 @@
                     <path d="M20 2H180C180 12 190 22 198 22V58C188 58 180 68 180 78H20C20 68 10 58 2 58V22C12 22 20 12 20 2Z" />
                     <path d="M27 8H173C173 20 180 28 192 28V52C180 52 173 60 173 72H27C27 60 20 52 8 52V28C20 28 27 20 27 8Z" />
                 </svg>
-                Invoice
+                {{ isEstimate ? 'Estimate' : 'Invoice' }}
             </div>
             <div class="invoice-rule"></div>
         </div>
@@ -39,10 +39,18 @@
             </div>
             <table class="invoice-meta">
                 <tbody>
-                <tr><th>Invoice Number:</th><td>{{ invoice.number }}</td></tr>
-                <tr><th>Invoice Date:</th><td>{{ formatInvoiceDocumentDate(invoice.invoiceDate) }}</td></tr>
-                <tr><th>Payment Due:</th><td>{{ formatInvoiceDocumentDate(invoice.dueDate) }}</td></tr>
-                <tr class="invoice-meta-highlight"><th>Amount Due ({{ invoice.currency }}):</th><td class="invoice-strong">{{ formatInvoiceDocumentAmount(balanceDue, invoice.currency) }}</td></tr>
+                <template v-if="isEstimate">
+                    <tr><th>Estimate Number:</th><td>{{ invoice.number }}</td></tr>
+                    <tr><th>Estimate Date:</th><td>{{ formatInvoiceDocumentDate(invoice.invoiceDate) }}</td></tr>
+                    <tr><th>Valid Until:</th><td>{{ formatInvoiceDocumentDate(invoice.dueDate) }}</td></tr>
+                    <tr class="invoice-meta-highlight"><th>Total ({{ invoice.currency }}):</th><td class="invoice-strong">{{ formatInvoiceDocumentAmount(invoice.total, invoice.currency) }}</td></tr>
+                </template>
+                <template v-else>
+                    <tr><th>Invoice Number:</th><td>{{ invoice.number }}</td></tr>
+                    <tr><th>Invoice Date:</th><td>{{ formatInvoiceDocumentDate(invoice.invoiceDate) }}</td></tr>
+                    <tr><th>Payment Due:</th><td>{{ formatInvoiceDocumentDate(invoice.dueDate) }}</td></tr>
+                    <tr class="invoice-meta-highlight"><th>Amount Due ({{ invoice.currency }}):</th><td class="invoice-strong">{{ formatInvoiceDocumentAmount(balanceDue, invoice.currency) }}</td></tr>
+                </template>
                 </tbody>
             </table>
         </div>
@@ -77,11 +85,34 @@
                 <tr><th>Subtotal:</th><td>{{ formatInvoiceDocumentAmount(subtotal, invoice.currency) }}</td></tr>
                 <tr :key="row.name" v-for="row in taxRows"><th>{{ row.name }} ({{ formatInvoiceTaxRate(row.rate) }}):</th><td>{{ formatInvoiceDocumentAmount(row.amount, invoice.currency) }}</td></tr>
             </template>
-            <tr><th>Total:</th><td>{{ formatInvoiceDocumentAmount(invoice.total, invoice.currency) }}</td></tr>
-            <tr v-if="invoice.received > 0"><th>Payments received:</th><td>−{{ formatInvoiceDocumentAmount(Math.min(invoice.received, invoice.total), invoice.currency) }}</td></tr>
-            <tr class="invoice-totals-due"><th>Amount Due ({{ invoice.currency }}):</th><td>{{ formatInvoiceDocumentAmount(balanceDue, invoice.currency) }}</td></tr>
+            <tr class="invoice-totals-due" v-if="isEstimate"><th>Total ({{ invoice.currency }}):</th><td>{{ formatInvoiceDocumentAmount(invoice.total, invoice.currency) }}</td></tr>
+            <template v-else>
+                <tr><th>Total:</th><td>{{ formatInvoiceDocumentAmount(invoice.total, invoice.currency) }}</td></tr>
+                <tr v-if="invoice.received > 0"><th>Payments received:</th><td>−{{ formatInvoiceDocumentAmount(Math.min(invoice.received, invoice.total), invoice.currency) }}</td></tr>
+                <tr class="invoice-totals-due"><th>Amount Due ({{ invoice.currency }}):</th><td>{{ formatInvoiceDocumentAmount(balanceDue, invoice.currency) }}</td></tr>
+            </template>
             </tbody>
         </table>
+
+        <div class="invoice-payment-terms" v-if="isEstimate && invoice.milestones.length">
+            <div class="invoice-strong">Payment Terms</div>
+            <table class="invoice-lines">
+                <thead>
+                <tr>
+                    <th class="invoice-left">Milestone</th>
+                    <th class="invoice-right">%</th>
+                    <th class="invoice-right">Amount</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr :key="index" v-for="(milestone, index) in invoice.milestones">
+                    <td>{{ milestone.label }}</td>
+                    <td class="invoice-right">{{ formatMilestonePercent(milestone.percent) }}</td>
+                    <td class="invoice-right">{{ formatInvoiceDocumentAmount(milestoneAmounts[index] ?? 0, invoice.currency) }}</td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
 
         <div class="invoice-notes" v-if="invoice.notes">
             <div class="invoice-muted invoice-strong">Notes / Terms</div>
@@ -95,6 +126,7 @@ import { computed } from 'vue';
 
 import type { Invoice, InvoiceProfile } from '@/models/invoice.ts';
 import { type InvoiceTaxRow, INVOICE_QUANTITY_SCALE, formatInvoiceDocumentAmount, formatInvoiceDocumentDate, formatInvoiceQuantity, formatInvoiceTaxRate, getInvoiceDisplayBalanceDue, getInvoiceTaxRows } from '@/lib/invoice.ts';
+import { formatMilestonePercent, getMilestoneAmounts } from '@/lib/estimate.ts';
 
 const props = defineProps<{
     invoice: Invoice;
@@ -108,6 +140,9 @@ const showSac = computed<boolean>(() => props.invoice.lines.some(line => !!line.
 // invoices saved before GST have no subtotal stored; without tax the total is the subtotal
 const subtotal = computed<number>(() => props.invoice.taxType === 'none' ? props.invoice.total : props.invoice.subtotal);
 const taxRows = computed<InvoiceTaxRow[]>(() => getInvoiceTaxRows(props.invoice.taxType, props.invoice.taxRate, props.invoice.taxAmount));
+const isEstimate = computed<boolean>(() => props.invoice.kind === 'estimate');
+// each milestone's share of the total incl. tax, the last taking the remainder (the PDF prints the same)
+const milestoneAmounts = computed<number[]>(() => getMilestoneAmounts(props.invoice.total, props.invoice.milestones.map(milestone => milestone.percent)));
 </script>
 
 <style scoped>
@@ -252,5 +287,13 @@ const taxRows = computed<InvoiceTaxRow[]>(() => getInvoiceTaxRows(props.invoice.
 
 .invoice-notes {
     margin-top: 56px;
+}
+
+.invoice-payment-terms {
+    margin-top: 40px;
+}
+
+.invoice-payment-terms .invoice-lines {
+    margin-top: 8px;
 }
 </style>
