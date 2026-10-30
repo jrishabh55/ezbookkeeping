@@ -1,13 +1,5 @@
 <template>
-    <main-page-layout>
-        <template #nav-items>
-            <li class="nav-section-title">
-                <div class="title-wrapper">
-                    <span class="title-text">{{ tt('Products') }}</span>
-                </div>
-            </li>
-        </template>
-
+    <main-page-layout no-navbar>
         <template #content>
             <v-row class="match-height">
                 <v-col cols="12">
