@@ -1,7 +1,7 @@
 # Forecast: design
 
 Date: 2026-11-02
-Status: design approved in chat 2026-11-02; spec awaiting review
+Status: approved 2026-11-02. Trimmed for v1 (user, 2026-11-02): no Forecast page, no suggest-from-history; an overview widget shows this month. Engine, API and MCP tool unchanged.
 
 ## Context
 
