@@ -14,6 +14,8 @@ type TransactionTemplateType byte
 const (
 	TRANSACTION_TEMPLATE_TYPE_NORMAL   TransactionTemplateType = 1
 	TRANSACTION_TEMPLATE_TYPE_SCHEDULE TransactionTemplateType = 2
+	// TRANSACTION_TEMPLATE_TYPE_FORECAST has a schedule but never posts; only the forecast reads it
+	TRANSACTION_TEMPLATE_TYPE_FORECAST TransactionTemplateType = 3
 )
 
 // TransactionScheduleFrequencyType represents transaction template schedule frequency type
@@ -167,11 +169,16 @@ func (t *TransactionTemplate) GetTagIds() []int64 {
 	return result
 }
 
+// HasSchedule returns whether the template carries schedule fields
+func (t *TransactionTemplate) HasSchedule() bool {
+	return t.TemplateType == TRANSACTION_TEMPLATE_TYPE_SCHEDULE || t.TemplateType == TRANSACTION_TEMPLATE_TYPE_FORECAST
+}
+
 // ToTransactionTemplateInfoResponse returns a view-object according to database model
 func (t *TransactionTemplate) ToTransactionTemplateInfoResponse(serverUtcOffset int16) *TransactionTemplateInfoResponse {
 	utcOffset := serverUtcOffset
 
-	if t.TemplateType == TRANSACTION_TEMPLATE_TYPE_SCHEDULE {
+	if t.HasSchedule() {
 		utcOffset = t.ScheduledTimezoneUtcOffset
 	}
 
@@ -183,7 +190,7 @@ func (t *TransactionTemplate) ToTransactionTemplateInfoResponse(serverUtcOffset 
 		Hidden:                  t.Hidden,
 	}
 
-	if t.TemplateType == TRANSACTION_TEMPLATE_TYPE_SCHEDULE {
+	if t.HasSchedule() {
 		response.ScheduledFrequencyType = &t.ScheduledFrequencyType
 		response.ScheduledFrequency = &t.ScheduledFrequency
 		response.ScheduledAt = &t.ScheduledAt

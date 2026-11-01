@@ -50,7 +50,7 @@ func (a *TransactionTemplatesApi) TemplateListHandler(c *core.WebContext) (any, 
 		return nil, errs.NewIncompleteOrIncorrectSubmissionError(err)
 	}
 
-	if templateListReq.TemplateType < models.TRANSACTION_TEMPLATE_TYPE_NORMAL || templateListReq.TemplateType > models.TRANSACTION_TEMPLATE_TYPE_SCHEDULE {
+	if templateListReq.TemplateType < models.TRANSACTION_TEMPLATE_TYPE_NORMAL || templateListReq.TemplateType > models.TRANSACTION_TEMPLATE_TYPE_FORECAST {
 		log.Warnf(c, "[transaction_templates.TemplateListHandler] template type invalid, type is %d", templateListReq.TemplateType)
 		return nil, errs.ErrTransactionTemplateTypeInvalid
 	}
@@ -117,7 +117,7 @@ func (a *TransactionTemplatesApi) TemplateCreateHandler(c *core.WebContext) (any
 		return nil, errs.NewIncompleteOrIncorrectSubmissionError(err)
 	}
 
-	if templateCreateReq.TemplateType < models.TRANSACTION_TEMPLATE_TYPE_NORMAL || templateCreateReq.TemplateType > models.TRANSACTION_TEMPLATE_TYPE_SCHEDULE {
+	if templateCreateReq.TemplateType < models.TRANSACTION_TEMPLATE_TYPE_NORMAL || templateCreateReq.TemplateType > models.TRANSACTION_TEMPLATE_TYPE_FORECAST {
 		log.Warnf(c, "[transaction_templates.TemplateCreateHandler] template type invalid, type is %d", templateCreateReq.TemplateType)
 		return nil, errs.ErrTransactionTemplateTypeInvalid
 	}
@@ -131,7 +131,7 @@ func (a *TransactionTemplatesApi) TemplateCreateHandler(c *core.WebContext) (any
 		return nil, errs.ErrTransactionTypeInvalid
 	}
 
-	if templateCreateReq.TemplateType == models.TRANSACTION_TEMPLATE_TYPE_SCHEDULE {
+	if templateCreateReq.TemplateType == models.TRANSACTION_TEMPLATE_TYPE_SCHEDULE || templateCreateReq.TemplateType == models.TRANSACTION_TEMPLATE_TYPE_FORECAST {
 		if templateCreateReq.ScheduledFrequencyType == nil ||
 			templateCreateReq.ScheduledFrequency == nil {
 			return nil, errs.ErrScheduledTransactionFrequencyInvalid
@@ -247,7 +247,7 @@ func (a *TransactionTemplatesApi) TemplateModifyHandler(c *core.WebContext) (any
 		return nil, errs.ErrScheduledTransactionNotEnabled
 	}
 
-	if template.TemplateType == models.TRANSACTION_TEMPLATE_TYPE_SCHEDULE {
+	if template.HasSchedule() {
 		if templateModifyReq.ScheduledFrequencyType == nil ||
 			templateModifyReq.ScheduledFrequency == nil {
 			return nil, errs.ErrScheduledTransactionFrequencyInvalid
@@ -297,7 +297,7 @@ func (a *TransactionTemplatesApi) TemplateModifyHandler(c *core.WebContext) (any
 		Comment:              templateModifyReq.Comment,
 	}
 
-	if template.TemplateType == models.TRANSACTION_TEMPLATE_TYPE_SCHEDULE {
+	if template.HasSchedule() {
 		newTemplate.ScheduledFrequencyType = *templateModifyReq.ScheduledFrequencyType
 		newTemplate.ScheduledFrequency = a.getOrderedFrequencyValues(*templateModifyReq.ScheduledFrequency)
 		newTemplate.ScheduledTimezoneName = *templateModifyReq.ScheduledTimezoneName
@@ -353,7 +353,7 @@ func (a *TransactionTemplatesApi) TemplateModifyHandler(c *core.WebContext) (any
 		newTemplate.Comment == template.Comment {
 		if template.TemplateType == models.TRANSACTION_TEMPLATE_TYPE_NORMAL {
 			return nil, errs.ErrNothingWillBeUpdated
-		} else if template.TemplateType == models.TRANSACTION_TEMPLATE_TYPE_SCHEDULE {
+		} else if template.HasSchedule() {
 			if newTemplate.ScheduledFrequencyType == template.ScheduledFrequencyType &&
 				newTemplate.ScheduledFrequency == template.ScheduledFrequency &&
 				newTemplate.ScheduledStartTime == template.ScheduledStartTime &&
@@ -518,7 +518,7 @@ func (a *TransactionTemplatesApi) createNewTemplateModel(c *core.WebContext, uid
 		DisplayOrder:         order,
 	}
 
-	if templateCreateReq.TemplateType == models.TRANSACTION_TEMPLATE_TYPE_SCHEDULE {
+	if templateCreateReq.TemplateType == models.TRANSACTION_TEMPLATE_TYPE_SCHEDULE || templateCreateReq.TemplateType == models.TRANSACTION_TEMPLATE_TYPE_FORECAST {
 		template.ScheduledFrequencyType = *templateCreateReq.ScheduledFrequencyType
 		template.ScheduledFrequency = a.getOrderedFrequencyValues(*templateCreateReq.ScheduledFrequency)
 		template.ScheduledTimezoneName = *templateCreateReq.ScheduledTimezoneName
