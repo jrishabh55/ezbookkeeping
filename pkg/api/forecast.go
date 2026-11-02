@@ -38,13 +38,6 @@ func (a *ForecastApi) ForecastGetHandler(c *core.WebContext) (any, *errs.Error) 
 		return nil, errs.NewIncompleteOrIncorrectSubmissionError(err)
 	}
 
-	startMonth, err := time.Parse("2006-01", forecastGetReq.StartMonth)
-
-	if err != nil {
-		log.Warnf(c, "[forecast.ForecastGetHandler] start_month \"%s\" is invalid, because %s", forecastGetReq.StartMonth, err.Error())
-		return nil, errs.ErrParameterInvalid
-	}
-
 	clientTimezone, err := c.GetClientTimezone()
 
 	if err != nil {
@@ -52,12 +45,11 @@ func (a *ForecastApi) ForecastGetHandler(c *core.WebContext) (any, *errs.Error) 
 		return nil, errs.ErrClientTimezoneOffsetInvalid
 	}
 
-	year, month, day := time.Now().In(clientTimezone).Date()
-	today := forecast.D(year, month, day)
-	start := forecast.D(startMonth.Year(), startMonth.Month(), 1)
+	today, err := forecastToday(forecastGetReq.StartMonth, time.Now().In(clientTimezone))
 
-	if forecast.MonthStart(today).Before(start) {
-		today = start
+	if err != nil {
+		log.Warnf(c, "[forecast.ForecastGetHandler] start_month \"%s\" is invalid, because %s", forecastGetReq.StartMonth, err.Error())
+		return nil, errs.ErrParameterInvalid
 	}
 
 	uid := c.GetCurrentUid()
@@ -69,4 +61,23 @@ func (a *ForecastApi) ForecastGetHandler(c *core.WebContext) (any, *errs.Error) 
 	}
 
 	return models.NewForecastResponse(result), nil
+}
+
+// forecastToday returns the client's local date for clientNow, provided startMonth ("2006-01") is the
+// client's current month; the forecast always starts from today's balances, so any other start
+// month would give wrong numbers and is rejected (months 2-3 still give the forward view)
+func forecastToday(startMonth string, clientNow time.Time) (time.Time, error) {
+	month, err := time.Parse("2006-01", startMonth)
+
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	year, mon, day := clientNow.Date()
+
+	if month.Year() != year || month.Month() != mon {
+		return time.Time{}, errs.ErrParameterInvalid
+	}
+
+	return forecast.D(year, mon, day), nil
 }
