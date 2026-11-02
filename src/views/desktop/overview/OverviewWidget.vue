@@ -77,6 +77,9 @@
                                          :outlier-top-count="widget.settings['outlierTopCount'] as number"
                                          :outlier-amount-threshold="widget.settings['outlierAmountThreshold'] as number"
                                          v-else-if="widget.type === OverviewWidgetType.TransactionCalendarHeatmap" />
+
+    <forecast-summary-widget :editing="editing" :title="widgetTitle"
+                             v-else-if="widget.type === OverviewWidgetType.ForecastSummary" />
 </template>
 
 <script setup lang="ts">
@@ -95,6 +98,7 @@ import ExpenseCategoryRankingWidget from './widgets/ExpenseCategoryRankingWidget
 import RecentTransactionsWidget from './widgets/RecentTransactionsWidget.vue';
 import TransactionCalendarWidget from './widgets/TransactionCalendarWidget.vue';
 import TransactionCalendarHeatmapWidget from './widgets/TransactionCalendarHeatmapWidget.vue';
+import ForecastSummaryWidget from './widgets/ForecastSummaryWidget.vue';
 
 import { TransactionType } from '@/core/transaction.ts';
 import { TransactionCalendarHeatmapOutlierColorMode } from '@/core/chart.ts';

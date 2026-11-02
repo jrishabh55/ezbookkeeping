@@ -68,6 +68,10 @@
                                    :light-background-color="widget.settings['lightBackgroundColor'] as ColorValue"
                                    :dark-background-color="widget.settings['darkBackgroundColor'] as ColorValue"
                                    v-else-if="widget.type === OverviewWidgetType.AddTransactionButton" />
+
+    <forecast-summary-widget :editing="editing" :title="widgetTitle"
+                             :show-title="widget.settings['showTitle'] as boolean"
+                             v-else-if="widget.type === OverviewWidgetType.ForecastSummary" />
 </template>
 
 <script setup lang="ts">
@@ -84,6 +88,7 @@ import ExpenseCategoryRankingWidget from './widgets/ExpenseCategoryRankingWidget
 import RecentTransactionsWidget from './widgets/RecentTransactionsWidget.vue';
 import TransactionCalendarWidget from './widgets/TransactionCalendarWidget.vue';
 import AddTransactionButtonWidget from './widgets/AddTransactionButtonWidget.vue';
+import ForecastSummaryWidget from './widgets/ForecastSummaryWidget.vue';
 
 import type { ColorValue } from '@/core/color.ts';
 import {

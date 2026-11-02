@@ -657,6 +657,19 @@ export const DESKTOP_OVERVIEW_WIDGET_DEFINITIONS: PartialRecord<OverviewWidgetTy
         dataRequirements: [
             OverviewWidgetDataRequirement.DailyTransactionAmounts
         ]
+    },
+    [OverviewWidgetType.ForecastSummary]: {
+        type: OverviewWidgetType.ForecastSummary,
+        name: 'Forecast',
+        supportsSettings: [
+            WIDGET_TITLE_SETTING
+        ],
+        defaultSettings: {},
+        defaultWidth: 4,
+        defaultHeight: 4,
+        minWidth: 3,
+        minHeight: 3,
+        dataRequirements: []
     }
 };
 
@@ -1229,6 +1242,18 @@ export const MOBILE_OVERVIEW_WIDGET_DEFINITIONS: PartialRecord<OverviewWidgetTyp
             defaultAction: AddTransactionButtonDefaultAction.AddTransaction,
             lightBackgroundColor: DEFAULT_MOBILE_ADD_TRANSACTION_BUTTON_BACKGROUND_COLOR,
             darkBackgroundColor: DEFAULT_MOBILE_ADD_TRANSACTION_BUTTON_BACKGROUND_COLOR
+        },
+        dataRequirements: []
+    },
+    [OverviewWidgetType.ForecastSummary]: {
+        type: OverviewWidgetType.ForecastSummary,
+        name: 'Forecast',
+        supportsSettings: [
+            WIDGET_TITLE_SETTING,
+            WIDGET_SHOW_TITLE_SETTING
+        ],
+        defaultSettings: {
+            showTitle: false
         },
         dataRequirements: []
     }

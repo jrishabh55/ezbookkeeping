@@ -203,6 +203,9 @@ import type {
     BudgetProgressResponse
 } from '@/models/budget.ts';
 import type {
+    ForecastResponse
+} from '@/models/forecast.ts';
+import type {
     BucketInfoResponse,
     BucketCreateRequest,
     BucketModifyRequest,
@@ -1021,6 +1024,9 @@ export default {
         if (startTime) url += '&startTime=' + startTime;
         if (endTime) url += '&endTime=' + endTime;
         return axios.get<ApiResponse<BudgetProgressResponse>>(url);
+    },
+    getForecast: ({ startMonth, months }: { startMonth: string, months: number }): ApiResponsePromise<ForecastResponse> => {
+        return axios.get<ApiResponse<ForecastResponse>>('v1/forecast/get.json?start_month=' + startMonth + '&months=' + months);
     },
     getAllBuckets: (): ApiResponsePromise<BucketInfoResponse[]> => {
         return axios.get<ApiResponse<BucketInfoResponse[]>>('v1/buckets/list.json');

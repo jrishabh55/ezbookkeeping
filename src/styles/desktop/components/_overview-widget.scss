@@ -546,3 +546,35 @@
         color: rgba(var(--v-theme-on-surface), 0.55);
     }
 }
+
+.forecast-summary-widget {
+    .forecast-summary-widget__shortfalls {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .forecast-summary-widget__shortfall {
+        display: flex;
+        align-items: flex-start;
+        gap: 6px;
+    }
+
+    .forecast-summary-widget__shortfall-icon {
+        flex: 0 0 auto;
+        margin-block-start: 2px;
+    }
+
+    .forecast-summary-widget__shortfall-text {
+        display: flex;
+        min-width: 0;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .forecast-summary-widget__items {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+}
