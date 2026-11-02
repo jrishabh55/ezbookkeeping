@@ -310,8 +310,8 @@ func (a *AccountsApi) AccountCreateHandler(c *core.WebContext) (any, *errs.Error
 	if accountCreateReq.CreditCardPaymentAccountId != 0 {
 		paymentAccount, lookupErr := a.accounts.GetAccountByAccountId(c, uid, accountCreateReq.CreditCardPaymentAccountId)
 
-		if lookupErr != nil || paymentAccount.Category == models.ACCOUNT_CATEGORY_CREDIT_CARD {
-			log.Warnf(c, "[accounts.AccountCreateHandler] credit card payment account \"id:%d\" not found or is a credit card account for user \"uid:%d\"", accountCreateReq.CreditCardPaymentAccountId, uid)
+		if lookupErr != nil || !paymentAccount.Category.IsAsset() {
+			log.Warnf(c, "[accounts.AccountCreateHandler] credit card payment account \"id:%d\" not found or is not an asset account for user \"uid:%d\"", accountCreateReq.CreditCardPaymentAccountId, uid)
 			return nil, errs.ErrAccountNotFound
 		}
 	}
@@ -461,8 +461,8 @@ func (a *AccountsApi) AccountModifyHandler(c *core.WebContext) (any, *errs.Error
 	if accountModifyReq.CreditCardPaymentAccountId != 0 {
 		paymentAccount, lookupErr := a.accounts.GetAccountByAccountId(c, uid, accountModifyReq.CreditCardPaymentAccountId)
 
-		if lookupErr != nil || paymentAccount.Category == models.ACCOUNT_CATEGORY_CREDIT_CARD {
-			log.Warnf(c, "[accounts.AccountModifyHandler] credit card payment account \"id:%d\" not found or is a credit card account for user \"uid:%d\"", accountModifyReq.CreditCardPaymentAccountId, uid)
+		if lookupErr != nil || !paymentAccount.Category.IsAsset() {
+			log.Warnf(c, "[accounts.AccountModifyHandler] credit card payment account \"id:%d\" not found or is not an asset account for user \"uid:%d\"", accountModifyReq.CreditCardPaymentAccountId, uid)
 			return nil, errs.ErrAccountNotFound
 		}
 	}

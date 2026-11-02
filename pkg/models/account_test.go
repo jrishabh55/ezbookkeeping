@@ -8,6 +8,14 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestAccountCategoryIsAsset(t *testing.T) {
+	assert.True(t, ACCOUNT_CATEGORY_CASH.IsAsset())
+	assert.True(t, ACCOUNT_CATEGORY_CHECKING_ACCOUNT.IsAsset())
+	assert.True(t, ACCOUNT_CATEGORY_SAVINGS_ACCOUNT.IsAsset())
+	assert.False(t, ACCOUNT_CATEGORY_CREDIT_CARD.IsAsset())
+	assert.False(t, ACCOUNT_CATEGORY_DEBT.IsAsset())
+}
+
 func TestAccountToAccountInfoResponseBalance(t *testing.T) {
 	account := &Account{Balance: math.MaxInt64}
 	response := account.ToAccountInfoResponse()
