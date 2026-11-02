@@ -493,9 +493,16 @@ func toBudgets(budgets []*models.Budget, scopesByBudget map[int64][]*models.Budg
 }
 
 // toCards maps non-hidden credit card accounts into the engine's cards; a due day, statement day
-// or pay-from account left unset becomes 0, which the engine treats as "skip this card"
+// or pay-from account left unset becomes 0, which the engine treats as "skip this card". A pay-from
+// account that is hidden, deleted or otherwise not among accts also becomes 0, so the card is
+// skipped rather than billed from an account the forecast does not track
 func toCards(accts []*models.Account) []forecast.Card {
 	var out []forecast.Card
+	visible := make(map[int64]bool, len(accts))
+
+	for _, a := range accts {
+		visible[a.AccountId] = !a.Hidden
+	}
 
 	for _, a := range accts {
 		if a.Hidden || a.Category != models.ACCOUNT_CATEGORY_CREDIT_CARD {
@@ -513,7 +520,7 @@ func toCards(accts []*models.Account) []forecast.Card {
 				card.DueDay = *a.Extend.CreditCardPaymentDueDay
 			}
 
-			if a.Extend.CreditCardPaymentAccountId != nil {
+			if a.Extend.CreditCardPaymentAccountId != nil && visible[*a.Extend.CreditCardPaymentAccountId] {
 				card.PayFromAccountId = *a.Extend.CreditCardPaymentAccountId
 			}
 		}

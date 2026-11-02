@@ -89,6 +89,7 @@ func TestForecastToCards(t *testing.T) {
 		}},
 		{AccountId: 2922, Category: models.ACCOUNT_CATEGORY_CREDIT_CARD, Balance: -1000_00, Name: "ICICI 2922"},
 		{AccountId: 1, Category: models.ACCOUNT_CATEGORY_SAVINGS_ACCOUNT, Balance: 100},
+		{AccountId: 7731, Category: models.ACCOUNT_CATEGORY_SAVINGS_ACCOUNT, Balance: 100},
 		{AccountId: 99, Category: models.ACCOUNT_CATEGORY_CREDIT_CARD, Balance: -50, Hidden: true},
 	})
 
@@ -96,6 +97,31 @@ func TestForecastToCards(t *testing.T) {
 		{AccountId: 4708, PayFromAccountId: 7731, StatementDay: 14, DueDay: 3, Outstanding: 32704_35, Label: "HDFC 4708"},
 		{AccountId: 2922, Outstanding: 1000_00, Label: "ICICI 2922"},
 	}, got)
+}
+
+// A card whose pay-from account is hidden or no longer exists is skipped (pay-from 0), not billed
+// from an unknown account
+func TestForecastToCards_HiddenOrMissingPayFromAccountSkipsCard(t *testing.T) {
+	statementDay, dueDay := 14, 3
+	hiddenPayFrom, deletedPayFrom := int64(7731), int64(5555)
+	card := func(id int64, payFrom *int64) *models.Account {
+		return &models.Account{AccountId: id, Category: models.ACCOUNT_CATEGORY_CREDIT_CARD, Balance: -100, Extend: &models.AccountExtend{
+			CreditCardStatementDate: &statementDay, CreditCardPaymentDueDay: &dueDay, CreditCardPaymentAccountId: payFrom,
+		}}
+	}
+
+	got := toCards([]*models.Account{
+		card(4708, &hiddenPayFrom),
+		card(8928, &deletedPayFrom),
+		{AccountId: 7731, Category: models.ACCOUNT_CATEGORY_SAVINGS_ACCOUNT, Hidden: true},
+	})
+
+	assert.Len(t, got, 2)
+	assert.Zero(t, got[0].PayFromAccountId)
+	assert.Zero(t, got[1].PayFromAccountId)
+
+	_, skipped := forecast.CardBills(got, nil, nil, forecast.D(2026, 11, 2), forecast.D(2027, 1, 1))
+	assert.Equal(t, []int64{4708, 8928}, skipped)
 }
 
 func TestForecastToIncome_UnpaidInvoiceDueDateAndOutstandingAmount(t *testing.T) {
