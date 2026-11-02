@@ -386,6 +386,11 @@ const routes: Router.RouteParameters[] = [
         beforeEnter: [checkLogin]
     },
     {
+        path: '/forecast/list',
+        async: asyncResolve(TemplateListPage),
+        beforeEnter: [checkLogin]
+    },
+    {
         path: '/template/add',
         async: asyncResolve(TransactionEditPage),
         beforeEnter: [checkLogin]

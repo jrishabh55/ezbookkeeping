@@ -5,7 +5,7 @@
             <f7-nav-left v-else-if="sortable">
                 <f7-link icon-f7="xmark" :class="{ 'disabled': displayOrderSaving }" :aria-label="tt('Cancel')" @click="cancelSort"></f7-link>
             </f7-nav-left>
-            <f7-nav-title :title="templateType === TemplateType.Schedule.type ? tt('Scheduled Transactions') : tt('Transaction Templates')"></f7-nav-title>
+            <f7-nav-title :title="templateType === TemplateType.Schedule.type ? tt('Scheduled Transactions') : (templateType === TemplateType.Forecast.type ? tt('Forecast Items') : tt('Transaction Templates'))"></f7-nav-title>
             <f7-nav-right :class="{ 'navbar-compact-icons': true, 'disabled': loading }">
                 <f7-link icon-f7="ellipsis" :class="{ 'disabled': !templates.length || sortable }" :aria-label="tt('More')" @click="showMoreActionSheet = true"></f7-link>
                 <f7-link icon-f7="plus" :aria-label="tt('Add')" :href="'/template/add?templateType=' + templateType" v-if="!sortable"></f7-link>
@@ -27,6 +27,7 @@
                           :footer="tt('Once you add templates, you can long-press the Add button on the home page to quickly add a new transaction')"
                           v-if="templateType === TemplateType.Normal.type"></f7-list-item>
             <f7-list-item :title="tt('No available scheduled transactions')" v-else-if="templateType === TemplateType.Schedule.type"></f7-list-item>
+            <f7-list-item :title="tt('No forecast items')" v-else-if="templateType === TemplateType.Forecast.type"></f7-list-item>
             <f7-list-item :title="tt('No available template')" v-else></f7-list-item>
         </f7-list>
 
@@ -43,7 +44,7 @@
                           v-show="showHidden || !template.hidden"
                           @taphold="setSortable()">
                 <template #media>
-                    <f7-icon :f7="templateType === TemplateType.Schedule.type ? 'clock' : 'doc_plaintext'">
+                    <f7-icon :f7="templateType === TemplateType.Schedule.type ? 'clock' : (templateType === TemplateType.Forecast.type ? 'graph_square' : 'doc_plaintext')">
                         <f7-badge color="gray" class="right-bottom-icon" v-if="template.hidden">
                             <f7-icon f7="eye_slash_fill"></f7-icon>
                         </f7-badge>
@@ -157,6 +158,8 @@ function init(): void {
         templateType.value = TemplateType.Normal.type;
     } else if (props.f7route.path === '/schedule/list') {
         templateType.value = TemplateType.Schedule.type;
+    } else if (props.f7route.path === '/forecast/list') {
+        templateType.value = TemplateType.Forecast.type;
     }
 
     loading.value = true;

@@ -72,6 +72,12 @@
                     <span class="nav-item-title">{{ tt('Scheduled Transactions') }}</span>
                 </router-link>
             </li>
+            <li class="nav-link">
+                <router-link to="/forecast/list">
+                    <v-icon class="nav-item-icon" :icon="mdiChartLineVariant"/>
+                    <span class="nav-item-title">{{ tt('Forecast Items') }}</span>
+                </router-link>
+            </li>
             <li class="nav-link" v-if="isUserCustomIconEnabled()">
                 <router-link to="/custom_icon/list">
                     <v-icon class="nav-item-icon" :icon="mdiShapePlusOutline"/>
@@ -178,6 +184,7 @@ import {
     mdiPoundBoxOutline,
     mdiClipboardTextOutline,
     mdiClipboardTextClockOutline,
+    mdiChartLineVariant,
     mdiShapePlusOutline,
     mdiDatabaseCogOutline,
     mdiCogOutline,

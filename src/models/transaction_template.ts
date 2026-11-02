@@ -1,6 +1,6 @@
 import { type TextualYearMonthDay } from '@/core/datetime.ts';
 import { TransactionType } from '@/core/transaction.ts';
-import { TemplateType } from '@/core/template.ts';
+import { isScheduleLike } from '@/core/template.ts';
 
 import { Transaction, type TransactionInfoResponse } from './transaction.ts';
 
@@ -32,7 +32,7 @@ export class TransactionTemplate extends Transaction implements TransactionTempl
         this.templateType = other.templateType;
         this.name = other.name;
 
-        if (this.templateType === TemplateType.Schedule.type) {
+        if (isScheduleLike(this.templateType)) {
             this.scheduledFrequencyType = other.scheduledFrequencyType;
             this.scheduledFrequency = other.scheduledFrequency;
             this.scheduledStartDate = other.scheduledStartDate;
@@ -55,12 +55,12 @@ export class TransactionTemplate extends Transaction implements TransactionTempl
             hideAmount: this.hideAmount,
             tagIds: this.tagIds,
             comment: this.comment,
-            scheduledFrequencyType: this.templateType === TemplateType.Schedule.type ? this.scheduledFrequencyType : undefined,
-            scheduledFrequency: this.templateType === TemplateType.Schedule.type ? this.scheduledFrequency : undefined,
-            scheduledStartDate: this.templateType === TemplateType.Schedule.type && this.scheduledStartDate ? this.scheduledStartDate : undefined,
-            scheduledEndDate: this.templateType === TemplateType.Schedule.type && this.scheduledEndDate ? this.scheduledEndDate : undefined,
-            timeZone: this.templateType === TemplateType.Schedule.type ? this.timeZone : undefined,
-            utcOffset: this.templateType === TemplateType.Schedule.type ? this.utcOffset : undefined,
+            scheduledFrequencyType: isScheduleLike(this.templateType) ? this.scheduledFrequencyType : undefined,
+            scheduledFrequency: isScheduleLike(this.templateType) ? this.scheduledFrequency : undefined,
+            scheduledStartDate: isScheduleLike(this.templateType) && this.scheduledStartDate ? this.scheduledStartDate : undefined,
+            scheduledEndDate: isScheduleLike(this.templateType) && this.scheduledEndDate ? this.scheduledEndDate : undefined,
+            timeZone: isScheduleLike(this.templateType) ? this.timeZone : undefined,
+            utcOffset: isScheduleLike(this.templateType) ? this.utcOffset : undefined,
             clientSessionId: clientSessionId
         };
     }
@@ -78,12 +78,12 @@ export class TransactionTemplate extends Transaction implements TransactionTempl
             hideAmount: this.hideAmount,
             tagIds: this.tagIds,
             comment: this.comment,
-            scheduledFrequencyType: this.templateType === TemplateType.Schedule.type ? this.scheduledFrequencyType : undefined,
-            scheduledFrequency: this.templateType === TemplateType.Schedule.type ? this.scheduledFrequency : undefined,
-            scheduledStartDate: this.templateType === TemplateType.Schedule.type && this.scheduledStartDate ? this.scheduledStartDate : undefined,
-            scheduledEndDate: this.templateType === TemplateType.Schedule.type && this.scheduledEndDate ? this.scheduledEndDate : undefined,
-            timeZone: this.templateType === TemplateType.Schedule.type ? this.timeZone : undefined,
-            utcOffset: this.templateType === TemplateType.Schedule.type ? this.utcOffset : undefined
+            scheduledFrequencyType: isScheduleLike(this.templateType) ? this.scheduledFrequencyType : undefined,
+            scheduledFrequency: isScheduleLike(this.templateType) ? this.scheduledFrequency : undefined,
+            scheduledStartDate: isScheduleLike(this.templateType) && this.scheduledStartDate ? this.scheduledStartDate : undefined,
+            scheduledEndDate: isScheduleLike(this.templateType) && this.scheduledEndDate ? this.scheduledEndDate : undefined,
+            timeZone: isScheduleLike(this.templateType) ? this.timeZone : undefined,
+            utcOffset: isScheduleLike(this.templateType) ? this.utcOffset : undefined
         };
     }
 

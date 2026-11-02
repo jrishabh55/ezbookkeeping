@@ -15,7 +15,7 @@ import type { WeekDayValue } from '@/core/datetime.ts';
 import type { LocalizedTimezoneInfo } from '@/core/timezone.ts';
 import { ImageUploadQualityType } from '@/core/image.ts';
 import { TransactionType, TransactionQuickAddButtonActionType } from '@/core/transaction.ts';
-import { TemplateType } from '@/core/template.ts';
+import { TemplateType, isScheduleLike } from '@/core/template.ts';
 import { DISPLAY_HIDDEN_AMOUNT } from '@/consts/numeral.ts';
 import { TRANSACTION_MAX_PICTURE_COUNT, TRANSACTION_MAX_COMMENT_LENGTH, TRANSACTION_COMMENT_HINT_MIN_LENGTH } from '@/consts/transaction.ts';
 
@@ -170,6 +170,12 @@ export function useTransactionEditPageBase(type: TransactionEditPageType, initMo
             } else if (mode.value === TransactionEditPageMode.Edit) {
                 return 'Edit Scheduled Transaction';
             }
+        } else if (isForecastTransactionTemplate(transaction.value)) {
+            if (mode.value === TransactionEditPageMode.Add) {
+                return 'Add Forecast Item';
+            } else if (mode.value === TransactionEditPageMode.Edit) {
+                return 'Edit Forecast Item';
+            }
         }
 
         return '';
@@ -312,7 +318,7 @@ export function useTransactionEditPageBase(type: TransactionEditPageType, initMo
     const transactionDisplayTimezone = computed<string>(() => {
         let utcOffsetMinutes: number = transaction.value.utcOffset;
 
-        if (isScheduledTransactionTemplate(transaction.value) && transaction.value.timeZone) {
+        if (isScheduleLikeTransactionTemplate(transaction.value) && transaction.value.timeZone) {
             utcOffsetMinutes = getTimezoneOffsetMinutes(getCurrentUnixTime(), transaction.value.timeZone);
         }
 
@@ -404,6 +410,14 @@ export function useTransactionEditPageBase(type: TransactionEditPageType, initMo
 
     function isScheduledTransactionTemplate(item: Transaction | TransactionTemplate): boolean {
         return type === TransactionEditPageType.Template && item instanceof TransactionTemplate && item.templateType === TemplateType.Schedule.type;
+    }
+
+    function isForecastTransactionTemplate(item: Transaction | TransactionTemplate): boolean {
+        return type === TransactionEditPageType.Template && item instanceof TransactionTemplate && item.templateType === TemplateType.Forecast.type;
+    }
+
+    function isScheduleLikeTransactionTemplate(item: Transaction | TransactionTemplate): boolean {
+        return type === TransactionEditPageType.Template && item instanceof TransactionTemplate && isScheduleLike(item.templateType);
     }
 
     function createNewTransactionModel(transactionType?: number): Transaction | TransactionTemplate {
@@ -498,7 +512,7 @@ export function useTransactionEditPageBase(type: TransactionEditPageType, initMo
 
         for (const timezone of allTimezones.value) {
             if (timezone.name === timezoneName) {
-                if (isScheduledTransactionTemplate(transaction.value)) {
+                if (isScheduleLikeTransactionTemplate(transaction.value)) {
                     transaction.value.timeZone = timezone.name || getBrowserTimezoneName();
                 } else {
                     transaction.value.timeZone = timezone.name;

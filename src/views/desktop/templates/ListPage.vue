@@ -4,7 +4,7 @@
             <v-card>
                 <template #title>
                     <div class="title-and-toolbar d-flex align-center">
-                        <span>{{ templateType === TemplateType.Schedule.type ? tt('Scheduled Transactions') : tt('Transaction Templates') }}</span>
+                        <span>{{ templateType === TemplateType.Schedule.type ? tt('Scheduled Transactions') : (templateType === TemplateType.Forecast.type ? tt('Forecast Items') : tt('Transaction Templates')) }}</span>
                         <v-btn class="ms-3" color="default" variant="outlined"
                                :disabled="loading || updating" @click="add">{{ tt('Add') }}</v-btn>
                         <v-btn class="ms-3" color="primary" variant="tonal"
@@ -62,6 +62,7 @@
                     <tr>
                         <td v-if="templateType === TemplateType.Normal.type">{{ tt('No available template. Once you add templates, you can quickly add a new transaction using the dropdown menu of the Add button on the transaction list page') }}</td>
                         <td v-else-if="templateType === TemplateType.Schedule.type">{{ tt('No available scheduled transactions') }}</td>
+                        <td v-else-if="templateType === TemplateType.Forecast.type">{{ tt('No forecast items') }}</td>
                         <td v-else>{{ tt('No available template') }}</td>
                     </tr>
                     </tbody>
@@ -82,9 +83,9 @@
                                             <v-badge class="right-bottom-icon" color="secondary"
                                                      location="bottom right" offset-x="8" :icon="mdiEyeOffOutline"
                                                      v-if="element.hidden">
-                                                <v-icon size="20" start :icon="templateType === TemplateType.Schedule.type ? mdiClockTimeNineOutline : mdiTextBoxOutline"/>
+                                                <v-icon size="20" start :icon="templateType === TemplateType.Schedule.type ? mdiClockTimeNineOutline : (templateType === TemplateType.Forecast.type ? mdiChartLineVariant : mdiTextBoxOutline)"/>
                                             </v-badge>
-                                            <v-icon size="20" start :icon="templateType === TemplateType.Schedule.type ? mdiClockTimeNineOutline : mdiTextBoxOutline" v-else-if="!element.hidden"/>
+                                            <v-icon size="20" start :icon="templateType === TemplateType.Schedule.type ? mdiClockTimeNineOutline : (templateType === TemplateType.Forecast.type ? mdiChartLineVariant : mdiTextBoxOutline)" v-else-if="!element.hidden"/>
                                             <span class="transaction-template-name">{{ element.name }}</span>
                                         </div>
 
@@ -173,7 +174,8 @@ import {
     mdiDrag,
     mdiDotsVertical,
     mdiTextBoxOutline,
-    mdiClockTimeNineOutline
+    mdiClockTimeNineOutline,
+    mdiChartLineVariant
 } from '@mdi/js';
 
 type ConfirmDialogType = InstanceType<typeof ConfirmDialog>;

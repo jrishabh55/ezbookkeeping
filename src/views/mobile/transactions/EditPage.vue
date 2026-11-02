@@ -42,8 +42,8 @@
             <f7-list-item class="list-item-with-header-and-title" header="Account" title="Account Name"></f7-list-item>
             <f7-list-item class="list-item-with-header-and-title" header="Destination Account" title="Account Name" v-if="transaction.type === TransactionType.Transfer"></f7-list-item>
             <f7-list-item class="list-item-with-header-and-title" header="Transaction Time" title="YYYY/MM/DD HH:mm:ss" v-if="pageTypeAndMode?.type === TransactionEditPageType.Transaction"></f7-list-item>
-            <f7-list-item class="list-item-with-header-and-title" header="Scheduled Transaction Frequency" title="Every XXXXX" v-if="pageTypeAndMode?.type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate && transaction.templateType === TemplateType.Schedule.type"></f7-list-item>
-            <f7-list-item class="list-item-with-header-and-title list-item-title-hide-overflow list-item-no-item-after" header="Transaction Timezone" title="(UTC XX:XX) System Default" link="#" :no-chevron="mode === TransactionEditPageMode.View" v-if="pageTypeAndMode?.type === TransactionEditPageType.Transaction || (pageTypeAndMode?.type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate && transaction.templateType === TemplateType.Schedule.type)"></f7-list-item>
+            <f7-list-item class="list-item-with-header-and-title" header="Scheduled Transaction Frequency" title="Every XXXXX" v-if="pageTypeAndMode?.type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate && isScheduleLike(transaction.templateType)"></f7-list-item>
+            <f7-list-item class="list-item-with-header-and-title list-item-title-hide-overflow list-item-no-item-after" header="Transaction Timezone" title="(UTC XX:XX) System Default" link="#" :no-chevron="mode === TransactionEditPageMode.View" v-if="pageTypeAndMode?.type === TransactionEditPageType.Transaction || (pageTypeAndMode?.type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate && isScheduleLike(transaction.templateType))"></f7-list-item>
             <f7-list-item class="list-item-with-header-and-title list-item-title-hide-overflow" header="Geographic Location" title="No Location" v-if="pageTypeAndMode?.type === TransactionEditPageType.Transaction"></f7-list-item>
             <f7-list-item header="Tags">
                 <template #footer>
@@ -271,7 +271,7 @@
                 :header="tt('Scheduled Transaction Frequency')"
                 :title="transactionDisplayScheduledFrequency"
                 @click="showTransactionScheduledFrequencySheet = true"
-                v-if="pageTypeAndMode?.type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate && transaction.templateType === TemplateType.Schedule.type"
+                v-if="pageTypeAndMode?.type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate && isScheduleLike(transaction.templateType)"
             >
                 <schedule-frequency-sheet v-model:show="showTransactionScheduledFrequencySheet"
                                           v-model:type="transaction.scheduledFrequencyType"
@@ -286,7 +286,7 @@
                 :header="tt('Start Date')"
                 :title="transactionDisplayScheduledStartDate"
                 @click="showScheduledStartDateSheet = true"
-                v-if="pageTypeAndMode?.type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate && transaction.templateType === TemplateType.Schedule.type"
+                v-if="pageTypeAndMode?.type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate && isScheduleLike(transaction.templateType)"
             >
                 <date-selection-sheet v-model:show="showScheduledStartDateSheet"
                                       v-model="transaction.scheduledStartDate">
@@ -300,7 +300,7 @@
                 :header="tt('End Date')"
                 :title="transactionDisplayScheduledEndDate"
                 @click="showScheduledEndDateSheet = true"
-                v-if="pageTypeAndMode?.type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate && transaction.templateType === TemplateType.Schedule.type"
+                v-if="pageTypeAndMode?.type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate && isScheduleLike(transaction.templateType)"
             >
                 <date-selection-sheet v-model:show="showScheduledEndDateSheet"
                                       v-model="transaction.scheduledEndDate">
@@ -313,7 +313,7 @@
                 class="list-item-with-header-and-title list-item-title-hide-overflow list-item-no-item-after"
                 :class="{ 'disabled': mode === TransactionEditPageMode.Edit && transaction.type === TransactionType.ModifyBalance, 'readonly': mode === TransactionEditPageMode.View }"
                 :header="tt('Transaction Timezone')"
-                v-if="pageTypeAndMode?.type === TransactionEditPageType.Transaction || (pageTypeAndMode?.type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate && transaction.templateType === TemplateType.Schedule.type)"
+                v-if="pageTypeAndMode?.type === TransactionEditPageType.Transaction || (pageTypeAndMode?.type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate && isScheduleLike(transaction.templateType))"
                 @click="showTimezonePopup = true"
             >
                 <template #title>
@@ -556,7 +556,7 @@ import {
     TransactionQuickSaveButtonStyle,
     TransactionQuickAddButtonActionType
 } from '@/core/transaction.ts';
-import { ScheduledTemplateFrequencyType, TemplateType } from '@/core/template.ts';
+import { ScheduledTemplateFrequencyType, TemplateType, isScheduleLike } from '@/core/template.ts';
 import { KnownFileType } from '@/core/file.ts';
 
 import { TRANSACTION_MAX_AMOUNT, TRANSACTION_MIN_AMOUNT } from '@/consts/transaction.ts';
@@ -977,7 +977,7 @@ function init(): void {
             template.templateType = parseInt(query['templateType']);
         }
 
-        if (template.templateType === TemplateType.Schedule.type) {
+        if (isScheduleLike(template.templateType)) {
             template.scheduledFrequencyType = ScheduledTemplateFrequencyType.Disabled.type;
             template.scheduledFrequency = '';
         }

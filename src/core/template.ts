@@ -6,6 +6,7 @@ export class TemplateType implements TypeAndName {
 
     public static readonly Normal = new TemplateType(1, 'Normal');
     public static readonly Schedule = new TemplateType(2, 'Schedule');
+    public static readonly Forecast = new TemplateType(3, 'Forecast');
 
     public readonly type: number;
     public readonly name: string;
@@ -25,6 +26,10 @@ export class TemplateType implements TypeAndName {
     public static valueOf(type: number): TemplateType | undefined {
         return TemplateType.allInstancesByType[type];
     }
+}
+
+export function isScheduleLike(type: number): boolean {
+    return type === TemplateType.Schedule.type || type === TemplateType.Forecast.type;
 }
 
 export class ScheduledTemplateFrequencyType implements TypeAndName {

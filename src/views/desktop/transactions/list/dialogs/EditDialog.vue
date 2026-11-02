@@ -282,7 +282,7 @@
                                         @update:model-value="updateTransactionTime"
                                         @error="onShowDateTimeError" />
                                 </v-col>
-                                <v-col cols="12" md="6" v-if="type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate && transaction.templateType === TemplateType.Schedule.type">
+                                <v-col cols="12" md="6" v-if="type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate && isScheduleLike(transaction.templateType)">
                                     <schedule-frequency-select
                                         :readonly="mode === TransactionEditPageMode.View"
                                         :disabled="loading || submitting || recognizing"
@@ -290,7 +290,7 @@
                                         v-model:type="transaction.scheduledFrequencyType"
                                         v-model="transaction.scheduledFrequency" />
                                 </v-col>
-                                <v-col cols="12" md="6" v-if="type === TransactionEditPageType.Transaction || (type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate && transaction.templateType === TemplateType.Schedule.type)">
+                                <v-col cols="12" md="6" v-if="type === TransactionEditPageType.Transaction || (type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate && isScheduleLike(transaction.templateType))">
                                     <v-autocomplete
                                         class="transaction-edit-timezone"
                                         item-title="displayNameWithUtcOffset"
@@ -307,7 +307,7 @@
                                         @update:model-value="updateTransactionTimezone"
                                     />
                                 </v-col>
-                                <v-col cols="12" md="6" v-if="type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate && transaction.templateType === TemplateType.Schedule.type">
+                                <v-col cols="12" md="6" v-if="type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate && isScheduleLike(transaction.templateType)">
                                     <date-select
                                         :readonly="mode === TransactionEditPageMode.View"
                                         :disabled="loading || submitting || recognizing"
@@ -316,7 +316,7 @@
                                         :no-data-text="tt('No limit')"
                                         v-model="transaction.scheduledStartDate" />
                                 </v-col>
-                                <v-col cols="12" md="6" v-if="type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate && transaction.templateType === TemplateType.Schedule.type">
+                                <v-col cols="12" md="6" v-if="type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate && isScheduleLike(transaction.templateType)">
                                     <date-select
                                         :readonly="mode === TransactionEditPageMode.View"
                                         :disabled="loading || submitting || recognizing"
@@ -538,7 +538,7 @@ import { useTransactionTemplatesStore } from '@/stores/transactionTemplate.ts';
 import type { Coordinate } from '@/core/coordinate.ts';
 import { CategoryType } from '@/core/category.ts';
 import { TransactionType, TransactionEditScopeType, TransactionQuickAddButtonActionType } from '@/core/transaction.ts';
-import { TemplateType, ScheduledTemplateFrequencyType } from '@/core/template.ts';
+import { ScheduledTemplateFrequencyType, isScheduleLike } from '@/core/template.ts';
 import { KnownFileType } from '@/core/file.ts';
 
 import { KnownErrorCode } from '@/consts/api.ts';
@@ -791,7 +791,7 @@ function open(options: TransactionEditOptions): Promise<TransactionEditResponse 
             initTemplate.value.templateType = options.templateType;
         }
 
-        if (initTemplate.value.templateType === TemplateType.Schedule.type) {
+        if (isScheduleLike(initTemplate.value.templateType)) {
             initTemplate.value.scheduledFrequencyType = ScheduledTemplateFrequencyType.Disabled.type;
             initTemplate.value.scheduledFrequency = '';
         }

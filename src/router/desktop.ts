@@ -220,6 +220,14 @@ const router = createRouter({
                     }
                 },
                 {
+                    path: '/forecast/list',
+                    component: TransactionTemplateListPage,
+                    beforeEnter: checkLogin,
+                    props: {
+                        initType: TemplateType.Forecast.type
+                    }
+                },
+                {
                     path: '/custom_icon/list',
                     component: UserCustomIconListPage,
                     beforeEnter: checkLogin
