@@ -5,6 +5,9 @@ import { useI18n } from '@/locales/helpers.ts';
 import { useUserStore } from '@/stores/user.ts';
 import { useAccountsStore } from '@/stores/account.ts';
 import { useOverviewStore } from '@/stores/overview.ts';
+import { useTransactionTemplatesStore } from '@/stores/transactionTemplate.ts';
+
+import { TemplateType } from '@/core/template.ts';
 
 import type { TextualYearMonthDay } from '@/core/datetime.ts';
 
@@ -31,14 +34,17 @@ export function useForecastSummaryWidgetBase(props: CommonForecastSummaryWidgetP
     const userStore = useUserStore();
     const accountsStore = useAccountsStore();
     const overviewStore = useOverviewStore();
+    const transactionTemplatesStore = useTransactionTemplatesStore();
 
     const loading = ref<boolean>(true);
     const errorMessage = ref<string>('');
     const summary = ref<ForecastSummary | null>(null);
-    const hasTemplateItems = ref<boolean>(false);
+    const forecastTemplateCount = ref<number>(0);
 
     const title = computed<string>(() => props.title || tt('Forecast'));
-    const isEmpty = computed<boolean>(() => !loading.value && !errorMessage.value && !hasTemplateItems.value);
+    // empty only when the user has no forecast templates at all: once this month's templates are all
+    // fulfilled the forecast still has month-end cash and shortfalls worth showing
+    const isEmpty = computed<boolean>(() => !loading.value && !errorMessage.value && forecastTemplateCount.value === 0);
 
     function load(): Promise<void> {
         loading.value = true;
@@ -50,24 +56,25 @@ export function useForecastSummaryWidgetBase(props: CommonForecastSummaryWidgetP
 
         return Promise.all([
             accountsStore.loadAllAccounts({ force: false }),
+            transactionTemplatesStore.loadAllTemplates({ templateType: TemplateType.Forecast.type, force: false }),
             services.getForecast({ startMonth: startMonth, months: 1 })
-        ]).then(([, response]) => {
+        ]).then(([, templates, response]) => {
             const data = response.data;
 
             if (!data || !data.success || !data.result) {
                 errorMessage.value = tt('Unable to retrieve forecast');
                 summary.value = null;
-                hasTemplateItems.value = false;
+                forecastTemplateCount.value = 0;
                 return;
             }
 
-            hasTemplateItems.value = data.result.items.some(item => item.source === 'template');
+            forecastTemplateCount.value = templates.length;
             summary.value = summarise(data.result, today);
         }).catch(error => {
             logger.error('failed to load forecast summary widget data', error);
             errorMessage.value = (error && error.message) || tt('Unable to retrieve forecast');
             summary.value = null;
-            hasTemplateItems.value = false;
+            forecastTemplateCount.value = 0;
         }).finally(() => {
             loading.value = false;
         });
