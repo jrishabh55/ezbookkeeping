@@ -110,14 +110,22 @@ func (h *mcpQueryForecastToolHandler) Handle(c *core.WebContext, callToolReq *MC
 		return nil, nil, err
 	}
 
-	clientTimezone, err := c.GetClientTimezone()
+	uid := user.Uid
+	clientTimezone, err := forecastClientTimezone(c, func() (*models.Transaction, error) {
+		transactions, err := services.GetTransactionService().GetTransactionsByMaxTime(c, uid, 0, 0, 0, nil, nil, nil, false, "", "", core.MATCH_MODE_DEFAULT, false, 1, 1, false, true)
+
+		if err != nil || len(transactions) < 1 {
+			return nil, err
+		}
+
+		return transactions[0], nil
+	})
 
 	if err != nil {
 		log.Warnf(c, "[query_forecast_tool_handler.Handle] cannot get client timezone, because %s", err.Error())
 		return nil, nil, errs.ErrClientTimezoneOffsetInvalid
 	}
 
-	uid := user.Uid
 	year, month, day := time.Now().In(clientTimezone).Date()
 	today := forecast.D(year, month, day)
 
@@ -152,6 +160,27 @@ func (h *mcpQueryForecastToolHandler) Handle(c *core.WebContext, callToolReq *MC
 	return response, []*MCPTextContent{
 		NewMCPTextContent(string(content)),
 	}, nil
+}
+
+// forecastClientTimezone returns the timezone "today" is computed in: the client's timezone headers
+// when either is sent; otherwise (MCP clients usually send only Authorization) the utc offset of the
+// user's most recent transaction, as returned by latestTransaction; with no transactions at all, UTC
+func forecastClientTimezone(c *core.WebContext, latestTransaction func() (*models.Transaction, error)) (*time.Location, error) {
+	if c.GetHeader(core.ClientTimezoneNameHeaderName) != "" || c.GetHeader(core.ClientTimezoneOffsetHeaderName) != "" {
+		return c.GetClientTimezone()
+	}
+
+	transaction, err := latestTransaction()
+
+	if err != nil {
+		return nil, err
+	}
+
+	if transaction == nil {
+		return time.UTC, nil
+	}
+
+	return time.FixedZone("Latest Transaction Timezone", int(transaction.TimezoneUtcOffset)*60), nil
 }
 
 // resolveForecastMonths returns forecastDefaultMonths when months is not set (zero), months itself

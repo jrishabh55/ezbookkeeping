@@ -1,13 +1,73 @@
 package mcp
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 
+	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/errs"
 	"github.com/mayswind/ezbookkeeping/pkg/forecast"
+	"github.com/mayswind/ezbookkeeping/pkg/models"
 )
+
+func newForecastTestContext(headers map[string]string) *core.WebContext {
+	ginContext, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ginContext.Request = httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	ginContext.Request.Header.Set("Authorization", "Bearer token")
+
+	for k, v := range headers {
+		ginContext.Request.Header.Set(k, v)
+	}
+
+	return &core.WebContext{Context: ginContext}
+}
+
+// TestForecastClientTimezone_NoHeadersUsesLatestTransactionOffset verifies that a request with only
+// Authorization (as MCP clients send) falls back to the latest transaction's utc offset
+func TestForecastClientTimezone_NoHeadersUsesLatestTransactionOffset(t *testing.T) {
+	loc, err := forecastClientTimezone(newForecastTestContext(nil), func() (*models.Transaction, error) {
+		return &models.Transaction{TimezoneUtcOffset: 330}, nil
+	})
+
+	assert.Nil(t, err)
+	_, offset := time.Date(2026, 11, 2, 0, 0, 0, 0, loc).Zone()
+	assert.Equal(t, 330*60, offset)
+}
+
+// TestForecastClientTimezone_NoHeadersNoTransactionsIsUtc verifies the UTC fallback for a user without transactions
+func TestForecastClientTimezone_NoHeadersNoTransactionsIsUtc(t *testing.T) {
+	loc, err := forecastClientTimezone(newForecastTestContext(nil), func() (*models.Transaction, error) {
+		return nil, nil
+	})
+
+	assert.Nil(t, err)
+	assert.Equal(t, time.UTC, loc)
+}
+
+// TestForecastClientTimezone_HeadersWin verifies that timezone headers, when sent, are used and the
+// latest transaction is not looked up; an invalid header is still an error
+func TestForecastClientTimezone_HeadersWin(t *testing.T) {
+	lookedUp := false
+	latest := func() (*models.Transaction, error) {
+		lookedUp = true
+		return &models.Transaction{TimezoneUtcOffset: 330}, nil
+	}
+
+	loc, err := forecastClientTimezone(newForecastTestContext(map[string]string{core.ClientTimezoneOffsetHeaderName: "-300"}), latest)
+
+	assert.Nil(t, err)
+	_, offset := time.Date(2026, 11, 2, 0, 0, 0, 0, loc).Zone()
+	assert.Equal(t, -300*60, offset)
+	assert.False(t, lookedUp)
+
+	_, err = forecastClientTimezone(newForecastTestContext(map[string]string{core.ClientTimezoneOffsetHeaderName: "abc"}), latest)
+	assert.NotNil(t, err)
+}
 
 // TestResolveForecastMonths_Default verifies that an unset (zero) months value defaults to 1
 func TestResolveForecastMonths_Default(t *testing.T) {
