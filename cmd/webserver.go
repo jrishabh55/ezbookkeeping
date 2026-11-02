@@ -503,6 +503,9 @@ func startWebServer(c *core.CliContext) error {
 			apiV1Route.POST("/insights/explorers/move.json", bindApi(api.InsightsExplorers.InsightsExplorerMoveHandler, config))
 			apiV1Route.POST("/insights/explorers/delete.json", bindApi(api.InsightsExplorers.InsightsExplorerDeleteHandler, config))
 
+			// Forecast
+			apiV1Route.GET("/forecast/get.json", bindApi(api.Forecast.ForecastGetHandler, config))
+
 			// Large Language Models
 			if config.TextRecognitionLLMConfig != nil && config.TextRecognitionLLMConfig.LLMProvider != "" {
 				if config.TransactionFromAITextRecognition {
