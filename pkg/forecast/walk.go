@@ -25,9 +25,11 @@ type Shortfall struct {
 	LowestDate    time.Time
 }
 
-// Walk applies items in date order and summarises each month starting at from's month
+// Walk applies items in date order and summarises each month starting at from's month. Everyday
+// items are applied pro rata per day from their date to their month end (SpreadEveryday); items on
+// account 0 (unassigned everyday spending) count towards cost but move no balance.
 func Walk(accounts []Account, items []Item, from time.Time, months int) ([]Month, []Shortfall) {
-	sorted := append([]Item(nil), items...)
+	sorted := SpreadEveryday(items)
 	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].Date.Before(sorted[j].Date) })
 
 	byId := map[int64]*Account{}
@@ -46,6 +48,9 @@ func Walk(accounts []Account, items []Item, from time.Time, months int) ([]Month
 		return
 	}
 	apply := func(m map[int64]int64, id int64, delta int64) {
+		if id == 0 {
+			return
+		}
 		if a, ok := byId[id]; ok && a.Liability {
 			m[id] -= delta
 		} else {

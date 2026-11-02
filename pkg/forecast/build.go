@@ -59,20 +59,13 @@ func Build(in Input) Result {
 		}
 	}
 
-	var expenses []Txn
-	var repayments []Txn
-	for _, tx := range in.History {
-		if tx.Kind == KindExpense {
-			expenses = append(expenses, tx)
-		} else if tx.Kind == KindTransfer && tx.CardRepayment {
-			repayments = append(repayments, tx)
-		}
-	}
 	for m := start; m.Before(end); m = m.AddDate(0, 1, 0) {
-		planned = append(planned, Everyday(expenses, in.Templates, in.Budgets, in.Today, m)...)
+		planned = append(planned, Everyday(in.History, in.Templates, in.Budgets, in.Today, m)...)
 	}
 
-	bills, skipped := CardBills(in.Cards, planned, repayments, in.Today, end)
+	// card billing sees everyday spending on a card spread over the days, like Walk does, so each
+	// day's share lands in the statement window that day falls in
+	bills, skipped := CardBills(in.Cards, SpreadEveryday(planned), in.History, in.Today, end)
 	planned = append(planned, bills...)
 	sort.SliceStable(planned, func(i, j int) bool { return planned[i].Date.Before(planned[j].Date) })
 

@@ -24,12 +24,14 @@ func Everyday(history []Txn, templates []Template, budgets []Budget, today, mont
 	}
 	perCat := map[int64][]Txn{}
 	spentThisMonth := map[int64]int64{}
+	acctTotals := map[int64]int64{} // all non-template expense history per account, for budget-only categories
 	for _, tx := range history {
 		if tx.Kind != KindExpense || coveredByTemplate(tx, templates) {
 			continue
 		}
 		if !tx.Date.Before(histStart) && tx.Date.Before(histEnd) {
 			perCat[tx.CategoryId] = append(perCat[tx.CategoryId], tx)
+			acctTotals[tx.AccountId] += tx.Amount
 		} else if MonthStart(tx.Date).Equal(MonthStart(today)) {
 			spentThisMonth[tx.CategoryId] += tx.Amount
 		}
@@ -66,14 +68,18 @@ func Everyday(history []Txn, templates []Template, budgets []Budget, today, mont
 			totals[k] += monthly * s / total
 		}
 	}
-	for cat, b := range budgetOf { // budgets for categories with no history
+	// budgets for categories with no history go to the account with the most expense history; with no
+	// history at all they stay on account 0 ("unassigned"): listed and counted as cost, but Walk does not
+	// move any balance for them
+	budgetAcct := bestByTotal(acctTotals)
+	for cat, b := range budgetOf {
 		if _, ok := perCat[cat]; !ok && b > 0 {
 			rest := b
 			if current {
 				rest -= spentThisMonth[cat]
 			}
 			if rest > 0 {
-				totals[key{0, false}] += rest // ponytail: no account history → account 0, shown as "unassigned"
+				totals[key{budgetAcct, false}] += rest
 			}
 		}
 	}
@@ -90,6 +96,43 @@ func Everyday(history []Txn, templates []Template, budgets []Budget, today, mont
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].AccountId < items[j].AccountId })
 	return items
+}
+
+// bestByTotal returns the id with the highest total, ties broken by the lowest id, or 0 when empty
+func bestByTotal(totals map[int64]int64) (best int64) {
+	var bestAmount int64
+	for id, amt := range totals {
+		if amt > bestAmount || (amt == bestAmount && amt > 0 && id < best) {
+			best, bestAmount = id, amt
+		}
+	}
+	return best
+}
+
+// SpreadEveryday replaces each everyday item with one slice per day from its date to its month end,
+// in integer amounts with the remainder on the last day so the slices add up exactly; other items and
+// already spread slices pass through unchanged
+func SpreadEveryday(items []Item) []Item {
+	var out []Item
+	for _, it := range items {
+		if it.Source != SourceEveryday || it.spread {
+			out = append(out, it)
+			continue
+		}
+		days := int64(daysIn(it.Date) - it.Date.Day() + 1)
+		per := it.Amount / days
+		for d := int64(0); d < days; d++ {
+			slice := it
+			slice.Date = it.Date.AddDate(0, 0, int(d))
+			slice.Amount = per
+			if d == days-1 {
+				slice.Amount = it.Amount - per*(days-1)
+			}
+			slice.spread = true
+			out = append(out, slice)
+		}
+	}
+	return out
 }
 
 func coveredByTemplate(tx Txn, templates []Template) bool {
