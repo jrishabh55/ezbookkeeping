@@ -102,6 +102,4 @@ const {
 function refresh(): void {
     load();
 }
-
-load();
 </script>

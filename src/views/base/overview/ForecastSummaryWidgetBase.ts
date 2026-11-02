@@ -1,9 +1,10 @@
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 
 import { useI18n } from '@/locales/helpers.ts';
 
 import { useUserStore } from '@/stores/user.ts';
 import { useAccountsStore } from '@/stores/account.ts';
+import { useOverviewStore } from '@/stores/overview.ts';
 
 import type { TextualYearMonthDay } from '@/core/datetime.ts';
 
@@ -29,6 +30,7 @@ export function useForecastSummaryWidgetBase(props: CommonForecastSummaryWidgetP
 
     const userStore = useUserStore();
     const accountsStore = useAccountsStore();
+    const overviewStore = useOverviewStore();
 
     const loading = ref<boolean>(true);
     const errorMessage = ref<string>('');
@@ -82,6 +84,17 @@ export function useForecastSummaryWidgetBase(props: CommonForecastSummaryWidgetP
     function formatItemDate(date: string): string {
         return formatGregorianTextualYearMonthDayToLongDate(date as TextualYearMonthDay);
     }
+
+    // neither desktop nor mobile count this widget in the dashboard's dataRequirements, so its data is never
+    // part of the shared Promise.all the home pages await; watching this counter (bumped by those home pages'
+    // reload functions on initial load, manual refresh, pull-to-refresh and returning to the page) is what
+    // makes the dashboard's "Refresh" action - and mobile's pull-to-refresh, which has no other hook - actually
+    // refresh this widget too, on both platforms, from this one shared composable.
+    watch(() => overviewStore.dashboardReloadCount, () => {
+        load();
+    });
+
+    load();
 
     return {
         // states

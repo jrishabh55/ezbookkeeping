@@ -142,6 +142,11 @@ export const useOverviewStore = defineStore('overview', () => {
     const transactionsStore = useTransactionsStore();
     const exchangeRatesStore = useExchangeRatesStore();
 
+    // bumped by the desktop/mobile home pages whenever they reload the dashboard's data (initial load, manual
+    // refresh, pull-to-refresh, returning to the page). Widgets that fetch their own data outside of the
+    // dataRequirements pipeline (e.g. the forecast summary widget) can watch this to know when to refetch.
+    const dashboardReloadCount = ref<number>(0);
+
     const transactionDataRange = ref<TransactionDataRange>(getTransactionDateRange());
 
     const transactionOverviewOptions = ref<TransactionOverviewOptions>({
@@ -291,6 +296,10 @@ export const useOverviewStore = defineStore('overview', () => {
 
     function updateTransactionDateRange(): void {
         initTransactionDateRange(transactionDataRange.value);
+    }
+
+    function notifyDashboardReload(): void {
+        dashboardReloadCount.value++;
     }
 
     function updateTransactionOverviewInvalidState(invalidState: boolean): void {
@@ -889,6 +898,7 @@ export const useOverviewStore = defineStore('overview', () => {
 
     return {
         // states
+        dashboardReloadCount,
         transactionDataRange,
         transactionOverviewOptions,
         transactionOverviewData,
@@ -904,6 +914,7 @@ export const useOverviewStore = defineStore('overview', () => {
         // computed states,
         transactionOverview,
         // functions
+        notifyDashboardReload,
         updateTransactionOverviewInvalidState,
         resetTransactionOverview,
         loadTransactionOverview,

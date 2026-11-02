@@ -50,11 +50,8 @@ const {
     summary,
     isEmpty,
     title,
-    load,
     getAccountName,
     formatAmount,
     formatItemDate
 } = useForecastSummaryWidgetBase(props);
-
-load();
 </script>

@@ -71,6 +71,7 @@ function clearShareImageCache(): void {
 
 function reload(force: boolean): void {
     loadingOverview.value = true;
+    overviewStore.notifyDashboardReload();
 
     const requirements: PartialRecord<OverviewWidgetDataRequirement, boolean> = getOverviewDataRequirements(layout.value, DESKTOP_OVERVIEW_WIDGET_DEFINITIONS);
     const promises: Promise<unknown>[] = [

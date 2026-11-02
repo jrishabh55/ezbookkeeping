@@ -80,4 +80,19 @@ describe('overview store', () => {
         expect(getTransactionAmounts.mock.calls[0]?.[0].thisWeek).toEqual({ startTime: monday, endTime: nextMonday - 1 });
         expect(overviewStore.transactionDataRange.thisWeek).toEqual({ startTime: monday, endTime: nextMonday - 1 });
     });
+
+    // widgets outside the dataRequirements pipeline (e.g. the forecast summary widget) watch this counter
+    // to know when the desktop/mobile home pages reload the dashboard, so it must actually change on every call
+    it('bumps dashboardReloadCount every time the dashboard is told to reload', () => {
+        const overviewStore = useOverviewStore();
+
+        expect(overviewStore.dashboardReloadCount).toBe(0);
+
+        overviewStore.notifyDashboardReload();
+        expect(overviewStore.dashboardReloadCount).toBe(1);
+
+        overviewStore.notifyDashboardReload();
+        overviewStore.notifyDashboardReload();
+        expect(overviewStore.dashboardReloadCount).toBe(3);
+    });
 });

@@ -191,6 +191,7 @@ function init(): void {
 
 function reload(done?: () => void): void {
     const force = !!done;
+    overviewStore.notifyDashboardReload();
     const promises: Promise<unknown>[] = reloadOverviewData(force);
 
     promises.push(renewalsCard.value?.load() ?? Promise.resolve());

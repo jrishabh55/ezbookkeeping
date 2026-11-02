@@ -225,6 +225,7 @@ function hasWidgetSettings(type: OverviewWidgetType): boolean {
 
 function reload(force: boolean): void {
     loadingOverview.value = true;
+    overviewStore.notifyDashboardReload();
 
     const requirements: PartialRecord<OverviewWidgetDataRequirement, boolean> = getOverviewDataRequirements(draftLayout.value, MOBILE_OVERVIEW_WIDGET_DEFINITIONS);
     const promises: Promise<unknown>[] = [
