@@ -128,3 +128,65 @@ describe('Account.compareTo', () => {
         expect(secondChild.compareTo(firstChild, { [AccountCategory.Cash.type]: 1 }, { '2': secondParent })).toBeGreaterThan(0);
     });
 });
+
+describe('Account credit card payment due day and pay-from account', () => {
+    function createCreditCardAccountResponse(creditCardPaymentDueDay?: number, creditCardPaymentAccountId?: string) {
+        return {
+            id: '1',
+            name: 'Card',
+            parentId: '0',
+            category: AccountCategory.CreditCard.type,
+            type: 1,
+            icon: '1',
+            iconType: 0,
+            color: '000000',
+            currency: 'USD',
+            balance: '0',
+            comment: '',
+            displayOrder: 1,
+            hidden: false,
+            creditCardPaymentDueDay: creditCardPaymentDueDay,
+            creditCardPaymentAccountId: creditCardPaymentAccountId
+        };
+    }
+
+    it('should round-trip creditCardPaymentDueDay and creditCardPaymentAccountId from response through the model to a create request', () => {
+        const response = createCreditCardAccountResponse(15, '7731');
+        const account = Account.of(response);
+
+        expect(account.creditCardPaymentDueDay).toBe(15);
+        expect(account.creditCardPaymentAccountId).toBe('7731');
+
+        const createRequest = account.toCreateRequest('session-id');
+
+        expect(createRequest.creditCardPaymentDueDay).toBe(15);
+        expect(createRequest.creditCardPaymentAccountId).toBe('7731');
+    });
+
+    it('should always send the current creditCardPaymentDueDay and creditCardPaymentAccountId on modify, even when only unrelated fields changed', () => {
+        const response = createCreditCardAccountResponse(15, '7731');
+        const account = Account.of(response);
+
+        // simulate editing an unrelated field (name) without touching the card payment fields
+        account.name = 'Renamed Card';
+
+        const modifyRequest = account.toModifyRequest('session-id');
+
+        expect(modifyRequest.creditCardPaymentDueDay).toBe(15);
+        expect(modifyRequest.creditCardPaymentAccountId).toBe('7731');
+    });
+
+    it('should not send creditCardPaymentDueDay or creditCardPaymentAccountId for non-credit-card accounts', () => {
+        const account = createAccount('1', AccountCategory.Cash.type, 1);
+        account.creditCardPaymentDueDay = 15;
+        account.creditCardPaymentAccountId = '7731';
+
+        const createRequest = account.toCreateRequest('session-id');
+        const modifyRequest = account.toModifyRequest('session-id');
+
+        expect(createRequest.creditCardPaymentDueDay).toBeUndefined();
+        expect(createRequest.creditCardPaymentAccountId).toBeUndefined();
+        expect(modifyRequest.creditCardPaymentDueDay).toBeUndefined();
+        expect(modifyRequest.creditCardPaymentAccountId).toBeUndefined();
+    });
+});

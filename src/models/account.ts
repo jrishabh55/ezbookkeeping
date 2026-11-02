@@ -19,6 +19,8 @@ export class Account implements AccountInfoResponse {
     public lastReconciledTime?: number;
     public comment: string;
     public creditCardStatementDate?: number;
+    public creditCardPaymentDueDay?: number;
+    public creditCardPaymentAccountId?: string;
     public displayOrder: number;
     public visible: boolean;
     public subAccounts?: Account[];
@@ -31,7 +33,7 @@ export class Account implements AccountInfoResponse {
     private readonly _isAsset?: boolean;
     private readonly _isLiability?: boolean;
 
-    protected constructor(id: string, name: string, parentId: string, category: number, type: number, icon: string, iconType: number, color: string, currency: string, initialBalance: string, comment: string, displayOrder: number, visible: boolean, balanceTime?: number, lastReconciledTime?: number, creditCardStatementDate?: number, initialCreditCardLimit?: string, isAsset?: boolean, isLiability?: boolean, subAccounts?: Account[]) {
+    protected constructor(id: string, name: string, parentId: string, category: number, type: number, icon: string, iconType: number, color: string, currency: string, initialBalance: string, comment: string, displayOrder: number, visible: boolean, balanceTime?: number, lastReconciledTime?: number, creditCardStatementDate?: number, creditCardPaymentDueDay?: number, creditCardPaymentAccountId?: string, initialCreditCardLimit?: string, isAsset?: boolean, isLiability?: boolean, subAccounts?: Account[]) {
         this.id = id;
         this.name = name;
         this.parentId = parentId;
@@ -47,6 +49,8 @@ export class Account implements AccountInfoResponse {
         this.displayOrder = displayOrder;
         this.visible = visible;
         this.creditCardStatementDate = creditCardStatementDate;
+        this.creditCardPaymentDueDay = creditCardPaymentDueDay;
+        this.creditCardPaymentAccountId = creditCardPaymentAccountId;
 
         this._initialBalance = initialBalance;
         this._numericBalance = undefined;
@@ -177,6 +181,8 @@ export class Account implements AccountInfoResponse {
             this.displayOrder === other.displayOrder &&
             this.visible === other.visible &&
             this.creditCardStatementDate === other.creditCardStatementDate &&
+            this.creditCardPaymentDueDay === other.creditCardPaymentDueDay &&
+            this.creditCardPaymentAccountId === other.creditCardPaymentAccountId &&
             this.creditCardLimit === other.creditCardLimit &&
             this.numericCreditCardLimit === other.numericCreditCardLimit;
 
@@ -266,6 +272,8 @@ export class Account implements AccountInfoResponse {
         this.lastReconciledTime = other.lastReconciledTime;
         this.comment = other.comment;
         this.creditCardStatementDate = other.creditCardStatementDate;
+        this.creditCardPaymentDueDay = other.creditCardPaymentDueDay;
+        this.creditCardPaymentAccountId = other.creditCardPaymentAccountId;
         this.visible = other.visible;
 
         this._initialBalance = other._initialBalance;
@@ -324,6 +332,8 @@ export class Account implements AccountInfoResponse {
             balanceTime: (parentAccount || this.type === AccountType.SingleAccount.type) && this.balanceTime ? this.balanceTime : 0,
             comment: this.comment,
             creditCardStatementDate: !parentAccount && this.category === AccountCategory.CreditCard.type ? this.creditCardStatementDate : undefined,
+            creditCardPaymentDueDay: !parentAccount && this.category === AccountCategory.CreditCard.type ? this.creditCardPaymentDueDay : undefined,
+            creditCardPaymentAccountId: !parentAccount && this.category === AccountCategory.CreditCard.type ? this.creditCardPaymentAccountId : undefined,
             creditCardLimit: !parentAccount && this.category === AccountCategory.CreditCard.type && this.numericCreditCardLimit > 0 ? this.creditCardLimit : undefined,
             subAccounts: !parentAccount ? subAccountCreateRequests : undefined,
             clientSessionId: !parentAccount ? clientSessionId : undefined
@@ -360,6 +370,8 @@ export class Account implements AccountInfoResponse {
             lastReconciledTime: this.lastReconciledTime,
             comment: this.comment,
             creditCardStatementDate: !parentAccount && this.category === AccountCategory.CreditCard.type ? this.creditCardStatementDate : undefined,
+            creditCardPaymentDueDay: !parentAccount && this.category === AccountCategory.CreditCard.type ? this.creditCardPaymentDueDay : undefined,
+            creditCardPaymentAccountId: !parentAccount && this.category === AccountCategory.CreditCard.type ? this.creditCardPaymentAccountId : undefined,
             creditCardLimit: !parentAccount && this.category === AccountCategory.CreditCard.type && this.numericCreditCardLimit > 0 ? this.creditCardLimit : undefined,
             hidden: !this.visible,
             subAccounts: !parentAccount ? subAccountModifyRequests : undefined,
@@ -513,6 +525,8 @@ export class Account implements AccountInfoResponse {
             this.balanceTime,
             this.lastReconciledTime,
             this.creditCardStatementDate,
+            this.creditCardPaymentDueDay,
+            this.creditCardPaymentAccountId,
             this.creditCardLimit,
             this.isAsset,
             this.isLiability
@@ -537,6 +551,8 @@ export class Account implements AccountInfoResponse {
             this.balanceTime,
             this.lastReconciledTime,
             this.creditCardStatementDate,
+            this.creditCardPaymentDueDay,
+            this.creditCardPaymentAccountId,
             this.creditCardLimit,
             this.isAsset,
             this.isLiability,
@@ -561,6 +577,8 @@ export class Account implements AccountInfoResponse {
             balanceTime, // balanceTime
             undefined, // lastReconciledTime
             0, // creditCardStatementDate
+            0, // creditCardPaymentDueDay
+            '0', // creditCardPaymentAccountId
             undefined // creditCardLimit
         );
     }
@@ -583,6 +601,8 @@ export class Account implements AccountInfoResponse {
             balanceTime, // balanceTime
             undefined, // lastReconciledTime
             0, // creditCardStatementDate
+            0, // creditCardPaymentDueDay
+            '0', // creditCardPaymentAccountId
             undefined // creditCardLimit
         );
     }
@@ -605,6 +625,8 @@ export class Account implements AccountInfoResponse {
             undefined,
             accountResponse.lastReconciledTime,
             accountResponse.creditCardStatementDate,
+            accountResponse.creditCardPaymentDueDay,
+            accountResponse.creditCardPaymentAccountId,
             accountResponse.creditCardLimit,
             accountResponse.isAsset,
             accountResponse.isLiability,
@@ -672,6 +694,8 @@ export class AccountWithDisplayBalance extends Account {
             account.balanceTime,
             account.lastReconciledTime,
             account.creditCardStatementDate,
+            account.creditCardPaymentDueDay,
+            account.creditCardPaymentAccountId,
             account.creditCardLimit,
             account.isAsset,
             account.isLiability,
@@ -698,6 +722,8 @@ export interface AccountCreateRequest {
     readonly balanceTime: number;
     readonly comment: string;
     readonly creditCardStatementDate?: number;
+    readonly creditCardPaymentDueDay?: number;
+    readonly creditCardPaymentAccountId?: string;
     readonly creditCardLimit?: string;
     readonly subAccounts?: AccountCreateRequest[];
     readonly clientSessionId?: string;
@@ -716,6 +742,8 @@ export interface AccountModifyRequest {
     readonly lastReconciledTime?: number;
     readonly comment: string;
     readonly creditCardStatementDate?: number;
+    readonly creditCardPaymentDueDay?: number;
+    readonly creditCardPaymentAccountId?: string;
     readonly creditCardLimit?: string;
     readonly hidden: boolean;
     readonly subAccounts?: AccountModifyRequest[];
@@ -741,6 +769,8 @@ export interface AccountInfoResponse {
     readonly lastReconciledTime?: number;
     readonly comment: string;
     readonly creditCardStatementDate?: number;
+    readonly creditCardPaymentDueDay?: number;
+    readonly creditCardPaymentAccountId?: string;
     readonly creditCardLimit?: string;
     readonly displayOrder: number;
     readonly isAsset?: boolean;

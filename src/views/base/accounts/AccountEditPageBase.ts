@@ -4,6 +4,7 @@ import { useI18n } from '@/locales/helpers.ts';
 
 import { useSettingsStore } from '@/stores/setting.ts';
 import { useUserStore } from '@/stores/user.ts';
+import { useAccountsStore } from '@/stores/account.ts';
 
 import type { TypeAndDisplayName } from '@/core/base.ts';
 import { AccountCategory, AccountType } from '@/core/account.ts';
@@ -21,6 +22,11 @@ import {
     getCurrentUnixTime
 } from '@/lib/datetime.ts';
 
+export interface AccountIdAndName {
+    readonly id: string;
+    readonly name: string;
+}
+
 export function useAccountEditPageBase() {
     const {
         tt,
@@ -32,6 +38,7 @@ export function useAccountEditPageBase() {
 
     const settingsStore = useSettingsStore();
     const userStore = useUserStore();
+    const accountsStore = useAccountsStore();
 
     const defaultAccountCategory = AccountCategory.values(settingsStore.appSettings.accountCategoryOrders)[0] ?? AccountCategory.Default;
 
@@ -97,6 +104,24 @@ export function useAccountEditPageBase() {
         return allAvailableDays;
     });
 
+    const allAvailableCreditCardPaymentAccounts = computed<AccountIdAndName[]>(() => {
+        const allAvailableAccounts: AccountIdAndName[] = [{
+            id: '0',
+            name: tt('Not set')
+        }];
+
+        for (const availableAccount of accountsStore.allVisiblePlainAccounts) {
+            if (availableAccount.isAsset) {
+                allAvailableAccounts.push({
+                    id: availableAccount.id,
+                    name: availableAccount.name
+                });
+            }
+        }
+
+        return allAvailableAccounts;
+    });
+
     function getCurrentUnixTimeForNewAccount(): number {
         return getSameDateTimeWithCurrentTimezone(parseDateTimeFromUnixTimeWithBrowserTimezone(getCurrentUnixTime())).getUnixTime();
     }
@@ -121,6 +146,20 @@ export function useAccountEditPageBase() {
         }
 
         return null;
+    }
+
+    function getAccountCreditCardPaymentAccountName(paymentAccountId?: string): string {
+        if (!paymentAccountId || paymentAccountId === '0') {
+            return tt('Not set');
+        }
+
+        for (const item of allAvailableCreditCardPaymentAccounts.value) {
+            if (item.id === paymentAccountId) {
+                return item.name;
+            }
+        }
+
+        return tt('Not set');
     }
 
     function getAccountCreditCardCreditLimitDisplayValue(creditLimit: number | undefined, currency: string): string {
@@ -236,10 +275,12 @@ export function useAccountEditPageBase() {
         allAccountCategories,
         allAccountTypes,
         allAvailableMonthDays,
+        allAvailableCreditCardPaymentAccounts,
         // functions
         getCurrentUnixTimeForNewAccount,
         getDefaultTimezoneOffsetMinutes,
         getAccountCreditCardStatementDate,
+        getAccountCreditCardPaymentAccountName,
         getAccountCreditCardCreditLimitDisplayValue,
         updateAccountBalanceTime,
         updateAccountLastReconciledTime,

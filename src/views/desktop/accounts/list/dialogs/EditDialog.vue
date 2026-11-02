@@ -141,6 +141,34 @@
                                         v-model="account.creditCardStatementDate"
                                     ></v-autocomplete>
                                 </v-col>
+                                <v-col cols="12" md="6" v-if="currentAccountIndex < 0 && account.category === AccountCategory.CreditCard.type">
+                                    <v-autocomplete
+                                        item-title="displayName"
+                                        item-value="type"
+                                        auto-select-first
+                                        persistent-placeholder
+                                        :disabled="loading || submitting"
+                                        :label="tt('Payment due day')"
+                                        :placeholder="tt('Payment due day')"
+                                        :items="allAvailableMonthDays"
+                                        :no-data-text="tt('No results')"
+                                        v-model="account.creditCardPaymentDueDay"
+                                    ></v-autocomplete>
+                                </v-col>
+                                <v-col cols="12" md="6" v-if="currentAccountIndex < 0 && account.category === AccountCategory.CreditCard.type">
+                                    <v-autocomplete
+                                        item-title="name"
+                                        item-value="id"
+                                        auto-select-first
+                                        persistent-placeholder
+                                        :disabled="loading || submitting"
+                                        :label="tt('Paid from account')"
+                                        :placeholder="tt('Paid from account')"
+                                        :items="allAvailableCreditCardPaymentAccounts"
+                                        :no-data-text="tt('No results')"
+                                        v-model="account.creditCardPaymentAccountId"
+                                    ></v-autocomplete>
+                                </v-col>
                                 <v-col cols="12" :md="((canShowBalanceTime && selectedAccount.numericBalance) || canShowLastReconciledTime) ? 6 : 12"
                                        v-if="account.type === AccountType.SingleAccount.type || currentAccountIndex >= 0">
                                     <amount-input :disabled="loading || submitting || (!!editAccountId && !isNewAccount(selectedAccount))"
@@ -268,6 +296,7 @@ const {
     allAccountCategories,
     allAccountTypes,
     allAvailableMonthDays,
+    allAvailableCreditCardPaymentAccounts,
     getCurrentUnixTimeForNewAccount,
     getDefaultTimezoneOffsetMinutes,
     getAccountCreditCardCreditLimitDisplayValue,

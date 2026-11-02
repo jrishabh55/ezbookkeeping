@@ -2207,6 +2207,8 @@
     "Last Reconciled Time": "Last Reconciled Time",
     "Sub-account Last Reconciled Time": "Sub-account Last Reconciled Time",
     "Statement Date": "Statement Date",
+    "Payment due day": "Payment due day",
+    "Paid from account": "Paid from account",
     "Credit Limit": "Credit Limit",
     "Description": "Description",
     "Your account description (optional)": "Your account description (optional)",

@@ -201,7 +201,7 @@
 
             <f7-list-item
                 link="#"
-                class="list-item-with-header-and-title list-item-no-item-after"
+                class="list-item-with-header-and-title"
                 :header="tt('Statement Date')"
                 :title="getAccountCreditCardStatementDate(account.creditCardStatementDate)"
                 v-if="account.category === AccountCategory.CreditCard.type"
@@ -217,6 +217,48 @@
                                            :items="allAvailableMonthDays"
                                            v-model:show="accountContext.showCreditCardStatementDatePopup"
                                            v-model="account.creditCardStatementDate">
+                </list-item-selection-popup>
+            </f7-list-item>
+
+            <f7-list-item
+                link="#"
+                class="list-item-with-header-and-title"
+                :header="tt('Payment due day')"
+                :title="getAccountCreditCardStatementDate(account.creditCardPaymentDueDay)"
+                v-if="account.category === AccountCategory.CreditCard.type"
+                @click="accountContext.showCreditCardPaymentDueDayPopup = true"
+            >
+                <list-item-selection-popup value-type="item"
+                                           key-field="type" value-field="type"
+                                           title-field="displayName"
+                                           :title="tt('Payment due day')"
+                                           :enable-filter="true"
+                                           :filter-placeholder="tt('Payment due day')"
+                                           :filter-no-items-text="tt('No results')"
+                                           :items="allAvailableMonthDays"
+                                           v-model:show="accountContext.showCreditCardPaymentDueDayPopup"
+                                           v-model="account.creditCardPaymentDueDay">
+                </list-item-selection-popup>
+            </f7-list-item>
+
+            <f7-list-item
+                link="#"
+                class="list-item-with-header-and-title list-item-no-item-after"
+                :header="tt('Paid from account')"
+                :title="getAccountCreditCardPaymentAccountName(account.creditCardPaymentAccountId)"
+                v-if="account.category === AccountCategory.CreditCard.type"
+                @click="accountContext.showCreditCardPaymentAccountPopup = true"
+            >
+                <list-item-selection-popup value-type="item"
+                                           key-field="id" value-field="id"
+                                           title-field="name"
+                                           :title="tt('Paid from account')"
+                                           :enable-filter="true"
+                                           :filter-placeholder="tt('Paid from account')"
+                                           :filter-no-items-text="tt('No results')"
+                                           :items="allAvailableCreditCardPaymentAccounts"
+                                           v-model:show="accountContext.showCreditCardPaymentAccountPopup"
+                                           v-model="account.creditCardPaymentAccountId">
                 </list-item-selection-popup>
             </f7-list-item>
 
@@ -408,7 +450,7 @@
 
             <f7-list-item
                 link="#"
-                class="list-item-with-header-and-title list-item-no-item-after"
+                class="list-item-with-header-and-title"
                 :header="tt('Statement Date')"
                 :title="getAccountCreditCardStatementDate(account.creditCardStatementDate)"
                 v-if="account.category === AccountCategory.CreditCard.type"
@@ -424,6 +466,48 @@
                                            :items="allAvailableMonthDays"
                                            v-model:show="accountContext.showCreditCardStatementDatePopup"
                                            v-model="account.creditCardStatementDate">
+                </list-item-selection-popup>
+            </f7-list-item>
+
+            <f7-list-item
+                link="#"
+                class="list-item-with-header-and-title"
+                :header="tt('Payment due day')"
+                :title="getAccountCreditCardStatementDate(account.creditCardPaymentDueDay)"
+                v-if="account.category === AccountCategory.CreditCard.type"
+                @click="accountContext.showCreditCardPaymentDueDayPopup = true"
+            >
+                <list-item-selection-popup value-type="item"
+                                           key-field="type" value-field="type"
+                                           title-field="displayName"
+                                           :title="tt('Payment due day')"
+                                           :enable-filter="true"
+                                           :filter-placeholder="tt('Payment due day')"
+                                           :filter-no-items-text="tt('No results')"
+                                           :items="allAvailableMonthDays"
+                                           v-model:show="accountContext.showCreditCardPaymentDueDayPopup"
+                                           v-model="account.creditCardPaymentDueDay">
+                </list-item-selection-popup>
+            </f7-list-item>
+
+            <f7-list-item
+                link="#"
+                class="list-item-with-header-and-title list-item-no-item-after"
+                :header="tt('Paid from account')"
+                :title="getAccountCreditCardPaymentAccountName(account.creditCardPaymentAccountId)"
+                v-if="account.category === AccountCategory.CreditCard.type"
+                @click="accountContext.showCreditCardPaymentAccountPopup = true"
+            >
+                <list-item-selection-popup value-type="item"
+                                           key-field="id" value-field="id"
+                                           title-field="name"
+                                           :title="tt('Paid from account')"
+                                           :enable-filter="true"
+                                           :filter-placeholder="tt('Paid from account')"
+                                           :filter-no-items-text="tt('No results')"
+                                           :items="allAvailableCreditCardPaymentAccounts"
+                                           v-model:show="accountContext.showCreditCardPaymentAccountPopup"
+                                           v-model="account.creditCardPaymentAccountId">
                 </list-item-selection-popup>
             </f7-list-item>
 
@@ -681,6 +765,8 @@ interface AccountContext {
     showColorSelectionSheet: boolean;
     showCurrencyPopup: boolean;
     showCreditCardStatementDatePopup: boolean;
+    showCreditCardPaymentDueDayPopup: boolean;
+    showCreditCardPaymentAccountPopup: boolean;
     showBalanceSheet: boolean;
     showBalanceDateTimeSheet: boolean;
     showLastReconciledTimeSheet: boolean;
@@ -718,8 +804,10 @@ const {
     allAccountCategories,
     allAccountTypes,
     allAvailableMonthDays,
+    allAvailableCreditCardPaymentAccounts,
     getDefaultTimezoneOffsetMinutes,
     getAccountCreditCardStatementDate,
+    getAccountCreditCardPaymentAccountName,
     getAccountCreditCardCreditLimitDisplayValue,
     updateAccountBalanceTime,
     updateAccountLastReconciledTime,
@@ -735,6 +823,8 @@ const DEFAULT_ACCOUNT_CONTEXT: AccountContext = {
     showColorSelectionSheet: false,
     showCurrencyPopup: false,
     showCreditCardStatementDatePopup: false,
+    showCreditCardPaymentDueDayPopup: false,
+    showCreditCardPaymentAccountPopup: false,
     showBalanceSheet: false,
     showBalanceDateTimeSheet: false,
     showLastReconciledTimeSheet: false,
