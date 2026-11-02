@@ -12,6 +12,7 @@ import { useOverviewStore } from './overview.ts';
 import { useStatisticsStore } from './statistics.ts';
 import { useExplorersStore } from './explorer.ts';
 import { useUserCustomIconsStore } from './userCustomIcon.ts';
+import { useImportPresetsStore } from './importPreset.ts';
 import { useExchangeRatesStore } from './exchangeRates.ts';
 import { useInvoicesStore } from '@/stores/invoice.ts';
 import { useBudgetsStore } from '@/stores/budget.ts';
@@ -61,6 +62,7 @@ export const useRootStore = defineStore('root', () => {
     const invoicesStore = useInvoicesStore();
     const budgetsStore = useBudgetsStore();
     const bucketsStore = useBucketsStore();
+    const importPresetsStore = useImportPresetsStore();
 
     const currentNotification = ref<string | null>(null);
 
@@ -74,6 +76,7 @@ export const useRootStore = defineStore('root', () => {
         invoicesStore.resetInvoices();
         budgetsStore.resetBudgets();
         bucketsStore.resetBuckets();
+        importPresetsStore.resetImportPresets();
         userCustomIconsStore.resetCustomIcons();
         explorersStore.resetTransactionExplorers();
         statisticsStore.resetTransactionStatistics();
@@ -642,6 +645,7 @@ export const useRootStore = defineStore('root', () => {
 
                 userCustomIconsStore.resetCustomIcons();
                 clearCustomIconCache();
+                importPresetsStore.resetImportPresets();
 
                 resolve(data.result);
             }).catch(error => {

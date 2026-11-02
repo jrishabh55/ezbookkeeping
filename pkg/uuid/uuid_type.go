@@ -24,4 +24,6 @@ const (
 	// the type field is only 4 bits wide and 15 is the last free value. Sequence numbers are
 	// kept per type, so ids generated for different invoice tables never collide.
 	UUID_TYPE_INVOICE UuidType = 15
+	// UUID_TYPE_IMPORT_PRESET (12 upstream) shares UUID_TYPE_INVOICE: no 4-bit type value is left
+	UUID_TYPE_IMPORT_PRESET = UUID_TYPE_INVOICE
 )

@@ -19,5 +19,7 @@ const (
 	DUPLICATE_CHECKER_TYPE_NEW_BUDGET             DuplicateCheckerType = 11
 	DUPLICATE_CHECKER_TYPE_NEW_BUCKET             DuplicateCheckerType = 12
 	DUPLICATE_CHECKER_TYPE_NEW_BUCKET_TRANSACTION DuplicateCheckerType = 13
+	DUPLICATE_CHECKER_TYPE_NEW_EXPLORER           DuplicateCheckerType = 14
+	DUPLICATE_CHECKER_TYPE_NEW_IMPORT_PRESET      DuplicateCheckerType = 15
 	DUPLICATE_CHECKER_TYPE_FAILURE_CHECK          DuplicateCheckerType = 255
 )

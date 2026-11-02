@@ -74,6 +74,11 @@ type mcpQueryForecastToolHandler struct{}
 
 var MCPQueryForecastToolHandler = &mcpQueryForecastToolHandler{}
 
+// ToolType returns the MCP tool type
+func (h *mcpQueryForecastToolHandler) ToolType() core.MCPToolType {
+	return core.MCP_TOOL_TYPE_QUERY_FORECAST
+}
+
 // Name returns the name of the MCP tool
 func (h *mcpQueryForecastToolHandler) Name() string {
 	return "query_forecast"

@@ -608,6 +608,10 @@ export interface TransactionBatchDeleteRequest {
     readonly password: string;
 }
 
+export interface TransactionCreateBatchRequest {
+    readonly transactions: TransactionCreateRequest[];
+}
+
 export interface TransactionImportRequest {
     readonly transactions: TransactionCreateRequest[];
     // Rows the user left matched to an existing "Auto (SMS)" transaction (design doc §8),
