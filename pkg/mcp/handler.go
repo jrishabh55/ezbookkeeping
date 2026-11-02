@@ -16,6 +16,7 @@ type MCPAvailableServices interface {
 	GetTransactionTagService() *services.TransactionTagService
 	GetAccountService() *services.AccountService
 	GetUserService() *services.UserService
+	GetForecastService() *services.ForecastService
 }
 
 // MCPToolHandler defines the MCP tool handler
