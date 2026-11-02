@@ -25,21 +25,57 @@ func TestForecastToAccounts(t *testing.T) {
 }
 
 func TestForecastToBudgets_OnlyMonthlySingleCategory(t *testing.T) {
-	b := []*models.Budget{{BudgetId: 1, PeriodType: models.BUDGET_PERIOD_TYPE_MONTHLY, Amount: 500}, {BudgetId: 2, PeriodType: models.BUDGET_PERIOD_TYPE_YEARLY, Amount: 9}}
+	b := []*models.Budget{
+		{BudgetId: 1, PeriodType: models.BUDGET_PERIOD_TYPE_MONTHLY, Amount: 500, Visible: true, AutoCreateNextCycle: true},
+		{BudgetId: 2, PeriodType: models.BUDGET_PERIOD_TYPE_YEARLY, Amount: 9, Visible: true, AutoCreateNextCycle: true},
+	}
 	scopes := map[int64][]*models.BudgetScope{
 		1: {{ScopeType: models.BUDGET_SCOPE_TYPE_CATEGORY, ScopeItemId: 7}},
 		2: {{ScopeType: models.BUDGET_SCOPE_TYPE_CATEGORY, ScopeItemId: 8}},
 	}
-	assert.Equal(t, []forecast.Budget{{CategoryId: 7, Amount: 500}}, toBudgets(b, scopes))
+	assert.Equal(t, []forecast.Budget{{CategoryId: 7, Amount: 500}}, toBudgets(b, scopes, forecast.D(2026, 11, 1), forecast.D(2026, 12, 1)))
 }
 
 func TestForecastToBudgets_MultiScopeOrNonCategoryScopeExcluded(t *testing.T) {
-	b := []*models.Budget{{BudgetId: 1, PeriodType: models.BUDGET_PERIOD_TYPE_MONTHLY, Amount: 500}, {BudgetId: 2, PeriodType: models.BUDGET_PERIOD_TYPE_MONTHLY, Amount: 600}}
+	b := []*models.Budget{
+		{BudgetId: 1, PeriodType: models.BUDGET_PERIOD_TYPE_MONTHLY, Amount: 500, Visible: true, AutoCreateNextCycle: true},
+		{BudgetId: 2, PeriodType: models.BUDGET_PERIOD_TYPE_MONTHLY, Amount: 600, Visible: true, AutoCreateNextCycle: true},
+	}
 	scopes := map[int64][]*models.BudgetScope{
 		1: {{ScopeType: models.BUDGET_SCOPE_TYPE_CATEGORY, ScopeItemId: 7}, {ScopeType: models.BUDGET_SCOPE_TYPE_CATEGORY, ScopeItemId: 8}},
 		2: {{ScopeType: models.BUDGET_SCOPE_TYPE_ACCOUNT, ScopeItemId: 9}},
 	}
-	assert.Empty(t, toBudgets(b, scopes))
+	assert.Empty(t, toBudgets(b, scopes, forecast.D(2026, 11, 1), forecast.D(2026, 12, 1)))
+}
+
+func TestForecastToBudgets_HiddenBudgetIgnored(t *testing.T) {
+	b := []*models.Budget{{BudgetId: 1, PeriodType: models.BUDGET_PERIOD_TYPE_MONTHLY, Amount: 500, Visible: false, AutoCreateNextCycle: true}}
+	scopes := map[int64][]*models.BudgetScope{1: {{ScopeType: models.BUDGET_SCOPE_TYPE_CATEGORY, ScopeItemId: 7}}}
+	assert.Empty(t, toBudgets(b, scopes, forecast.D(2026, 11, 1), forecast.D(2026, 12, 1)))
+}
+
+func TestForecastToBudgets_WindowMustOverlapHorizonUnlessAutoRenewing(t *testing.T) {
+	horizonStart, horizonEnd := forecast.D(2026, 11, 1), forecast.D(2026, 12, 1)
+	b := []*models.Budget{
+		// ended well before the horizon and does not auto-renew: excluded
+		{BudgetId: 1, PeriodType: models.BUDGET_PERIOD_TYPE_MONTHLY, Amount: 100, Visible: true,
+			StartTime: forecast.D(2026, 8, 1).Unix(), EndTime: forecast.D(2026, 8, 31).Unix()},
+		// overlaps the horizon: included
+		{BudgetId: 2, PeriodType: models.BUDGET_PERIOD_TYPE_MONTHLY, Amount: 200, Visible: true,
+			StartTime: forecast.D(2026, 11, 1).Unix(), EndTime: forecast.D(2026, 11, 30).Unix()},
+		// ended long ago but auto-renews indefinitely: included despite its stored window
+		{BudgetId: 3, PeriodType: models.BUDGET_PERIOD_TYPE_MONTHLY, Amount: 300, Visible: true, AutoCreateNextCycle: true,
+			StartTime: forecast.D(2026, 1, 1).Unix(), EndTime: forecast.D(2026, 1, 31).Unix()},
+	}
+	scopes := map[int64][]*models.BudgetScope{
+		1: {{ScopeType: models.BUDGET_SCOPE_TYPE_CATEGORY, ScopeItemId: 10}},
+		2: {{ScopeType: models.BUDGET_SCOPE_TYPE_CATEGORY, ScopeItemId: 11}},
+		3: {{ScopeType: models.BUDGET_SCOPE_TYPE_CATEGORY, ScopeItemId: 12}},
+	}
+
+	got := toBudgets(b, scopes, horizonStart, horizonEnd)
+
+	assert.Equal(t, []forecast.Budget{{CategoryId: 11, Amount: 200}, {CategoryId: 12, Amount: 300}}, got)
 }
 
 func TestForecastToCards(t *testing.T) {
@@ -70,7 +106,7 @@ func TestForecastToIncome_UnpaidInvoiceDueDateAndOutstandingAmount(t *testing.T)
 		1: {{Transaction: &models.Transaction{AccountId: 50, Amount: 20000}}},
 	}
 
-	got := toIncome(invoices, payments, nil, nil, 777, forecast.D(2026, 12, 1))
+	got := toIncome(core.NewNullContext(), 1, invoices, payments, nil, nil, 777, forecast.D(2026, 12, 1))
 
 	assert.Equal(t, []forecast.ExpectedIncome{
 		{Date: forecast.D(2026, 11, 20), AccountId: 50, Amount: 80000, Source: forecast.SourceInvoice, SourceId: 1, Label: "INV-1"},
@@ -85,7 +121,7 @@ func TestForecastToIncome_WithinToleranceIsNotUnpaid(t *testing.T) {
 		1: {{Transaction: &models.Transaction{AccountId: 50, Amount: 99000}}}, // 1% short; tolerance is 3%
 	}
 
-	assert.Empty(t, toIncome(invoices, payments, nil, nil, 777, forecast.D(2026, 12, 1)))
+	assert.Empty(t, toIncome(core.NewNullContext(), 1, invoices, payments, nil, nil, 777, forecast.D(2026, 12, 1)))
 }
 
 func TestForecastToIncome_ClosedManuallyExcluded(t *testing.T) {
@@ -93,7 +129,7 @@ func TestForecastToIncome_ClosedManuallyExcluded(t *testing.T) {
 		{InvoiceId: 1, CustomerId: 10, Number: "INV-1", Total: 100000, DueDate: "2026-11-20", InvoiceDate: "2026-11-01", ClosedManually: true},
 	}
 
-	assert.Empty(t, toIncome(invoices, nil, nil, nil, 777, forecast.D(2026, 12, 1)))
+	assert.Empty(t, toIncome(core.NewNullContext(), 1, invoices, nil, nil, nil, 777, forecast.D(2026, 12, 1)))
 }
 
 func TestForecastToIncome_AccountFromLatestCustomerPaymentElseDefault(t *testing.T) {
@@ -107,7 +143,7 @@ func TestForecastToIncome_AccountFromLatestCustomerPaymentElseDefault(t *testing
 		2: {{Transaction: &models.Transaction{AccountId: 70, TransactionTime: 2000}}}, // more recent than invoice 1's payment
 	}
 
-	got := toIncome(invoices, payments, nil, nil, 999, forecast.D(2026, 12, 1))
+	got := toIncome(core.NewNullContext(), 1, invoices, payments, nil, nil, 999, forecast.D(2026, 12, 1))
 
 	byInvoice := map[int64]int64{}
 	for _, inc := range got {
@@ -126,7 +162,7 @@ func TestForecastToIncome_RecurringOccurrencesWithinHorizon(t *testing.T) {
 	}
 	sources := map[int64]*models.Invoice{9: source}
 
-	got := toIncome(nil, nil, recurring, sources, 777, forecast.D(2027, 1, 1))
+	got := toIncome(core.NewNullContext(), 1, nil, nil, recurring, sources, 777, forecast.D(2027, 1, 1))
 
 	assert.Equal(t, []forecast.ExpectedIncome{
 		{Date: forecast.D(2026, 11, 28), AccountId: 777, Amount: 370000_00, Source: forecast.SourceRecurringInvoice, SourceId: 9, Label: "INV-5"},
@@ -140,7 +176,28 @@ func TestForecastToIncome_DisabledOrSourcelessRecurringSkipped(t *testing.T) {
 		{RecurringId: 2, SourceInvoiceId: 6, Enabled: true, DayOfMonth: 1, NextDate: "2026-11-01", PeriodMonths: 1}, // no source (deleted)
 	}
 
-	assert.Empty(t, toIncome(nil, nil, recurring, map[int64]*models.Invoice{}, 777, forecast.D(2027, 1, 1)))
+	assert.Empty(t, toIncome(core.NewNullContext(), 1, nil, nil, recurring, map[int64]*models.Invoice{}, 777, forecast.D(2027, 1, 1)))
+}
+
+func TestForecastToIncome_DropsUnpaidInvoiceWhenNoAccountAvailable(t *testing.T) {
+	invoices := []*models.Invoice{
+		{InvoiceId: 1, CustomerId: 10, Number: "INV-1", Total: 100000, DueDate: "2026-11-20", InvoiceDate: "2026-11-01"},
+	}
+
+	// no linked payment for customer 10 and no default account (0): must be dropped, never emitted with account 0
+	got := toIncome(core.NewNullContext(), 1, invoices, nil, nil, nil, 0, forecast.D(2026, 12, 1))
+
+	assert.Empty(t, got)
+}
+
+func TestForecastToIncome_DropsRecurringOccurrenceWhenNoAccountAvailable(t *testing.T) {
+	source := &models.Invoice{InvoiceId: 5, CustomerId: 20, Number: "INV-5", Total: 1000, InvoiceDate: "2026-10-01", DueDate: "2026-10-28"}
+	recurring := []*models.RecurringInvoice{{RecurringId: 9, SourceInvoiceId: 5, Enabled: true, DayOfMonth: 1, NextDate: "2026-11-01", PeriodMonths: 1}}
+	sources := map[int64]*models.Invoice{9: source}
+
+	got := toIncome(core.NewNullContext(), 1, nil, nil, recurring, sources, 0, forecast.D(2027, 1, 1))
+
+	assert.Empty(t, got)
 }
 
 func TestForecastDefaultIncomeAccount_MostBusinessIncomeWinsWithinLookback(t *testing.T) {
@@ -151,11 +208,31 @@ func TestForecastDefaultIncomeAccount_MostBusinessIncomeWinsWithinLookback(t *te
 		{Date: forecast.D(2026, 1, 1), Kind: forecast.KindIncome, AccountId: 3, Amount: 100000, Business: true},  // older than 6 months, ignored
 	}
 
-	assert.Equal(t, int64(2), defaultIncomeAccount(history, forecast.D(2026, 11, 2)))
+	assert.Equal(t, int64(2), defaultIncomeAccount(history, forecast.D(2026, 11, 2), 0))
 }
 
-func TestForecastDefaultIncomeAccount_NoHistoryReturnsZero(t *testing.T) {
-	assert.Equal(t, int64(0), defaultIncomeAccount(nil, forecast.D(2026, 11, 2)))
+func TestForecastDefaultIncomeAccount_CategoryBasedBusinessIncomeCountsEvenWithoutTag(t *testing.T) {
+	// the Business tag is used on expenses, not income; a "Business Income" category receipt
+	// must count even though it carries no tag, and must win over a larger non-business receipt
+	history := []forecast.Txn{
+		{Date: forecast.D(2026, 9, 1), Kind: forecast.KindIncome, AccountId: 1, CategoryId: 50, Amount: 500},
+		{Date: forecast.D(2026, 9, 1), Kind: forecast.KindIncome, AccountId: 2, CategoryId: 51, Amount: 2000},
+	}
+
+	assert.Equal(t, int64(1), defaultIncomeAccount(history, forecast.D(2026, 11, 2), 50))
+}
+
+func TestForecastDefaultIncomeAccount_FallsBackToAnyIncomeWhenNoneIsBusiness(t *testing.T) {
+	history := []forecast.Txn{
+		{Date: forecast.D(2026, 9, 1), Kind: forecast.KindIncome, AccountId: 1, Amount: 300},
+		{Date: forecast.D(2026, 9, 1), Kind: forecast.KindIncome, AccountId: 2, Amount: 700},
+	}
+
+	assert.Equal(t, int64(2), defaultIncomeAccount(history, forecast.D(2026, 11, 2), 50)) // category 50 present nowhere, no Business tag either
+}
+
+func TestForecastDefaultIncomeAccount_NoIncomeAtAllReturnsZero(t *testing.T) {
+	assert.Equal(t, int64(0), defaultIncomeAccount(nil, forecast.D(2026, 11, 2), 50))
 }
 
 func TestForecastFilterTemplates_SkipsDeletedOrHiddenAccountsAndCategories(t *testing.T) {
@@ -214,4 +291,22 @@ func TestForecastToHistory_CardRepaymentAndTransferInDropped(t *testing.T) {
 	assert.Equal(t, forecast.KindTransfer, got[0].Kind)
 	assert.True(t, got[0].CardRepayment) // category 5 is the repayment category
 	assert.Equal(t, "JOHN DOE", got[1].PayeeKey)
+}
+
+func TestClipToDateRange_KeepsOnlyLocalDatesWithinInclusiveBounds(t *testing.T) {
+	txns := []forecast.Txn{
+		{Id: 1, Date: forecast.D(2026, 7, 31)}, // before window
+		{Id: 2, Date: forecast.D(2026, 8, 1)},  // lower boundary: kept
+		{Id: 3, Date: forecast.D(2026, 11, 2)}, // upper boundary: kept
+		{Id: 4, Date: forecast.D(2026, 11, 3)}, // after window
+	}
+
+	got := clipToDateRange(txns, forecast.D(2026, 8, 1), forecast.D(2026, 11, 2))
+
+	ids := make([]int64, len(got))
+	for i, tx := range got {
+		ids[i] = tx.Id
+	}
+
+	assert.Equal(t, []int64{2, 3}, ids)
 }

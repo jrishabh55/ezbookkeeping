@@ -29,6 +29,10 @@ const forecastBusinessIncomeLookbackMonths = 6
 // businessTagName is the user-created tag that marks an item as business
 const businessTagName = "Business"
 
+// categoryNameBusinessIncome is the income category whose transactions count as business income
+// for picking the default invoice income account (the Business tag is used on expenses, not income)
+const categoryNameBusinessIncome = "Business Income"
+
 // ForecastService represents forecast service
 type ForecastService struct {
 	ServiceUsingDB
@@ -94,12 +98,17 @@ func (s *ForecastService) GetForecast(c core.Context, uid int64, today time.Time
 
 	categoryById := make(map[int64]*models.TransactionCategory, len(categories))
 	repaymentCategoryId := int64(0)
+	businessIncomeCategoryId := int64(0)
 
 	for _, cat := range categories {
 		categoryById[cat.CategoryId] = cat
 
 		if cat.Name == categoryNameCardRepayment {
 			repaymentCategoryId = cat.CategoryId
+		}
+
+		if cat.Name == categoryNameBusinessIncome {
+			businessIncomeCategoryId = cat.CategoryId
 		}
 	}
 
@@ -117,17 +126,19 @@ func (s *ForecastService) GetForecast(c core.Context, uid int64, today time.Time
 		return nil, err
 	}
 
-	horizonEnd := forecast.MonthStart(today).AddDate(0, months, 0)
+	horizonStart := forecast.MonthStart(today)
+	horizonEnd := horizonStart.AddDate(0, months, 0)
 	validTemplates := s.filterTemplates(c, uid, templates, accountById, categoryById)
+	defaultAccount := defaultIncomeAccount(defaultIncomeHistory, today, businessIncomeCategoryId)
 
 	input := forecast.Input{
 		Today:     today,
 		Months:    months,
 		Accounts:  toAccounts(accounts),
 		Templates: toTemplates(validTemplates, businessTagId),
-		Income:    toIncome(invoices, payments, recurring, sources, defaultIncomeAccount(defaultIncomeHistory, today), horizonEnd),
+		Income:    toIncome(c, uid, invoices, payments, recurring, sources, defaultAccount, horizonEnd),
 		History:   history,
-		Budgets:   toBudgets(budgets, scopesByBudget),
+		Budgets:   toBudgets(budgets, scopesByBudget, horizonStart, horizonEnd),
 		Cards:     toCards(accounts),
 	}
 
@@ -208,7 +219,7 @@ func (s *ForecastService) loadInvoices(c core.Context, uid int64) ([]*models.Inv
 	return invoices, payments, recurring, sources, nil
 }
 
-// loadHistory returns forecast history transactions in [from, to], inclusive of to's whole day
+// loadHistory returns forecast history transactions whose local date falls in [from, to]
 func (s *ForecastService) loadHistory(c core.Context, uid int64, from time.Time, to time.Time, businessTagId int64, repaymentCategoryId int64) ([]forecast.Txn, error) {
 	txns, err := s.loadTransactions(c, uid, from, to, 0)
 
@@ -222,7 +233,7 @@ func (s *ForecastService) loadHistory(c core.Context, uid int64, from time.Time,
 		return nil, err
 	}
 
-	return toHistory(txns, tagIdsByTxn, businessTagId, repaymentCategoryId), nil
+	return clipToDateRange(toHistory(txns, tagIdsByTxn, businessTagId, repaymentCategoryId), from, to), nil
 }
 
 // loadIncomeHistory returns income-only forecast history, used to find the default invoice income account
@@ -239,15 +250,33 @@ func (s *ForecastService) loadIncomeHistory(c core.Context, uid int64, from time
 		return nil, err
 	}
 
-	return toHistory(txns, tagIdsByTxn, businessTagId, 0), nil
+	return clipToDateRange(toHistory(txns, tagIdsByTxn, businessTagId, 0), from, to), nil
 }
 
-// loadTransactions pages through GetAllSpecifiedTransactions for the given time range and type (0 = any)
+// loadTransactions pages through GetAllSpecifiedTransactions for the given local-date range and type
+// (0 = any). The query window is widened by a day on each side because [from, to] are UTC-midnight
+// calendar dates: a client ahead of UTC can have local-date `from` transactions stored before UTC
+// midnight of `from`, and a client behind UTC can have local-date `to` transactions stored after UTC
+// midnight of `to+1`. clipToDateRange (applied by the caller, after converting to local dates) trims
+// the over-fetch back down to the real [from, to] window.
 func (s *ForecastService) loadTransactions(c core.Context, uid int64, from time.Time, to time.Time, transactionType models.TransactionType) ([]*models.Transaction, error) {
-	minTime := utils.GetMinTransactionTimeFromUnixTime(from.Unix())
+	minTime := utils.GetMinTransactionTimeFromUnixTime(from.AddDate(0, 0, -1).Unix())
 	maxTime := utils.GetMaxTransactionTimeFromUnixTime(to.AddDate(0, 0, 1).Unix())
 
 	return Transactions.GetAllSpecifiedTransactions(c, uid, maxTime, minTime, transactionType, nil, nil, nil, false, "", "", core.MATCH_MODE_DEFAULT, false, pageCountForForecastHistory, true)
+}
+
+// clipToDateRange keeps only the history items whose local date falls within [from, to], inclusive
+func clipToDateRange(txns []forecast.Txn, from time.Time, to time.Time) []forecast.Txn {
+	var out []forecast.Txn
+
+	for _, tx := range txns {
+		if !tx.Date.Before(from) && !tx.Date.After(to) {
+			out = append(out, tx)
+		}
+	}
+
+	return out
 }
 
 func (s *ForecastService) tagIdsOfTransactions(c core.Context, uid int64, txns []*models.Transaction) (map[int64][]int64, error) {
@@ -435,12 +464,19 @@ func toHistory(txns []*models.Transaction, tagIdsByTxn map[int64][]int64, busine
 	return out
 }
 
-// toBudgets keeps monthly budgets scoped to exactly one expense category
-func toBudgets(budgets []*models.Budget, scopesByBudget map[int64][]*models.BudgetScope) []forecast.Budget {
+// toBudgets keeps visible, monthly budgets scoped to exactly one expense category that still cover
+// the forecast horizon [horizonStart, horizonEnd); an auto-renewing budget always covers it, since
+// its stored window is only its first cycle
+func toBudgets(budgets []*models.Budget, scopesByBudget map[int64][]*models.BudgetScope, horizonStart time.Time, horizonEnd time.Time) []forecast.Budget {
 	var out []forecast.Budget
+	horizonStartUnix, horizonEndUnix := horizonStart.Unix(), horizonEnd.Unix()
 
 	for _, b := range budgets {
-		if b.PeriodType != models.BUDGET_PERIOD_TYPE_MONTHLY {
+		if b.PeriodType != models.BUDGET_PERIOD_TYPE_MONTHLY || !b.Visible {
+			continue
+		}
+
+		if !b.AutoCreateNextCycle && (b.EndTime < horizonStartUnix || b.StartTime >= horizonEndUnix) {
 			continue
 		}
 
@@ -490,18 +526,20 @@ func toCards(accts []*models.Account) []forecast.Card {
 
 // toIncome maps unpaid invoices and enabled recurring invoices' future occurrences into expected
 // income; sources maps a recurring invoice id to its (still existing) source invoice. The account
-// is the account of the most recent payment linked to any invoice of that customer, else defaultAccount
-func toIncome(invoices []*models.Invoice, payments map[int64][]*models.InvoicePaymentInfo, recurring []*models.RecurringInvoice, sources map[int64]*models.Invoice, defaultAccount int64, horizonEnd time.Time) []forecast.ExpectedIncome {
+// is the account of the most recent payment linked to any invoice of that customer, else
+// defaultAccount; an item with neither is dropped (never emitted with account id 0) and logged
+func toIncome(c core.Context, uid int64, invoices []*models.Invoice, payments map[int64][]*models.InvoicePaymentInfo, recurring []*models.RecurringInvoice, sources map[int64]*models.Invoice, defaultAccount int64, horizonEnd time.Time) []forecast.ExpectedIncome {
 	accountByCustomer := latestPaymentAccountByCustomer(invoices, payments)
-	accountFor := func(customerId int64) int64 {
+	accountFor := func(customerId int64) (int64, bool) {
 		if acct, ok := accountByCustomer[customerId]; ok {
-			return acct
+			return acct, true
 		}
-		return defaultAccount
+
+		return defaultAccount, defaultAccount > 0
 	}
 
 	var out []forecast.ExpectedIncome
-	out = append(out, unpaidInvoiceIncome(invoices, payments, accountFor)...)
+	out = append(out, unpaidInvoiceIncome(c, uid, invoices, payments, accountFor)...)
 
 	for _, r := range recurring {
 		source, ok := sources[r.RecurringId]
@@ -510,14 +548,22 @@ func toIncome(invoices []*models.Invoice, payments map[int64][]*models.InvoicePa
 			continue
 		}
 
-		out = append(out, recurringOccurrences(r, source, horizonEnd, accountFor(source.CustomerId))...)
+		accountId, ok := accountFor(source.CustomerId)
+
+		if !ok {
+			log.Warnf(c, "[forecast.toIncome] recurring invoice \"id:%d\" of user \"uid:%d\" has no payment history and no default income account, dropped", r.RecurringId, uid)
+			continue
+		}
+
+		out = append(out, recurringOccurrences(r, source, horizonEnd, accountId)...)
 	}
 
 	return out
 }
 
-// unpaidInvoiceIncome returns one expected income item per unpaid invoice, on its due date, for the outstanding amount
-func unpaidInvoiceIncome(invoices []*models.Invoice, payments map[int64][]*models.InvoicePaymentInfo, accountFor func(customerId int64) int64) []forecast.ExpectedIncome {
+// unpaidInvoiceIncome returns one expected income item per unpaid invoice, on its due date, for the
+// outstanding amount; an invoice whose customer has no payment history and no default account is dropped
+func unpaidInvoiceIncome(c core.Context, uid int64, invoices []*models.Invoice, payments map[int64][]*models.InvoicePaymentInfo, accountFor func(customerId int64) (int64, bool)) []forecast.ExpectedIncome {
 	var out []forecast.ExpectedIncome
 
 	for _, inv := range invoices {
@@ -533,8 +579,15 @@ func unpaidInvoiceIncome(invoices []*models.Invoice, payments map[int64][]*model
 			continue
 		}
 
+		accountId, ok := accountFor(inv.CustomerId)
+
+		if !ok {
+			log.Warnf(c, "[forecast.unpaidInvoiceIncome] invoice \"id:%d\" of user \"uid:%d\" has no payment history and no default income account, dropped", inv.InvoiceId, uid)
+			continue
+		}
+
 		out = append(out, forecast.ExpectedIncome{
-			Date: forecast.D(dueDate.Year(), dueDate.Month(), dueDate.Day()), AccountId: accountFor(inv.CustomerId),
+			Date: forecast.D(dueDate.Year(), dueDate.Month(), dueDate.Day()), AccountId: accountId,
 			Amount: balanceDue, Source: forecast.SourceInvoice, SourceId: inv.InvoiceId, Label: inv.Number,
 		})
 	}
@@ -615,20 +668,36 @@ func recurringOccurrences(r *models.RecurringInvoice, source *models.Invoice, ho
 	return out
 }
 
-// defaultIncomeAccount returns the account with the most business income in the given history,
-// breaking ties by the lowest account id so the result is deterministic
-func defaultIncomeAccount(history []forecast.Txn, today time.Time) int64 {
+// defaultIncomeAccount returns the account with the most business income (category
+// businessIncomeCategoryId, or the Business tag) in the lookback window; if there is none, the
+// account with the most income of any kind in the same window; if there is no income at all, 0 (the
+// caller must not use 0 as a destination account). Ties break on the lowest account id.
+func defaultIncomeAccount(history []forecast.Txn, today time.Time, businessIncomeCategoryId int64) int64 {
 	since := forecast.MonthStart(today).AddDate(0, -forecastBusinessIncomeLookbackMonths, 0)
-	totals := map[int64]int64{}
+	businessTotals := map[int64]int64{}
+	anyTotals := map[int64]int64{}
 
 	for _, tx := range history {
-		if tx.Kind != forecast.KindIncome || !tx.Business || tx.Date.Before(since) {
+		if tx.Kind != forecast.KindIncome || tx.Date.Before(since) {
 			continue
 		}
 
-		totals[tx.AccountId] += tx.Amount
+		anyTotals[tx.AccountId] += tx.Amount
+
+		if tx.Business || (businessIncomeCategoryId > 0 && tx.CategoryId == businessIncomeCategoryId) {
+			businessTotals[tx.AccountId] += tx.Amount
+		}
 	}
 
+	if best := bestAccountByTotal(businessTotals); best > 0 {
+		return best
+	}
+
+	return bestAccountByTotal(anyTotals)
+}
+
+// bestAccountByTotal returns the account id with the highest total, breaking ties by the lowest id, or 0
+func bestAccountByTotal(totals map[int64]int64) int64 {
 	ids := make([]int64, 0, len(totals))
 
 	for id := range totals {
