@@ -188,6 +188,16 @@ func (a *AccountsApi) AccountCreateHandler(c *core.WebContext) (any, *errs.Error
 		return nil, errs.ErrCannotSetCreditLimitForNonCreditCardAccount
 	}
 
+	if accountCreateReq.Category != models.ACCOUNT_CATEGORY_CREDIT_CARD && accountCreateReq.CreditCardPaymentDueDay != 0 {
+		log.Warnf(c, "[accounts.AccountCreateHandler] cannot set payment due day with category \"%d\"", accountCreateReq.Category)
+		return nil, errs.ErrNotSupported
+	}
+
+	if accountCreateReq.Category != models.ACCOUNT_CATEGORY_CREDIT_CARD && accountCreateReq.CreditCardPaymentAccountId != 0 {
+		log.Warnf(c, "[accounts.AccountCreateHandler] cannot set payment account with category \"%d\"", accountCreateReq.Category)
+		return nil, errs.ErrNotSupported
+	}
+
 	creditLimitForCreditCard := int64(0)
 
 	if accountCreateReq.CreditCardLimit != "" {
@@ -279,6 +289,16 @@ func (a *AccountsApi) AccountCreateHandler(c *core.WebContext) (any, *errs.Error
 				log.Warnf(c, "[accounts.AccountCreateHandler] sub-account#%d cannot set credit limit", i)
 				return nil, errs.ErrCannotSetCreditLimitForSubAccount
 			}
+
+			if subAccount.CreditCardPaymentDueDay != 0 {
+				log.Warnf(c, "[accounts.AccountCreateHandler] sub-account#%d cannot set payment due day", i)
+				return nil, errs.ErrNotSupported
+			}
+
+			if subAccount.CreditCardPaymentAccountId != 0 {
+				log.Warnf(c, "[accounts.AccountCreateHandler] sub-account#%d cannot set payment account", i)
+				return nil, errs.ErrNotSupported
+			}
 		}
 	} else {
 		log.Warnf(c, "[accounts.AccountCreateHandler] account type invalid, type is %d", accountCreateReq.Type)
@@ -286,6 +306,16 @@ func (a *AccountsApi) AccountCreateHandler(c *core.WebContext) (any, *errs.Error
 	}
 
 	uid := c.GetCurrentUid()
+
+	if accountCreateReq.CreditCardPaymentAccountId != 0 {
+		paymentAccount, lookupErr := a.accounts.GetAccountByAccountId(c, uid, accountCreateReq.CreditCardPaymentAccountId)
+
+		if lookupErr != nil || paymentAccount.Category == models.ACCOUNT_CATEGORY_CREDIT_CARD {
+			log.Warnf(c, "[accounts.AccountCreateHandler] credit card payment account \"id:%d\" not found or is a credit card account for user \"uid:%d\"", accountCreateReq.CreditCardPaymentAccountId, uid)
+			return nil, errs.ErrAccountNotFound
+		}
+	}
+
 	maxOrderId, err := a.accounts.GetMaxDisplayOrder(c, uid, accountCreateReq.Category)
 
 	if err != nil {
@@ -397,6 +427,16 @@ func (a *AccountsApi) AccountModifyHandler(c *core.WebContext) (any, *errs.Error
 		return nil, errs.ErrCannotSetCreditLimitForNonCreditCardAccount
 	}
 
+	if accountModifyReq.Category != models.ACCOUNT_CATEGORY_CREDIT_CARD && accountModifyReq.CreditCardPaymentDueDay != 0 {
+		log.Warnf(c, "[accounts.AccountModifyHandler] cannot set payment due day with category \"%d\"", accountModifyReq.Category)
+		return nil, errs.ErrNotSupported
+	}
+
+	if accountModifyReq.Category != models.ACCOUNT_CATEGORY_CREDIT_CARD && accountModifyReq.CreditCardPaymentAccountId != 0 {
+		log.Warnf(c, "[accounts.AccountModifyHandler] cannot set payment account with category \"%d\"", accountModifyReq.Category)
+		return nil, errs.ErrNotSupported
+	}
+
 	creditLimitForCreditCard := int64(0)
 
 	if accountModifyReq.CreditCardLimit != "" {
@@ -416,6 +456,15 @@ func (a *AccountsApi) AccountModifyHandler(c *core.WebContext) (any, *errs.Error
 		}
 
 		return nil, errs.ErrUserNotFound
+	}
+
+	if accountModifyReq.CreditCardPaymentAccountId != 0 {
+		paymentAccount, lookupErr := a.accounts.GetAccountByAccountId(c, uid, accountModifyReq.CreditCardPaymentAccountId)
+
+		if lookupErr != nil || paymentAccount.Category == models.ACCOUNT_CATEGORY_CREDIT_CARD {
+			log.Warnf(c, "[accounts.AccountModifyHandler] credit card payment account \"id:%d\" not found or is a credit card account for user \"uid:%d\"", accountModifyReq.CreditCardPaymentAccountId, uid)
+			return nil, errs.ErrAccountNotFound
+		}
 	}
 
 	accountAndSubAccounts, err := a.accounts.GetAccountAndSubAccountsByAccountId(c, uid, accountModifyReq.Id)
@@ -539,6 +588,16 @@ func (a *AccountsApi) AccountModifyHandler(c *core.WebContext) (any, *errs.Error
 			if subAccountReq.CreditCardLimit != "" {
 				log.Warnf(c, "[accounts.AccountModifyHandler] sub-account#%d cannot set credit limit", i)
 				return nil, errs.ErrCannotSetCreditLimitForSubAccount
+			}
+
+			if subAccountReq.CreditCardPaymentDueDay != 0 {
+				log.Warnf(c, "[accounts.AccountModifyHandler] sub-account#%d cannot set payment due day", i)
+				return nil, errs.ErrNotSupported
+			}
+
+			if subAccountReq.CreditCardPaymentAccountId != 0 {
+				log.Warnf(c, "[accounts.AccountModifyHandler] sub-account#%d cannot set payment account", i)
+				return nil, errs.ErrNotSupported
 			}
 		}
 	}
@@ -906,6 +965,16 @@ func (a *AccountsApi) createNewAccountModel(uid int64, accountCreateReq *models.
 	if !isSubAccount && accountCreateReq.Category == models.ACCOUNT_CATEGORY_CREDIT_CARD {
 		accountExtend.CreditCardStatementDate = &accountCreateReq.CreditCardStatementDate
 		accountExtend.CreditCardLimit = creditLimitForCreditCard
+
+		if accountCreateReq.CreditCardPaymentDueDay != 0 {
+			paymentDueDay := accountCreateReq.CreditCardPaymentDueDay
+			accountExtend.CreditCardPaymentDueDay = &paymentDueDay
+		}
+
+		if accountCreateReq.CreditCardPaymentAccountId != 0 {
+			paymentAccountId := accountCreateReq.CreditCardPaymentAccountId
+			accountExtend.CreditCardPaymentAccountId = &paymentAccountId
+		}
 	}
 
 	return &models.Account{
@@ -966,6 +1035,16 @@ func (a *AccountsApi) getToUpdateAccount(user *models.User, accountModifyReq *mo
 	if !isSubAccount && accountModifyReq.Category == models.ACCOUNT_CATEGORY_CREDIT_CARD {
 		newAccountExtend.CreditCardStatementDate = &accountModifyReq.CreditCardStatementDate
 		newAccountExtend.CreditCardLimit = creditLimitForCreditCard
+
+		if accountModifyReq.CreditCardPaymentDueDay != 0 {
+			paymentDueDay := accountModifyReq.CreditCardPaymentDueDay
+			newAccountExtend.CreditCardPaymentDueDay = &paymentDueDay
+		}
+
+		if accountModifyReq.CreditCardPaymentAccountId != 0 {
+			paymentAccountId := accountModifyReq.CreditCardPaymentAccountId
+			newAccountExtend.CreditCardPaymentAccountId = &paymentAccountId
+		}
 	}
 
 	newAccount := &models.Account{
@@ -1022,8 +1101,24 @@ func (a *AccountsApi) getToUpdateAccount(user *models.User, accountModifyReq *mo
 		return newAccount, nil
 	}
 
+	var oldCreditCardPaymentDueDay *int
+	var oldCreditCardPaymentAccountId *int64
+
+	if oldAccountExtend != nil {
+		oldCreditCardPaymentDueDay = oldAccountExtend.CreditCardPaymentDueDay
+		oldCreditCardPaymentAccountId = oldAccountExtend.CreditCardPaymentAccountId
+	}
+
+	if intPtrChanged(newAccountExtend.CreditCardPaymentDueDay, oldCreditCardPaymentDueDay) ||
+		int64PtrChanged(newAccountExtend.CreditCardPaymentAccountId, oldCreditCardPaymentAccountId) {
+		return newAccount, nil
+	}
+
 	return nil, nil
 }
+
+func intPtrChanged(a, b *int) bool     { return (a == nil) != (b == nil) || (a != nil && *a != *b) }
+func int64PtrChanged(a, b *int64) bool { return (a == nil) != (b == nil) || (a != nil && *a != *b) }
 
 func (a *AccountsApi) getToDeleteSubAccountIds(accountModifyReq *models.AccountModifyRequest, mainAccount *models.Account, accountAndSubAccounts []*models.Account) []int64 {
 	newSubAccountIds := make(map[int64]bool, len(accountModifyReq.SubAccounts))

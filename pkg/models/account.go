@@ -71,6 +71,8 @@ const (
 
 var defaultCreditCardAccountStatementDate = 0
 var defaultCreditCardAccountLimit = "0"
+var defaultCreditCardPaymentDueDay = 0
+var defaultCreditCardPaymentAccountId = int64(0)
 
 // Account represents account data stored in database
 type Account struct {
@@ -97,47 +99,53 @@ type Account struct {
 
 // AccountExtend represents account extend data stored in database
 type AccountExtend struct {
-	LastReconciledTime      *int64 `json:"lastReconciledTime,omitempty"`
-	CreditCardStatementDate *int   `json:"creditCardStatementDate,omitempty"`
-	CreditCardLimit         *int64 `json:"creditCardLimit,string,omitempty"`
+	LastReconciledTime         *int64 `json:"lastReconciledTime,omitempty"`
+	CreditCardStatementDate    *int   `json:"creditCardStatementDate,omitempty"`
+	CreditCardLimit            *int64 `json:"creditCardLimit,string,omitempty"`
+	CreditCardPaymentDueDay    *int   `json:"creditCardPaymentDueDay,omitempty"`
+	CreditCardPaymentAccountId *int64 `json:"creditCardPaymentAccountId,string,omitempty"`
 }
 
 // AccountCreateRequest represents all parameters of account creation request
 type AccountCreateRequest struct {
-	Name                    string                  `json:"name" binding:"required,notBlank,max=64"`
-	Category                AccountCategory         `json:"category" binding:"required"`
-	Type                    AccountType             `json:"type" binding:"required"`
-	Icon                    int64                   `json:"icon,string" binding:"required,min=1"`
-	IconType                core.IconType           `json:"iconType" binding:"min=0,max=1"`
-	Color                   string                  `json:"color" binding:"required,len=6,validHexRGBColor"`
-	Currency                string                  `json:"currency" binding:"required,len=3,validCurrency"`
-	Balance                 string                  `json:"balance" binding:"validTransactionAmount"`
-	BalanceTime             int64                   `json:"balanceTime"`
-	Comment                 string                  `json:"comment" binding:"max=255"`
-	CreditCardStatementDate int                     `json:"creditCardStatementDate" binding:"min=0,max=28"`
-	CreditCardLimit         string                  `json:"creditCardLimit" binding:"omitempty,validTransactionAmount"`
-	SubAccounts             []*AccountCreateRequest `json:"subAccounts" binding:"omitempty"`
-	ClientSessionId         string                  `json:"clientSessionId"`
+	Name                       string                  `json:"name" binding:"required,notBlank,max=64"`
+	Category                   AccountCategory         `json:"category" binding:"required"`
+	Type                       AccountType             `json:"type" binding:"required"`
+	Icon                       int64                   `json:"icon,string" binding:"required,min=1"`
+	IconType                   core.IconType           `json:"iconType" binding:"min=0,max=1"`
+	Color                      string                  `json:"color" binding:"required,len=6,validHexRGBColor"`
+	Currency                   string                  `json:"currency" binding:"required,len=3,validCurrency"`
+	Balance                    string                  `json:"balance" binding:"validTransactionAmount"`
+	BalanceTime                int64                   `json:"balanceTime"`
+	Comment                    string                  `json:"comment" binding:"max=255"`
+	CreditCardStatementDate    int                     `json:"creditCardStatementDate" binding:"min=0,max=28"`
+	CreditCardLimit            string                  `json:"creditCardLimit" binding:"omitempty,validTransactionAmount"`
+	CreditCardPaymentDueDay    int                     `json:"creditCardPaymentDueDay" binding:"min=0,max=28"`
+	CreditCardPaymentAccountId int64                   `json:"creditCardPaymentAccountId,string" binding:"min=0"`
+	SubAccounts                []*AccountCreateRequest `json:"subAccounts" binding:"omitempty"`
+	ClientSessionId            string                  `json:"clientSessionId"`
 }
 
 // AccountModifyRequest represents all parameters of account modification request
 type AccountModifyRequest struct {
-	Id                      int64                   `json:"id,string" binding:"required,min=0"`
-	Name                    string                  `json:"name" binding:"required,notBlank,max=64"`
-	Category                AccountCategory         `json:"category" binding:"required"`
-	Icon                    int64                   `json:"icon,string" binding:"min=1"`
-	IconType                core.IconType           `json:"iconType" binding:"min=0,max=1"`
-	Color                   string                  `json:"color" binding:"required,len=6,validHexRGBColor"`
-	Currency                *string                 `json:"currency" binding:"omitempty,len=3,validCurrency"`
-	Balance                 *string                 `json:"balance" binding:"omitempty,validTransactionAmount"`
-	BalanceTime             *int64                  `json:"balanceTime" binding:"omitempty"`
-	LastReconciledTime      *int64                  `json:"lastReconciledTime" binding:"omitempty"`
-	Comment                 string                  `json:"comment" binding:"max=255"`
-	CreditCardStatementDate int                     `json:"creditCardStatementDate" binding:"min=0,max=28"`
-	CreditCardLimit         string                  `json:"creditCardLimit" binding:"omitempty,validTransactionAmount"`
-	Hidden                  bool                    `json:"hidden"`
-	SubAccounts             []*AccountModifyRequest `json:"subAccounts" binding:"omitempty"`
-	ClientSessionId         string                  `json:"clientSessionId"`
+	Id                         int64                   `json:"id,string" binding:"required,min=0"`
+	Name                       string                  `json:"name" binding:"required,notBlank,max=64"`
+	Category                   AccountCategory         `json:"category" binding:"required"`
+	Icon                       int64                   `json:"icon,string" binding:"min=1"`
+	IconType                   core.IconType           `json:"iconType" binding:"min=0,max=1"`
+	Color                      string                  `json:"color" binding:"required,len=6,validHexRGBColor"`
+	Currency                   *string                 `json:"currency" binding:"omitempty,len=3,validCurrency"`
+	Balance                    *string                 `json:"balance" binding:"omitempty,validTransactionAmount"`
+	BalanceTime                *int64                  `json:"balanceTime" binding:"omitempty"`
+	LastReconciledTime         *int64                  `json:"lastReconciledTime" binding:"omitempty"`
+	Comment                    string                  `json:"comment" binding:"max=255"`
+	CreditCardStatementDate    int                     `json:"creditCardStatementDate" binding:"min=0,max=28"`
+	CreditCardLimit            string                  `json:"creditCardLimit" binding:"omitempty,validTransactionAmount"`
+	CreditCardPaymentDueDay    int                     `json:"creditCardPaymentDueDay" binding:"min=0,max=28"`
+	CreditCardPaymentAccountId int64                   `json:"creditCardPaymentAccountId,string" binding:"min=0"`
+	Hidden                     bool                    `json:"hidden"`
+	SubAccounts                []*AccountModifyRequest `json:"subAccounts" binding:"omitempty"`
+	ClientSessionId            string                  `json:"clientSessionId"`
 }
 
 // AccountUpdateLastReconciledTimeRequest represents all parameters of account updating last reconciled time request
@@ -180,25 +188,27 @@ type AccountDeleteRequest struct {
 
 // AccountInfoResponse represents a view-object of account
 type AccountInfoResponse struct {
-	Id                      int64                    `json:"id,string"`
-	Name                    string                   `json:"name"`
-	ParentId                int64                    `json:"parentId,string"`
-	Category                AccountCategory          `json:"category"`
-	Type                    AccountType              `json:"type"`
-	Icon                    int64                    `json:"icon,string"`
-	IconType                core.IconType            `json:"iconType"`
-	Color                   string                   `json:"color"`
-	Currency                string                   `json:"currency"`
-	Balance                 string                   `json:"balance"`
-	LastReconciledTime      *int64                   `json:"lastReconciledTime,omitempty"`
-	Comment                 string                   `json:"comment"`
-	CreditCardStatementDate *int                     `json:"creditCardStatementDate,omitempty"`
-	CreditCardLimit         *string                  `json:"creditCardLimit,omitempty"`
-	DisplayOrder            int32                    `json:"displayOrder"`
-	IsAsset                 bool                     `json:"isAsset,omitempty"`
-	IsLiability             bool                     `json:"isLiability,omitempty"`
-	Hidden                  bool                     `json:"hidden"`
-	SubAccounts             AccountInfoResponseSlice `json:"subAccounts,omitempty"`
+	Id                         int64                    `json:"id,string"`
+	Name                       string                   `json:"name"`
+	ParentId                   int64                    `json:"parentId,string"`
+	Category                   AccountCategory          `json:"category"`
+	Type                       AccountType              `json:"type"`
+	Icon                       int64                    `json:"icon,string"`
+	IconType                   core.IconType            `json:"iconType"`
+	Color                      string                   `json:"color"`
+	Currency                   string                   `json:"currency"`
+	Balance                    string                   `json:"balance"`
+	LastReconciledTime         *int64                   `json:"lastReconciledTime,omitempty"`
+	Comment                    string                   `json:"comment"`
+	CreditCardStatementDate    *int                     `json:"creditCardStatementDate,omitempty"`
+	CreditCardLimit            *string                  `json:"creditCardLimit,omitempty"`
+	CreditCardPaymentDueDay    *int                     `json:"creditCardPaymentDueDay,omitempty"`
+	CreditCardPaymentAccountId *int64                   `json:"creditCardPaymentAccountId,string,omitempty"`
+	DisplayOrder               int32                    `json:"displayOrder"`
+	IsAsset                    bool                     `json:"isAsset,omitempty"`
+	IsLiability                bool                     `json:"isLiability,omitempty"`
+	Hidden                     bool                     `json:"hidden"`
+	SubAccounts                AccountInfoResponseSlice `json:"subAccounts,omitempty"`
 }
 
 // GetLastReconciledTime returns the last reconciled time of the account
@@ -215,6 +225,8 @@ func (a *Account) ToAccountInfoResponse() *AccountInfoResponse {
 	var lastReconciledTime *int64
 	var creditCardStatementDate *int
 	var creditCardLimit *string
+	var creditCardPaymentDueDay *int
+	var creditCardPaymentAccountId *int64
 
 	if a.Extend != nil {
 		lastReconciledTime = a.Extend.LastReconciledTime
@@ -233,27 +245,41 @@ func (a *Account) ToAccountInfoResponse() *AccountInfoResponse {
 		} else {
 			creditCardLimit = &defaultCreditCardAccountLimit
 		}
+
+		if a.Extend != nil && a.Extend.CreditCardPaymentDueDay != nil {
+			creditCardPaymentDueDay = a.Extend.CreditCardPaymentDueDay
+		} else {
+			creditCardPaymentDueDay = &defaultCreditCardPaymentDueDay
+		}
+
+		if a.Extend != nil && a.Extend.CreditCardPaymentAccountId != nil {
+			creditCardPaymentAccountId = a.Extend.CreditCardPaymentAccountId
+		} else {
+			creditCardPaymentAccountId = &defaultCreditCardPaymentAccountId
+		}
 	}
 
 	return &AccountInfoResponse{
-		Id:                      a.AccountId,
-		Name:                    a.Name,
-		ParentId:                a.ParentAccountId,
-		Category:                a.Category,
-		Type:                    a.Type,
-		Icon:                    a.Icon,
-		IconType:                a.IconType,
-		Color:                   a.Color,
-		Currency:                a.Currency,
-		Balance:                 utils.Int64ToString(a.Balance),
-		Comment:                 a.Comment,
-		LastReconciledTime:      lastReconciledTime,
-		CreditCardStatementDate: creditCardStatementDate,
-		CreditCardLimit:         creditCardLimit,
-		DisplayOrder:            a.DisplayOrder,
-		IsAsset:                 assetAccountCategory[a.Category],
-		IsLiability:             liabilityAccountCategory[a.Category],
-		Hidden:                  a.Hidden,
+		Id:                         a.AccountId,
+		Name:                       a.Name,
+		ParentId:                   a.ParentAccountId,
+		Category:                   a.Category,
+		Type:                       a.Type,
+		Icon:                       a.Icon,
+		IconType:                   a.IconType,
+		Color:                      a.Color,
+		Currency:                   a.Currency,
+		Balance:                    utils.Int64ToString(a.Balance),
+		Comment:                    a.Comment,
+		LastReconciledTime:         lastReconciledTime,
+		CreditCardStatementDate:    creditCardStatementDate,
+		CreditCardLimit:            creditCardLimit,
+		CreditCardPaymentDueDay:    creditCardPaymentDueDay,
+		CreditCardPaymentAccountId: creditCardPaymentAccountId,
+		DisplayOrder:               a.DisplayOrder,
+		IsAsset:                    assetAccountCategory[a.Category],
+		IsLiability:                liabilityAccountCategory[a.Category],
+		Hidden:                     a.Hidden,
 	}
 }
 
