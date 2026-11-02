@@ -458,15 +458,6 @@ func (a *AccountsApi) AccountModifyHandler(c *core.WebContext) (any, *errs.Error
 		return nil, errs.ErrUserNotFound
 	}
 
-	if accountModifyReq.CreditCardPaymentAccountId != 0 {
-		paymentAccount, lookupErr := a.accounts.GetAccountByAccountId(c, uid, accountModifyReq.CreditCardPaymentAccountId)
-
-		if lookupErr != nil || !paymentAccount.Category.IsAsset() {
-			log.Warnf(c, "[accounts.AccountModifyHandler] credit card payment account \"id:%d\" not found or is not an asset account for user \"uid:%d\"", accountModifyReq.CreditCardPaymentAccountId, uid)
-			return nil, errs.ErrAccountNotFound
-		}
-	}
-
 	accountAndSubAccounts, err := a.accounts.GetAccountAndSubAccountsByAccountId(c, uid, accountModifyReq.Id)
 
 	if err != nil {
@@ -480,6 +471,15 @@ func (a *AccountsApi) AccountModifyHandler(c *core.WebContext) (any, *errs.Error
 
 	if !exists {
 		return nil, errs.ErrAccountNotFound
+	}
+
+	if cardPaymentAccountChanged(accountModifyReq.CreditCardPaymentAccountId, mainAccount.Extend) {
+		paymentAccount, lookupErr := a.accounts.GetAccountByAccountId(c, uid, accountModifyReq.CreditCardPaymentAccountId)
+
+		if lookupErr != nil || !paymentAccount.Category.IsAsset() {
+			log.Warnf(c, "[accounts.AccountModifyHandler] credit card payment account \"id:%d\" not found or is not an asset account for user \"uid:%d\"", accountModifyReq.CreditCardPaymentAccountId, uid)
+			return nil, errs.ErrAccountNotFound
+		}
 	}
 
 	if accountModifyReq.Balance != nil {
@@ -1115,6 +1115,17 @@ func (a *AccountsApi) getToUpdateAccount(user *models.User, accountModifyReq *mo
 	}
 
 	return nil, nil
+}
+
+// cardPaymentAccountChanged reports whether a modify request sets a pay-from account different from
+// the stored one; only then is it validated, so a card whose stored pay-from account was later
+// deleted can still be edited without touching that field
+func cardPaymentAccountChanged(requested int64, stored *models.AccountExtend) bool {
+	if requested == 0 {
+		return false
+	}
+
+	return stored == nil || stored.CreditCardPaymentAccountId == nil || *stored.CreditCardPaymentAccountId != requested
 }
 
 func intPtrChanged(a, b *int) bool     { return (a == nil) != (b == nil) || (a != nil && *a != *b) }

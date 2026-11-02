@@ -16,3 +16,14 @@ func TestAccountExtendCardPaymentFields(t *testing.T) {
 	assert.Equal(t, 3, *r.CreditCardPaymentDueDay)
 	assert.Equal(t, int64(7731), *r.CreditCardPaymentAccountId)
 }
+
+func TestAccountExtendCardPaymentAccountChanged(t *testing.T) {
+	stored := int64(7731)
+	extend := &models.AccountExtend{CreditCardPaymentAccountId: &stored}
+
+	assert.False(t, cardPaymentAccountChanged(0, extend))
+	assert.False(t, cardPaymentAccountChanged(7731, extend)) // unchanged, even if 7731 was since deleted
+	assert.True(t, cardPaymentAccountChanged(9260, extend))
+	assert.True(t, cardPaymentAccountChanged(7731, nil))
+	assert.True(t, cardPaymentAccountChanged(7731, &models.AccountExtend{}))
+}
