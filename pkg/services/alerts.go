@@ -603,7 +603,8 @@ func (s *AlertService) resolveAccount(c core.Context, uid int64, parsed alerts.P
 
 // uniqueAccountByLast4 returns the one account among accounts whose name ends with last4 (preceded
 // by a non-digit or the start of the name), or nil when there is no such account or more than
-// one; hidden accounts and multi-sub-account parents are never matched
+// one; hidden accounts and multi-sub-account parents are never matched. A three-digit last4 (PNB
+// masks "XX215") matches the end of the account's last four digits.
 func uniqueAccountByLast4(accounts []*models.Account, last4 string) *models.Account {
 	var matches []*models.Account
 
@@ -612,7 +613,7 @@ func uniqueAccountByLast4(accounts []*models.Account, last4 string) *models.Acco
 			continue
 		}
 
-		if m := reAccountNameLast4.FindStringSubmatch(accounts[i].Name); m != nil && m[1] == last4 {
+		if m := reAccountNameLast4.FindStringSubmatch(accounts[i].Name); m != nil && len(last4) >= 3 && strings.HasSuffix(m[1], last4) {
 			matches = append(matches, accounts[i])
 		}
 	}

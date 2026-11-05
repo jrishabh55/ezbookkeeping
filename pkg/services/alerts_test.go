@@ -662,3 +662,13 @@ func TestIngestNeftUnmatchedAccountIsNotPaired(t *testing.T) {
 	assert.Equal(t, models.TRANSACTION_DB_TYPE_INCOME, income.Type)
 	assert.Equal(t, "Unmatched alerts", accountNameOf(t, ctx, uid, r2.TransactionId))
 }
+
+func TestUniqueAccountByLast4ThreeDigitMask(t *testing.T) {
+	pnb := &models.Account{Name: "PNB 4215"}
+	accounts := []*models.Account{pnb, {Name: "HDFC Bank 7731"}}
+
+	assert.Equal(t, pnb, uniqueAccountByLast4(accounts, "215"))
+	assert.Equal(t, pnb, uniqueAccountByLast4(accounts, "4215"))
+	assert.Nil(t, uniqueAccountByLast4(append(accounts, &models.Account{Name: "SBI 1215"}), "215"))
+	assert.Nil(t, uniqueAccountByLast4(accounts, "15"))
+}

@@ -41,8 +41,10 @@ var (
 	// requests, limit/statement notices, card bill reminders that quote the "Total/Minimum Amount
 	// Due" and end "Ignore if paid", whose "paid" would otherwise read as a debit). "Mandate" alone is not a reason to ignore: an executed
 	// autopay reads "UPI Mandate: Sent Rs.X ... Ref N" and is a real debit; setup notices have no
-	// debit verb and reminders say "will be deducted", so both still fall out below.
-	reHardIgnore = regexp.MustCompile(`(?i)\botp\b|\bone time password\b|\bis due\b|\bdue on\b|\bwill be debited\b|\bwill be deducted\b|\blimit (?:has been )?(?:increased|enhanced)\b|\btransaction limit\b|\b(?:payment|money)\s+request\b|\brequest(?:ed)?\s+(?:money|payment)\b|\bstatement\s*:|\b(?:total|minimum|min\.?)\s+(?:amount|amt\.?)\s+due\b|\bignore if (?:already )?paid\b`)
+	// debit verb and reminders say "will be deducted", so both still fall out below. A FASTag
+	// top-up ("Rs.X added to Kotak FASTag") is ignored: the funding bank SMS already records it
+	// as a transfer into the FASTag account.
+	reHardIgnore = regexp.MustCompile(`(?i)\botp\b|\bone time password\b|\bis due\b|\bdue on\b|\bwill be debited\b|\bwill be deducted\b|\blimit (?:has been )?(?:increased|enhanced)\b|\btransaction limit\b|\b(?:payment|money)\s+request\b|\brequest(?:ed)?\s+(?:money|payment)\b|\bstatement\s*:|\b(?:total|minimum|min\.?)\s+(?:amount|amt\.?)\s+due\b|\bignore if (?:already )?paid\b|\badded to [a-z ]*fastag\b`)
 	// reSoftIgnore matches promo-ish words that only mean "ignore" when the message does
 	// not otherwise look like a real transaction (debit/credit verb + amount + last-4).
 	reSoftIgnore = regexp.MustCompile(`(?i)\bcashback\b|\boffer\b|\bapply now\b`)
@@ -58,19 +60,22 @@ var (
 	reCredit  = regexp.MustCompile(`(?i)\b(credited|deposited|received|refund(ed)?|posted)`)
 	reLast4   = regexp.MustCompile(`(?i)(?:(?:a/?c|acct|account|acc\b|card)(?:\s+(?:no\.?|number|ending(?:\s+with)?))?\s*[:\-]?\s*(?:[x*]+[\s\-]*)?|\b[x*]{2,}[\s\-]*)(\d{4})\b`)
 	reRef     = regexp.MustCompile(`(?i)\b(?:ref(?:erence)?(?:\s*no\.?)?|rrn|upi(?:\s*ref)?|imps(?:\s*ref)?)\s*[:\-]?\s*(\d{6,})`)
-	reBalance = regexp.MustCompile(`(?i)\b(?:avl\.?|avail(?:able)?)?\s*bal(?:ance)?\s*(?:is)?\s*[:\-]?\s*(?:rs\.?|inr)\s*(\d[\d,]*(?:\.\d{1,2})?)`)
+	reBalance = regexp.MustCompile(`(?i)\b(?:avl\.?|avail(?:able)?)?\s*bal(?:ance)?\.?\s*(?:is)?\s*[:\-]?\s*(?:rs\.?|inr)\s*(\d[\d,]*(?:\.\d{1,2})?)`)
 	// The capture itself is deliberately case-sensitive (?-i: ...): every genuine name in
 	// these SMS (merchant, payee, bank name) is written in ALL CAPS, and turning case
 	// sensitivity back on for just this group stops it from swallowing lowercase filler
 	// words (e.g. "to block", "subject to clearing") as a false counterparty.
-	reParty = regexp.MustCompile(`(?i)(?:\bto\b|\bat\b|\bfor\s+(?:neft|imps|rtgs|upi)\s+cr-|\bfrom\b|\bby\b)\s*:?\s*((?-i:[A-Z][A-Z0-9.&' ]{2,40}?))\s*(?:\n|\.(?:\s|$)| on\b| ref\b| via\b| upi\b|\b(?:a/?c|acc(?:t|ount)?|card)\b| \d{1,2}/\d{1,2}/\d{2,4}\b|,|$)`)
+	reParty = regexp.MustCompile(`(?i)(?:\bto\b|\bat\b|\bfor\s+(?:neft|imps|rtgs|upi)\s+cr-|\bfrom\b|\bby\b|\bmobile\s+[0-9x*]+-)\s*:?\s*((?-i:[A-Z][A-Z0-9.&' ]{2,40}?))\s*(?:\n|\.(?:\s|$)| on\b| ref\b| via\b| upi\b|\b(?:a/?c|acc(?:t|ount)?|card)\b| \d{1,2}/\d{1,2}/\d{2,4}\b| \(|,|$)`)
 	// reRejectWord recognises text that starts (ignoring leading whitespace) with an account
 	// keyword or a currency marker; used to reject a party-regex match that actually names
 	// the account itself ("to Ac XX7664", "from VALLEY PHARMACY Acc XX6282") or restates the
 	// amount ("debited by INR 214.66") rather than naming a counterparty.
 	// reVehicleLast4 reads an Indian vehicle registration ("for PB23Z1100"): FASTag toll SMS name
-	// no account, so the vehicle's last four digits stand in for it (account "Kotak FASTag 1100").
-	reVehicleLast4 = regexp.MustCompile(`(?i)\bfastag\b.*\b[A-Z]{2}\s?\d{1,2}\s?[A-Z]{1,3}\s?(\d{4})\b`)
+	// no account, so the vehicle's last four digits stand in for it (account "Kotak FASTag 1100");
+	// the newer format masks it ("for VRN **1100").
+	reVehicleLast4 = regexp.MustCompile(`(?i)\bfastag\b.*(?:\b[A-Z]{2}\s?\d{1,2}\s?[A-Z]{1,3}\s?|\bvrn\s*[x*]+)(\d{4})\b`)
+	// reMaskedLast3 reads PNB's three-digit mask ("Your a/c no XX215"); only tried when no last-4 was found
+	reMaskedLast3  = regexp.MustCompile(`(?i)\ba/?c\s+no\.?\s*[x*]{2,}(\d{3})\b`)
 	reRejectWord   = regexp.MustCompile(`(?i)^\s*(?:(?:a/?c|acc(?:t|ount)?|card|rs\.?|inr)\b|(?:upi|imps|neft|rtgs)\s*\d)`)
 )
 
@@ -92,6 +97,8 @@ func Parse(sender string, text string) ParsedAlert {
 	if m := reLast4.FindStringSubmatch(text); m != nil {
 		last4 = m[1]
 	} else if m := reVehicleLast4.FindStringSubmatch(text); m != nil {
+		last4 = m[1]
+	} else if m := reMaskedLast3.FindStringSubmatch(text); m != nil {
 		last4 = m[1]
 	}
 
