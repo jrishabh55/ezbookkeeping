@@ -136,6 +136,10 @@ var businessCategoryNames = map[string]bool{
 // mistaken for last-4 "1234"
 var reAccountNameLast4 = regexp.MustCompile(`(?:^|\D)(\d{4})$`)
 
+// reAccountCommentLast4 finds standalone 4-digit numbers in an account's comment, which list the
+// extra card numbers (debit card, replaced card) whose alerts belong to that account
+var reAccountCommentLast4 = regexp.MustCompile(`\b\d{4}\b`)
+
 // keywordCategoryRule is a KeywordRule before its category name has been resolved to this
 // user's category id
 type keywordCategoryRule struct {
@@ -604,7 +608,9 @@ func (s *AlertService) resolveAccount(c core.Context, uid int64, parsed alerts.P
 // uniqueAccountByLast4 returns the one account among accounts whose name ends with last4 (preceded
 // by a non-digit or the start of the name), or nil when there is no such account or more than
 // one; hidden accounts and multi-sub-account parents are never matched. A three-digit last4 (PNB
-// masks "XX215") matches the end of the account's last four digits.
+// masks "XX215") matches the end of the account's last four digits. A full last4 also matches any
+// standalone 4-digit number in the account's comment, so a debit card or a replaced card number
+// (e.g. "Debit card 9540") resolves to the account it belongs to.
 func uniqueAccountByLast4(accounts []*models.Account, last4 string) *models.Account {
 	var matches []*models.Account
 
@@ -614,6 +620,8 @@ func uniqueAccountByLast4(accounts []*models.Account, last4 string) *models.Acco
 		}
 
 		if m := reAccountNameLast4.FindStringSubmatch(accounts[i].Name); m != nil && len(last4) >= 3 && strings.HasSuffix(m[1], last4) {
+			matches = append(matches, accounts[i])
+		} else if len(last4) == 4 && slices.Contains(reAccountCommentLast4.FindAllString(accounts[i].Comment, -1), last4) {
 			matches = append(matches, accounts[i])
 		}
 	}

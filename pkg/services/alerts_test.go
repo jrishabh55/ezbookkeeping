@@ -672,3 +672,13 @@ func TestUniqueAccountByLast4ThreeDigitMask(t *testing.T) {
 	assert.Nil(t, uniqueAccountByLast4(append(accounts, &models.Account{Name: "SBI 1215"}), "215"))
 	assert.Nil(t, uniqueAccountByLast4(accounts, "15"))
 }
+
+func TestUniqueAccountByLast4Comment(t *testing.T) {
+	hdfc := &models.Account{Name: "HDFC Bank 7731", Comment: "Debit card 9540"}
+	accounts := []*models.Account{hdfc, {Name: "PNB 4215"}}
+
+	assert.Equal(t, hdfc, uniqueAccountByLast4(accounts, "9540"))
+	assert.Equal(t, hdfc, uniqueAccountByLast4(accounts, "7731"))
+	assert.Nil(t, uniqueAccountByLast4(accounts, "540"))
+	assert.Nil(t, uniqueAccountByLast4(append(accounts, &models.Account{Name: "SBI 9540"}), "9540"))
+}
