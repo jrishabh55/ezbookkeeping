@@ -3,8 +3,6 @@ package services
 import (
 	"time"
 
-	"xorm.io/xorm"
-
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/datastore"
 	"github.com/mayswind/ezbookkeeping/pkg/errs"
@@ -60,6 +58,29 @@ func (s *TransactionTemplateService) GetAllTemplatesByUid(c core.Context, uid in
 
 	var templates []*models.TransactionTemplate
 	err := s.UserDataDB(uid).NewSession(c).Where("uid=? AND deleted=? AND template_type=?", uid, false, templateType).Find(&templates)
+
+	return templates, err
+}
+
+// GetAllScheduledTemplatesByUid returns all templates of the given schedule-carrying type (scheduled or forecast) of user
+func (s *TransactionTemplateService) GetAllScheduledTemplatesByUid(c core.Context, uid int64, templateType models.TransactionTemplateType, status models.ScheduledTransactionStatus, now int64) ([]*models.TransactionTemplate, error) {
+	if uid <= 0 {
+		return nil, errs.ErrUserIdInvalid
+	}
+
+	sess := s.UserDataDB(uid).NewSession(c).Where("uid=? AND deleted=? AND template_type=?", uid, false, templateType)
+
+	switch status {
+	case models.SCHEDULED_TRANSACTION_STATUS_ACTIVE:
+		sess = sess.And("scheduled_frequency_type<>? AND (scheduled_end_time IS NULL OR scheduled_end_time>=?)", models.TRANSACTION_SCHEDULE_FREQUENCY_TYPE_DISABLED, now)
+	case models.SCHEDULED_TRANSACTION_STATUS_DISABLED:
+		sess = sess.And("scheduled_frequency_type=?", models.TRANSACTION_SCHEDULE_FREQUENCY_TYPE_DISABLED)
+	case models.SCHEDULED_TRANSACTION_STATUS_EXPIRED:
+		sess = sess.And("scheduled_frequency_type<>? AND scheduled_end_time<?", models.TRANSACTION_SCHEDULE_FREQUENCY_TYPE_DISABLED, now)
+	}
+
+	var templates []*models.TransactionTemplate
+	err := sess.Find(&templates)
 
 	return templates, err
 }
@@ -122,7 +143,7 @@ func (s *TransactionTemplateService) CreateTemplate(c core.Context, template *mo
 	template.CreatedUnixTime = time.Now().Unix()
 	template.UpdatedUnixTime = time.Now().Unix()
 
-	return s.UserDataDB(template.Uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(template.Uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		err := s.isTemplateValid(sess, template)
 
 		if err != nil {
@@ -142,7 +163,7 @@ func (s *TransactionTemplateService) ModifyTemplate(c core.Context, template *mo
 
 	template.UpdatedUnixTime = time.Now().Unix()
 
-	return s.UserDataDB(template.Uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(template.Uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		err := s.isTemplateValid(sess, template)
 
 		if err != nil {
@@ -174,7 +195,7 @@ func (s *TransactionTemplateService) HideTemplate(c core.Context, uid int64, ids
 		UpdatedUnixTime: now,
 	}
 
-	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		updatedRows, err := sess.Cols("hidden", "updated_unix_time").Where("uid=? AND deleted=?", uid, false).In("template_id", ids).Update(updateModel)
 
 		if err != nil {
@@ -197,7 +218,7 @@ func (s *TransactionTemplateService) ModifyTemplateDisplayOrders(c core.Context,
 		templates[i].UpdatedUnixTime = time.Now().Unix()
 	}
 
-	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		for i := 0; i < len(templates); i++ {
 			template := templates[i]
 			updatedRows, err := sess.ID(template.TemplateId).Cols("display_order", "updated_unix_time").Where("uid=? AND deleted=?", uid, false).Update(template)
@@ -226,7 +247,7 @@ func (s *TransactionTemplateService) DeleteTemplate(c core.Context, uid int64, t
 		DeletedUnixTime: now,
 	}
 
-	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		deletedRows, err := sess.ID(templateId).Cols("deleted", "deleted_unix_time").Where("uid=? AND deleted=?", uid, false).Update(updateModel)
 
 		if err != nil {
@@ -252,7 +273,7 @@ func (s *TransactionTemplateService) DeleteAllTemplates(c core.Context, uid int6
 		DeletedUnixTime: now,
 	}
 
-	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		_, err := sess.Cols("deleted", "deleted_unix_time").Where("uid=? AND deleted=?", uid, false).Update(updateModel)
 
 		if err != nil {
@@ -263,7 +284,7 @@ func (s *TransactionTemplateService) DeleteAllTemplates(c core.Context, uid int6
 	})
 }
 
-func (s *TransactionTemplateService) isTemplateValid(sess *xorm.Session, template *models.TransactionTemplate) error {
+func (s *TransactionTemplateService) isTemplateValid(sess datastore.DatabaseSession, template *models.TransactionTemplate) error {
 	// check accounts are valid
 	sourceAccount := &models.Account{}
 	destinationAccount := &models.Account{}

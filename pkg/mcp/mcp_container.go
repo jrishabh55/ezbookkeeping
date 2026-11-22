@@ -80,6 +80,7 @@ func InitializeMCPHandlers(config *settings.Config) error {
 	registerMCPTextContentToolHandler(container, MCPQueryLatestExchangeRatesToolHandler)
 	registerMCPTextContentToolHandler(container, MCPQueryTransactionsToolHandler)
 	registerMCPTextContentToolHandler(container, MCPAddTransactionToolHandler)
+	registerMCPTextContentToolHandler(container, MCPDeleteTransactionToolHandler)
 	registerMCPTextContentToolHandler(container, MCPQueryForecastToolHandler)
 
 	Container = container
@@ -153,10 +154,17 @@ func handleTool[T MCPTextContent | MCPImageContent | MCPAudioContent | MCPResour
 }
 
 func createNewMCPToolInfo[T MCPTextContent | MCPImageContent | MCPAudioContent | MCPResourceLink | MCPEmbeddedResource](name string, handler MCPToolHandler[T]) *MCPTool {
+	dataOperationType := handler.DataOperationType()
 	mcpTool := &MCPTool{
 		ToolType:    handler.ToolType(),
 		Name:        name,
 		Description: handler.Description(),
+		Annotations: &MCPToolAnnotations{
+			ReadOnlyHint:    dataOperationType == MCP_TOOL_DATA_OPERATION_READ_ONLY,
+			DestructiveHint: dataOperationType != MCP_TOOL_DATA_OPERATION_READ_ONLY && dataOperationType != MCP_TOOL_DATA_OPERATION_ADD,
+			IdempotentHint:  handler.IsIdempotent(),
+			OpenWorldHint:   handler.DependsOnExternalData(),
+		},
 	}
 
 	schemeGenerator := jsonschema.Reflector{

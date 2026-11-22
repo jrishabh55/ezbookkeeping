@@ -26,6 +26,7 @@ import TransactionCategoryListPage from '@/views/desktop/categories/ListPage.vue
 import TransactionTagListPage from '@/views/desktop/tags/ListPage.vue';
 
 import TransactionTemplateListPage from '@/views/desktop/templates/ListPage.vue';
+import ScheduledTransactionListPage from '@/views/desktop/schedules/ListPage.vue';
 
 import UserCustomIconListPage from '@/views/desktop/customicons/ListPage.vue';
 
@@ -208,22 +209,16 @@ const router = createRouter({
                 {
                     path: '/template/list',
                     component: TransactionTemplateListPage,
-                    beforeEnter: checkLogin,
-                    props: {
-                        initType: TemplateType.Normal.type
-                    }
+                    beforeEnter: checkLogin
                 },
                 {
                     path: '/schedule/list',
-                    component: TransactionTemplateListPage,
-                    beforeEnter: checkLogin,
-                    props: {
-                        initType: TemplateType.Schedule.type
-                    }
+                    component: ScheduledTransactionListPage,
+                    beforeEnter: checkLogin
                 },
                 {
                     path: '/forecast/list',
-                    component: TransactionTemplateListPage,
+                    component: ScheduledTransactionListPage,
                     beforeEnter: checkLogin,
                     props: {
                         initType: TemplateType.Forecast.type

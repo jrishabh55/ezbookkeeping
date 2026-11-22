@@ -1,11 +1,10 @@
 package services
 
 import (
+	"github.com/mayswind/ezbookkeeping/pkg/datastore"
 	"sort"
 	"strings"
 	"time"
-
-	"xorm.io/xorm"
 
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/errs"
@@ -85,7 +84,7 @@ func (s *InvoiceService) CreateProduct(c core.Context, product *models.Product) 
 	product.CreatedUnixTime = time.Now().Unix()
 	product.UpdatedUnixTime = product.CreatedUnixTime
 
-	return s.UserDataDB(product.Uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(product.Uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		_, err := sess.Insert(product)
 		return err
 	})
@@ -107,7 +106,7 @@ func (s *InvoiceService) ModifyProduct(c core.Context, product *models.Product) 
 
 	product.UpdatedUnixTime = time.Now().Unix()
 
-	return s.UserDataDB(product.Uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(product.Uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		updatedRows, err := sess.Cols("name", "description", "sac", "default_rate", "currency", "renewal_months", "default_renewal_mode", "archived", "updated_unix_time").
 			Where("uid=? AND deleted=? AND product_id=?", product.Uid, false, product.ProductId).Update(product)
 
@@ -133,7 +132,7 @@ func (s *InvoiceService) DeleteProduct(c core.Context, uid int64, productId int6
 
 	now := time.Now().Unix()
 
-	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		inUse, err := sess.Table("invoice_line").Join("INNER", "invoice", "invoice.invoice_id=invoice_line.invoice_id").
 			Where("invoice_line.uid=? AND invoice_line.product_id=? AND invoice.deleted=?", uid, productId, false).Count()
 
@@ -268,7 +267,7 @@ func (s *InvoiceService) LinkInvoiceLinesToProduct(c core.Context, uid int64, it
 
 	var linked int64
 
-	err = s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	err = s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		linked, err = sess.Cols("product_id").Where("uid=? AND product_id=?", uid, 0).In("line_id", lineIds).Update(&models.InvoiceLine{ProductId: productId})
 		return err
 	})

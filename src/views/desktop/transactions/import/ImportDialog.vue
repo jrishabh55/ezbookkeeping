@@ -321,14 +321,12 @@
     </v-dialog>
 
     <confirm-dialog ref="confirmDialog"/>
-    <snack-bar ref="snackbar" />
     <input ref="fileInput" type="file" style="display: none" :accept="supportedImportFileExtensions" :multiple="isAIImageImport" @change="setImportFile($event)" />
 </template>
 
 <script setup lang="ts">
 import type { StepBarItem } from '@/components/desktop/StepsBar.vue';
 import ConfirmDialog from '@/components/desktop/ConfirmDialog.vue';
-import SnackBar from '@/components/desktop/SnackBar.vue';
 import ImportTransactionOptions from '@/components/desktop/ImportTransactionOptions.vue';
 import ImportTransactionDefineColumnTab from './tabs/ImportTransactionDefineColumnTab.vue';
 import ImportTransactionExecuteCustomScriptTab from './tabs/ImportTransactionExecuteCustomScriptTab.vue';
@@ -347,6 +345,7 @@ import { useTransactionsStore } from '@/stores/transaction.ts';
 import { useImportPresetsStore } from '@/stores/importPreset.ts';
 import { useOverviewStore } from '@/stores/overview.ts';
 import { useStatisticsStore } from '@/stores/statistics.ts';
+import { useDesktopPageStore } from '@/stores/desktopPage.ts';
 
 import { itemAndIndex } from '@/core/base.ts';
 import { TransactionType } from '@/core/transaction.ts';
@@ -390,7 +389,6 @@ import {
 } from '@mdi/js';
 
 type ConfirmDialogType = InstanceType<typeof ConfirmDialog>;
-type SnackBarType = InstanceType<typeof SnackBar>;
 type ImportTransactionDefineColumnTabType = InstanceType<typeof ImportTransactionDefineColumnTab>;
 type ImportTransactionExecuteCustomScriptTabType = InstanceType<typeof ImportTransactionExecuteCustomScriptTab>;
 type ImportTransactionCheckDataTabType = InstanceType<typeof ImportTransactionCheckDataTab>;
@@ -417,9 +415,9 @@ const transactionsStore = useTransactionsStore();
 const importPresetsStore = useImportPresetsStore();
 const overviewStore = useOverviewStore();
 const statisticsStore = useStatisticsStore();
+const desktopPageStore = useDesktopPageStore();
 
 const confirmDialog = useTemplateRef<ConfirmDialogType>('confirmDialog');
-const snackbar = useTemplateRef<SnackBarType>('snackbar');
 const importTransactionDefineColumnTab = useTemplateRef<ImportTransactionDefineColumnTabType>('importTransactionDefineColumnTab');
 const importTransactionExecuteCustomScriptTab = useTemplateRef<ImportTransactionExecuteCustomScriptTabType>('importTransactionExecuteCustomScriptTab');
 const importTransactionCheckDataTab = useTemplateRef<ImportTransactionCheckDataTabType>('importTransactionCheckDataTab');
@@ -826,7 +824,7 @@ function loadPreset(presetId: string, silent: boolean): void {
         if (!originalFileType) {
             logger.error(`failed to load preset ${preset.name} because the original file type ${preset.fileType} does not exist`);
             if (!silent) {
-                snackbar.value?.showError('An error occurred');
+                desktopPageStore.addErrorToast('An error occurred');
             }
             return;
         }
@@ -834,7 +832,7 @@ function loadPreset(presetId: string, silent: boolean): void {
         if (preset.fileSubType && !originalFileType.subTypes?.find(subType => subType.type === preset.fileSubType)) {
             logger.error(`failed to load preset ${preset.name} because the original file type ${preset.fileType} does not support the sub type ${preset.fileSubType}`);
             if (!silent) {
-                snackbar.value?.showError('An error occurred');
+                desktopPageStore.addErrorToast('An error occurred');
             }
             return;
         }
@@ -876,7 +874,7 @@ function loadPreset(presetId: string, silent: boolean): void {
         loadingPreset.value = false;
 
         if (!error.processed && !silent) {
-            snackbar.value?.showError(error);
+            desktopPageStore.addErrorToast(error);
         }
     });
 }
@@ -975,14 +973,14 @@ function reloadBasisData(): void {
 
         // show info if all up to date
         if (isAllUpToDate) {
-            snackbar.value?.showMessage('Data is up to date');
+            desktopPageStore.addToast('Data is up to date');
             return;
         }
 
         // show error if any
         for (const result of results) {
             if (result.status === 'rejected' && !result.reason?.isUpToDate) {
-                snackbar.value?.showError(result.reason);
+                desktopPageStore.addErrorToast(result.reason);
                 return;
             }
         }
@@ -990,7 +988,7 @@ function reloadBasisData(): void {
         // show info if one of them updated
         for (const result of results) {
             if (result.status === 'fulfilled') {
-                snackbar.value?.showMessage('Data has been updated');
+                desktopPageStore.addToast('Data has been updated');
                 importTransactionCheckDataTab.value?.updateAllTransactionsIsValid();
                 return;
             }
@@ -1033,7 +1031,7 @@ function batchRecognizeImages(): Promise<void> {
             importImageCancelRecognizingUuid.value = '';
 
             if (allFailed) {
-                snackbar.value?.showError('Unable to recognize image');
+                desktopPageStore.addErrorToast('Unable to recognize image');
                 reject();
             } else {
                 resolve();
@@ -1096,7 +1094,7 @@ function cancelBatchRecognizeImages(): void {
         transactionsStore.cancelRecognizeReceiptImage(importImageCancelRecognizingUuid.value);
     }
 
-    snackbar.value?.showMessage('User Canceled');
+    desktopPageStore.addToast('User Canceled');
 }
 
 function parseData(): void {
@@ -1112,7 +1110,7 @@ function parseData(): void {
 
     if (isAIImageImport.value && currentStep.value === 'uploadFile') {
         if (importImageFiles.value.length < 1) {
-            snackbar.value?.showError('Please select a file to import');
+            desktopPageStore.addErrorToast('Please select a file to import');
             return;
         }
 
@@ -1124,7 +1122,7 @@ function parseData(): void {
             if (!importTransactions.value || importTransactions.value.length < 1) {
                 if (submitting.value) {
                     currentStep.value = 'uploadFile';
-                    snackbar.value?.showMessage('No data to import');
+                    desktopPageStore.addToast('No data to import');
                 }
                 submitting.value = false;
                 return;
@@ -1152,7 +1150,7 @@ function parseData(): void {
         return;
     } else if (isAIImageImport.value && currentStep.value === 'recognizeImages') {
         if (!importTransactions.value || importTransactions.value.length < 1) {
-            snackbar.value?.showError('No data to import');
+            desktopPageStore.addErrorToast('No data to import');
             return;
         }
 
@@ -1170,13 +1168,13 @@ function parseData(): void {
 
     if (!isImportDataFromTextbox.value) {
         if (!importFile.value) {
-            snackbar.value?.showError('Please select a file to import');
+            desktopPageStore.addErrorToast('Please select a file to import');
             return;
         }
 
         if (allSupportedEncodings.value) {
             if (fileEncoding.value === 'auto' && !autoDetectedFileEncoding.value) {
-                snackbar.value?.showError('Unable to detect the file encoding automatically. Please select the actual encoding.');
+                desktopPageStore.addErrorToast('Unable to detect the file encoding automatically. Please select the actual encoding.');
                 return;
             }
         }
@@ -1184,7 +1182,7 @@ function parseData(): void {
         uploadFile = importFile.value;
     } else if (isImportDataFromTextbox.value) {
         if (!importData.value) {
-            snackbar.value?.showError('No data to import');
+            desktopPageStore.addErrorToast('No data to import');
             return;
         }
 
@@ -1197,13 +1195,13 @@ function parseData(): void {
         } else if (type === 'ai_txt') {
             uploadFile = KnownFileType.TXT.createFile(importData.value, 'import');
         } else {
-            snackbar.value?.showError('Parameter Invalid');
+            desktopPageStore.addErrorToast('Parameter Invalid');
             return;
         }
 
         encoding = UTF_8;
     } else { // should not happen, but ts would check whether uploadFile has been assigned a value
-        snackbar.value?.showMessage('An error occurred');
+        desktopPageStore.addToast('An error occurred');
         return;
     }
 
@@ -1249,7 +1247,7 @@ function parseData(): void {
             } else {
                 parsedFileData.value = undefined;
                 parsedFileColumnSeparator.value = undefined;
-                snackbar.value?.showError('No data to import');
+                desktopPageStore.addErrorToast('No data to import');
             }
 
             submitting.value = false;
@@ -1257,7 +1255,7 @@ function parseData(): void {
             submitting.value = false;
 
             if (!error.processed) {
-                snackbar.value?.showError(error);
+                desktopPageStore.addErrorToast(error);
             }
         });
     } else {
@@ -1344,7 +1342,7 @@ function parseData(): void {
             submitting.value = false;
 
             if (!error.processed) {
-                snackbar.value?.showError(error);
+                desktopPageStore.addErrorToast(error);
             }
         });
     }
@@ -1381,7 +1379,7 @@ function submit(): void {
             if (importTransaction.valid && importTransaction.selected) {
                 transactions.push(importTransaction);
             } else if (!importTransaction.valid && importTransaction.selected) {
-                snackbar.value?.showError('Cannot import invalid transactions');
+                desktopPageStore.addErrorToast('Cannot import invalid transactions');
                 return;
             } else if (!importTransaction.selected && importTransaction.matchedTransactionId) {
                 matchedTransactions.push(importTransaction);
@@ -1390,7 +1388,7 @@ function submit(): void {
     }
 
     if (transactions.length < 1 && matchedTransactions.length < 1) {
-        snackbar.value?.showError('No data to import');
+        desktopPageStore.addErrorToast('No data to import');
         return;
     }
 
@@ -1543,7 +1541,7 @@ function checkImportResult(force: boolean): void {
                 totalCount: error.error.context?.totalCount ?? submittedTransactions.value.length
             }, error.error);
         } else if (force) {
-            snackbar.value?.showError(error);
+            desktopPageStore.addErrorToast(error);
         }
     }).finally(() => {
         submitting.value = false;

@@ -56,7 +56,7 @@ export function useForecastSummaryWidgetBase(props: CommonForecastSummaryWidgetP
 
         return Promise.all([
             accountsStore.loadAllAccounts({ force: false }),
-            transactionTemplatesStore.loadAllTemplates({ templateType: TemplateType.Forecast.type, force: false }),
+            transactionTemplatesStore.loadAllScheduledTransactions({ templateType: TemplateType.Forecast.type }),
             services.getForecast({ startMonth: startMonth, months: 1 })
         ]).then(([, templates, response]) => {
             const data = response.data;

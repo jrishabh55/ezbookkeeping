@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	"xorm.io/xorm"
-
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/datastore"
 	"github.com/mayswind/ezbookkeeping/pkg/errs"
@@ -140,7 +138,7 @@ func (s *BucketService) CreateBucket(c core.Context, bucket *models.Bucket, acco
 	bucket.CreatedUnixTime = time.Now().Unix()
 	bucket.UpdatedUnixTime = time.Now().Unix()
 
-	return s.UserDataDB(bucket.Uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(bucket.Uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		_, err := sess.Insert(bucket)
 
 		if err != nil {
@@ -182,7 +180,7 @@ func (s *BucketService) ModifyBucket(c core.Context, bucket *models.Bucket, acco
 
 	bucket.UpdatedUnixTime = time.Now().Unix()
 
-	return s.UserDataDB(bucket.Uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(bucket.Uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		existingBucket := &models.Bucket{}
 		has, err := sess.Where("uid=? AND deleted=? AND bucket_id=?", bucket.Uid, false, bucket.BucketId).Get(existingBucket)
 
@@ -284,7 +282,7 @@ func (s *BucketService) ModifyBucketDisplayOrders(c core.Context, uid int64, buc
 		buckets[i].UpdatedUnixTime = time.Now().Unix()
 	}
 
-	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		for i := 0; i < len(buckets); i++ {
 			bucket := buckets[i]
 			updatedRows, err := sess.ID(bucket.BucketId).Where("uid=? AND deleted=?", uid, false).Cols("display_order", "updated_unix_time").Update(bucket)
@@ -317,7 +315,7 @@ func (s *BucketService) DeleteBucket(c core.Context, uid int64, bucketId int64) 
 		DeletedUnixTime: now,
 	}
 
-	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		deletedRows, err := sess.ID(bucketId).Where("uid=? AND deleted=?", uid, false).Cols("deleted", "deleted_unix_time").Update(updateModel)
 
 		if err != nil {
@@ -357,7 +355,7 @@ func (s *BucketService) AllocateToBucket(c core.Context, bucketTransaction *mode
 	bucketTransaction.CreatedUnixTime = time.Now().Unix()
 	bucketTransaction.UpdatedUnixTime = time.Now().Unix()
 
-	return s.UserDataDB(bucketTransaction.Uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(bucketTransaction.Uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		if err := s.applyBucketBalanceDelta(sess, bucketTransaction.Uid, bucketTransaction.BucketId, bucketTransaction.Amount); err != nil {
 			return err
 		}
@@ -393,7 +391,7 @@ func (s *BucketService) WithdrawFromBucket(c core.Context, bucketTransaction *mo
 	bucketTransaction.CreatedUnixTime = time.Now().Unix()
 	bucketTransaction.UpdatedUnixTime = time.Now().Unix()
 
-	return s.UserDataDB(bucketTransaction.Uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(bucketTransaction.Uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		if err := s.applyBucketBalanceDelta(sess, bucketTransaction.Uid, bucketTransaction.BucketId, -bucketTransaction.Amount); err != nil {
 			return err
 		}
@@ -415,7 +413,7 @@ func (s *BucketService) DeleteBucketTransaction(c core.Context, uid int64, trans
 		return errs.ErrBucketTransactionNotFound
 	}
 
-	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		// Get the transaction
 		bucketTransaction := &models.BucketTransaction{}
 		has, err := sess.Where("uid=? AND bucket_transaction_id=?", uid, transactionId).Get(bucketTransaction)
@@ -445,7 +443,7 @@ func (s *BucketService) DeleteBucketTransaction(c core.Context, uid int64, trans
 }
 
 // applyBucketBalanceDelta changes the bucket balance atomically, refusing to go below zero, then updates the goal status
-func (s *BucketService) applyBucketBalanceDelta(sess *xorm.Session, uid int64, bucketId int64, delta int64) error {
+func (s *BucketService) applyBucketBalanceDelta(sess datastore.DatabaseSession, uid int64, bucketId int64, delta int64) error {
 	now := time.Now().Unix()
 
 	updatedRows, err := sess.Table(&models.Bucket{}).

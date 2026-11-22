@@ -8,6 +8,7 @@ import type { TransactionDraft } from '@/models/transaction.ts';
 
 import { isString, isObject } from './common.ts';
 import { isEnableApplicationLock } from './settings.ts';
+import { clearAllUserCaches } from './cache.ts';
 import logger from './logger.ts';
 
 const appLockSecretBaseStringPrefix: string = 'EBK_LOCK_SECRET_';
@@ -73,7 +74,7 @@ export function getUserAppLockState(): ApplicationLockState | null {
     return appLockState as ApplicationLockState;
 }
 
-export function unlockTokenByWebAuthn(credentialId: string, userName: string, userSecret: string): void {
+export function unlockTokenByWebAuthn(credentialId: string, userName: string, userSecret: string): boolean {
     const webauthnConfigData = localStorage.getItem(webauthnConfigLocalStorageKey);
 
     if (!webauthnConfigData) {
@@ -98,12 +99,17 @@ export function unlockTokenByWebAuthn(credentialId: string, userName: string, us
     };
     const token = getDecryptedToken(encryptedToken, appLockState);
 
+    if (!token || token.length < 8) { // v2 prefix "ebk-tk-"
+        throw new Error('Failed to decrypt token');
+    }
+
     sessionStorage.setItem(appLockStateSessionStorageKey, JSON.stringify(appLockState));
     sessionStorage.setItem(encryptedTokenSessionStorageKey, encryptedToken);
     sessionStorage.setItem(tokenSessionStorageKey, token);
+    return true;
 }
 
-export function unlockTokenByPinCode(userName: string, pinCode: string): void {
+export function unlockTokenByPinCode(userName: string, pinCode: string): boolean {
     const encryptedToken = localStorage.getItem(tokenLocalStorageKey);
 
     if (!encryptedToken) {
@@ -116,9 +122,14 @@ export function unlockTokenByPinCode(userName: string, pinCode: string): void {
     };
     const token = getDecryptedToken(encryptedToken, appLockState);
 
+    if (!token || token.length < 8) { // v2 prefix "ebk-tk-"
+        throw new Error('Failed to decrypt token');
+    }
+
     sessionStorage.setItem(appLockStateSessionStorageKey, JSON.stringify(appLockState));
     sessionStorage.setItem(encryptedTokenSessionStorageKey, encryptedToken);
     sessionStorage.setItem(tokenSessionStorageKey, token);
+    return true;
 }
 
 export function encryptToken(userName: string, pinCode: string): void {
@@ -252,7 +263,19 @@ export function getCurrentUserInfo(): UserBasicInfo | null {
 
 export function updateCurrentUserInfo(user: UserBasicInfo): void {
     if (isObject(user)) {
-        localStorage.setItem(userInfoLocalStorageKey, JSON.stringify(user));
+        // trim token in the user avatar url
+        const storedUser = { ...user };
+
+        if (storedUser.avatar && isString(storedUser.avatar)) {
+            const avatarUrl = new URL(storedUser.avatar);
+
+            if (avatarUrl.searchParams.has('token')) {
+                avatarUrl.searchParams.delete('token');
+                storedUser.avatar = avatarUrl.toString();
+            }
+        }
+
+        localStorage.setItem(userInfoLocalStorageKey, JSON.stringify(storedUser));
     }
 }
 
@@ -311,6 +334,10 @@ export function clearCurrentSessionToken(): void {
 }
 
 export function clearCurrentTokenAndUserInfo(clearAppLockState: boolean): void {
+    clearAllUserCaches().catch(error => {
+        logger.warn('failed to clear user caches', error);
+    });
+
     if (clearAppLockState) {
         sessionStorage.removeItem(appLockStateSessionStorageKey);
     }

@@ -556,7 +556,7 @@ import {
     TransactionQuickSaveButtonStyle,
     TransactionQuickAddButtonActionType
 } from '@/core/transaction.ts';
-import { ScheduledTemplateFrequencyType, TemplateType, isScheduleLike } from '@/core/template.ts';
+import { ScheduledTemplateFrequencyType, isScheduleLike } from '@/core/template.ts';
 import { KnownFileType } from '@/core/file.ts';
 
 import { TRANSACTION_MAX_AMOUNT, TRANSACTION_MIN_AMOUNT } from '@/consts/transaction.ts';
@@ -956,7 +956,7 @@ function init(): void {
         accountsStore.loadAllAccounts({ force: false }),
         transactionCategoriesStore.loadAllCategories({ force: false }),
         transactionTagsStore.loadAllTags({ force: false }),
-        transactionTemplatesStore.loadAllTemplates({ force: false, templateType: TemplateType.Normal.type })
+        transactionTemplatesStore.loadAllNormalTemplates({ force: false })
     ];
 
     if (pageTypeAndMode.type === TransactionEditPageType.Transaction) {
@@ -1027,8 +1027,8 @@ function init(): void {
         if (pageTypeAndMode.type === TransactionEditPageType.Transaction) {
             if (query['id'] && responses[4] instanceof Transaction) {
                 fromTransaction = responses[4];
-            } else if (query['templateId'] && transactionTemplatesStore.allTransactionTemplatesMap && transactionTemplatesStore.allTransactionTemplatesMap[TemplateType.Normal.type]) {
-                fromTransaction = (transactionTemplatesStore.allTransactionTemplatesMap[TemplateType.Normal.type] as Record<string, TransactionTemplate>)[query['templateId']] ?? null;
+            } else if (query['templateId'] && transactionTemplatesStore.allNormalTransactionTemplatesMap) {
+                fromTransaction = (transactionTemplatesStore.allNormalTransactionTemplatesMap as Record<string, TransactionTemplate>)[query['templateId']] ?? null;
 
                 if (fromTransaction) {
                     addByTemplateId.value = fromTransaction.id;

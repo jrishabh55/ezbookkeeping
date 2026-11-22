@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"xorm.io/builder"
-	"xorm.io/xorm"
 
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/datastore"
@@ -197,7 +196,7 @@ func (s *BudgetService) CreateBudget(c core.Context, budget *models.Budget, scop
 	budget.CreatedUnixTime = time.Now().Unix()
 	budget.UpdatedUnixTime = time.Now().Unix()
 
-	return s.UserDataDB(budget.Uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(budget.Uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		_, err := sess.Insert(budget)
 
 		if err != nil {
@@ -238,7 +237,7 @@ func (s *BudgetService) ModifyBudget(c core.Context, budget *models.Budget, scop
 
 	budget.UpdatedUnixTime = time.Now().Unix()
 
-	return s.UserDataDB(budget.Uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(budget.Uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		existingBudget := &models.Budget{}
 		has, err := sess.Where("uid=? AND deleted=? AND budget_id=?", budget.Uid, false, budget.BudgetId).Get(existingBudget)
 
@@ -336,7 +335,7 @@ func (s *BudgetService) ModifyBudgetDisplayOrders(c core.Context, uid int64, bud
 		budgets[i].UpdatedUnixTime = time.Now().Unix()
 	}
 
-	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		for i := 0; i < len(budgets); i++ {
 			budget := budgets[i]
 			updatedRows, err := sess.ID(budget.BudgetId).Where("uid=? AND deleted=?", uid, false).Cols("display_order", "updated_unix_time").Update(budget)
@@ -369,7 +368,7 @@ func (s *BudgetService) DeleteBudget(c core.Context, uid int64, budgetId int64) 
 		DeletedUnixTime: now,
 	}
 
-	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		deletedRows, err := sess.ID(budgetId).Where("uid=? AND deleted=?", uid, false).Cols("deleted", "deleted_unix_time").Update(updateModel)
 
 		if err != nil {

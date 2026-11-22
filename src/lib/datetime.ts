@@ -468,7 +468,7 @@ class MomentDateTime implements DateTime {
 }
 
 export function getAllowedYearRange(): [number, number] {
-    return [2000, moment().year() + 1];
+    return [2000, moment().year() + 5];
 }
 
 export function isYear0BasedMonthValid(year: number, month0base: number): boolean {
@@ -477,6 +477,14 @@ export function isYear0BasedMonthValid(year: number, month0base: number): boolea
     }
 
     return year > 0 && month0base >= 0 && month0base <= 11;
+}
+
+export function isYear1BasedMonthValid(year: number, month1base: number): boolean {
+    if (!isNumber(year) || !isNumber(month1base)) {
+        return false;
+    }
+
+    return year > 0 && month1base >= 1 && month1base <= 12;
 }
 
 export function getYear0BasedMonthObjectFromUnixTime(unixTime: number): Year0BasedMonth {
@@ -509,6 +517,30 @@ export function getYear0BasedMonthObjectFromString(yearMonth: TextualYearMonth |
     return {
         year: year,
         month0base: month0base
+    };
+}
+
+export function getYear1BasedMonthObjectFromString(yearMonth: TextualYearMonth | ''): Year1BasedMonth | null {
+    if (!isString(yearMonth)) {
+        return null;
+    }
+
+    const items = yearMonth.split('-');
+
+    if (items.length !== 2) {
+        return null;
+    }
+
+    const year = parseInt(items[0] as string);
+    const month1base = parseInt(items[1] as string);
+
+    if (!isYear1BasedMonthValid(year, month1base)) {
+        return null;
+    }
+
+    return {
+        year: year,
+        month1base: month1base
     };
 }
 
@@ -1144,17 +1176,20 @@ export function getAllBillingCyclesStartAndEndUnixTimes(startUnixTime: number, e
     while (unixTime <= endUnixTime) {
         const currentDateTime = parseDateTimeFromUnixTime(unixTime);
         let currentBillingCycleMinDateTime: DateTime;
+        let currentBillingCycleMaxDateTime: DateTime;
 
         if (currentDateTime.getGregorianCalendarDay() > statementDate) {
             const currentMonthMinDateTime = getMonthFirstDateTimeBySpecifiedUnixTime(unixTime);
+            const nextMonthMinDateTime = currentMonthMinDateTime.add(1, 'months');
             currentBillingCycleMinDateTime = currentMonthMinDateTime.add(statementDate, 'days');
+            currentBillingCycleMaxDateTime = nextMonthMinDateTime.add(statementDate, 'days').subtract(1, 'seconds');
         } else {
             const currentMonthMinDateTime = getMonthFirstDateTimeBySpecifiedUnixTime(unixTime);
             const previousMonthMinDateTime = currentMonthMinDateTime.add(-1, 'months');
             currentBillingCycleMinDateTime = previousMonthMinDateTime.add(statementDate, 'days');
+            currentBillingCycleMaxDateTime = currentMonthMinDateTime.add(statementDate, 'days').subtract(1, 'seconds');
         }
 
-        const currentBillingCycleMaxDateTime = currentBillingCycleMinDateTime.add(1, 'months').subtract(1, 'seconds');
         const yearMonth: Year0BasedMonth = {
             year: currentBillingCycleMaxDateTime.getGregorianCalendarYear(),
             month0base: currentBillingCycleMaxDateTime.getGregorianCalendarMonth() - 1

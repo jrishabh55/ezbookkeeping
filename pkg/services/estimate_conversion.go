@@ -1,11 +1,10 @@
 package services
 
 import (
+	"github.com/mayswind/ezbookkeeping/pkg/datastore"
 	"strconv"
 	"time"
 	"unicode/utf8"
-
-	"xorm.io/xorm"
 
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/errs"
@@ -77,7 +76,7 @@ func estimateMilestoneLineText(label string, percent int32, estimateNumber strin
 
 // estimateInvoiceLines returns the lines an invoice made from the estimate gets, checking it can still be made: every line
 // copied (milestoneId 0; only for an estimate without milestones and not invoiced yet) or the one line of an open milestone
-func estimateInvoiceLines(sess *xorm.Session, estimate *models.Invoice, estimateLines []*models.InvoiceLine, milestoneId int64) ([]*models.InvoiceLine, error) {
+func estimateInvoiceLines(sess datastore.DatabaseSession, estimate *models.Invoice, estimateLines []*models.InvoiceLine, milestoneId int64) ([]*models.InvoiceLine, error) {
 	// a declined estimate is not invoiced, and only the latest version of a revised estimate can be
 	if estimate.EstimateStatus == models.ESTIMATE_STATUS_DECLINED || estimate.EstimateStatus == models.ESTIMATE_STATUS_SUPERSEDED {
 		return nil, errs.ErrEstimateStatusInvalid
@@ -253,7 +252,7 @@ func (s *InvoiceService) CreateInvoiceFromEstimate(c core.Context, invoice *mode
 
 	invoice.EstimateId = estimateId
 
-	return s.UserDataDB(invoice.Uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(invoice.Uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		// writing the estimate row first makes two conversions of the same estimate (or a conversion and an edit or delete of it)
 		// wait for each other; everything below then re-reads the estimate and its milestones as the previous one left them.
 		// Conversion locks only the estimate row: it reads existing invoices with plain SELECTs, writes milestone rows and inserts a

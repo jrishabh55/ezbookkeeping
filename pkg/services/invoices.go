@@ -10,8 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"xorm.io/xorm"
-
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/datastore"
 	"github.com/mayswind/ezbookkeeping/pkg/errs"
@@ -138,7 +136,7 @@ func (s *InvoiceService) saveProfile(c core.Context, profile *models.InvoiceProf
 	now := time.Now().Unix()
 	profile.UpdatedUnixTime = now
 
-	return s.UserDataDB(profile.Uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(profile.Uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		exists, err := sess.Where("uid=?", profile.Uid).Exist(&models.InvoiceProfile{})
 
 		if err != nil {
@@ -229,7 +227,7 @@ func (s *InvoiceService) CreateCustomer(c core.Context, customer *models.Custome
 	customer.CreatedUnixTime = time.Now().Unix()
 	customer.UpdatedUnixTime = customer.CreatedUnixTime
 
-	return s.UserDataDB(customer.Uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(customer.Uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		_, err := sess.Insert(customer)
 		return err
 	})
@@ -247,7 +245,7 @@ func (s *InvoiceService) ModifyCustomer(c core.Context, customer *models.Custome
 
 	customer.UpdatedUnixTime = time.Now().Unix()
 
-	return s.UserDataDB(customer.Uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(customer.Uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		updatedRows, err := sess.Cols("name", "contact_name", "address_lines", "email", "phone", "website", "account_number", "pan", "terms_days", "notes", "gstin", "tax_type", "tax_rate", "updated_unix_time").
 			Where("uid=? AND deleted=? AND customer_id=?", customer.Uid, false, customer.CustomerId).Update(customer)
 
@@ -273,7 +271,7 @@ func (s *InvoiceService) DeleteCustomer(c core.Context, uid int64, customerId in
 
 	now := time.Now().Unix()
 
-	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		inUse, err := sess.Where("uid=? AND deleted=? AND customer_id=?", uid, false, customerId).Exist(&models.Invoice{})
 
 		if err != nil {
@@ -506,7 +504,7 @@ func (s *InvoiceService) prepareInvoice(c core.Context, invoice *models.Invoice,
 }
 
 // checkInvoiceNumberUnique returns ErrInvoiceNumberAlreadyExists if another non-deleted row of the same kind uses the number
-func checkInvoiceNumberUnique(sess *xorm.Session, invoice *models.Invoice) error {
+func checkInvoiceNumberUnique(sess datastore.DatabaseSession, invoice *models.Invoice) error {
 	exists, err := sess.Where("uid=? AND deleted=? AND kind=? AND number=? AND invoice_id<>?", invoice.Uid, false, invoice.Kind, invoice.Number, invoice.InvoiceId).Exist(&models.Invoice{})
 
 	if err != nil {
@@ -525,7 +523,7 @@ func (s *InvoiceService) CreateInvoice(c core.Context, invoice *models.Invoice, 
 		return err
 	}
 
-	return s.UserDataDB(invoice.Uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(invoice.Uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		return insertInvoice(sess, invoice, lines)
 	})
 }
@@ -587,7 +585,7 @@ func (s *InvoiceService) prepareNewInvoice(c core.Context, invoice *models.Invoi
 }
 
 // insertInvoice writes a prepared invoice and its lines inside the caller's transaction
-func insertInvoice(sess *xorm.Session, invoice *models.Invoice, lines []*models.InvoiceLine) error {
+func insertInvoice(sess datastore.DatabaseSession, invoice *models.Invoice, lines []*models.InvoiceLine) error {
 	if err := checkInvoiceNumberUnique(sess, invoice); err != nil {
 		return err
 	}
@@ -636,7 +634,7 @@ func (s *InvoiceService) ModifyInvoice(c core.Context, invoice *models.Invoice, 
 	invoice.Kind = models.INVOICE_KIND_INVOICE
 	invoice.UpdatedUnixTime = time.Now().Unix()
 
-	return s.UserDataDB(invoice.Uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(invoice.Uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		// lock order (see lockInvoiceRow): the invoice row first, then its estimate. An invoice made from an estimate also locks the
 		// estimate, so a conversion's remainder never reads a half-applied edit
 		if err := lockInvoiceRow(sess, invoice.Uid, invoice.InvoiceId, invoice.UpdatedUnixTime); err != nil {
@@ -694,7 +692,7 @@ func (s *InvoiceService) DeleteInvoice(c core.Context, uid int64, invoiceId int6
 
 	now := time.Now().Unix()
 
-	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		// an estimate's "nothing invoiced" check below must not race a conversion
 		if err := lockInvoiceRow(sess, uid, invoiceId, now); err != nil {
 			return err
@@ -778,7 +776,7 @@ func (s *InvoiceService) SetInvoiceClosed(c core.Context, uid int64, invoiceId i
 		return errs.ErrInvoiceIdInvalid
 	}
 
-	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		updatedRows, err := sess.Cols("closed_manually", "updated_unix_time").Where("uid=? AND deleted=? AND kind=? AND invoice_id=?", uid, false, models.INVOICE_KIND_INVOICE, invoiceId).
 			Update(&models.Invoice{ClosedManually: closed, UpdatedUnixTime: time.Now().Unix()})
 
@@ -883,7 +881,7 @@ func (s *InvoiceService) GetInvoicePayments(c core.Context, uid int64, invoiceId
 }
 
 // accountCurrencies reads the currency of each account with the given session (same database as the transactions)
-func accountCurrencies(sess *xorm.Session, uid int64, accountIds []int64) (map[int64]string, error) {
+func accountCurrencies(sess datastore.DatabaseSession, uid int64, accountIds []int64) (map[int64]string, error) {
 	var accounts []*models.Account
 	err := sess.Where("uid=?", uid).In("account_id", accountIds).Find(&accounts)
 
@@ -901,7 +899,7 @@ func accountCurrencies(sess *xorm.Session, uid int64, accountIds []int64) (map[i
 }
 
 // getInvoicePayments reads the linked, non-deleted transactions of the invoices with the given session
-func (s *InvoiceService) getInvoicePayments(sess *xorm.Session, uid int64, invoiceIds []int64) (map[int64][]*models.InvoicePaymentInfo, error) {
+func (s *InvoiceService) getInvoicePayments(sess datastore.DatabaseSession, uid int64, invoiceIds []int64) (map[int64][]*models.InvoicePaymentInfo, error) {
 	result := make(map[int64][]*models.InvoicePaymentInfo, len(invoiceIds))
 
 	var links []*models.InvoicePayment
@@ -989,7 +987,7 @@ func (s *InvoiceService) GetLinkedInvoicesByTransactionIds(c core.Context, uid i
 }
 
 // invoiceBalanceDue returns total minus what the invoice's linked, non-deleted transactions settled
-func (s *InvoiceService) invoiceBalanceDue(sess *xorm.Session, uid int64, invoice *models.Invoice) (int64, error) {
+func (s *InvoiceService) invoiceBalanceDue(sess datastore.DatabaseSession, uid int64, invoice *models.Invoice) (int64, error) {
 	payments, err := s.getInvoicePayments(sess, uid, []int64{invoice.InvoiceId})
 
 	if err != nil {
@@ -1166,7 +1164,7 @@ func (s *InvoiceService) LinkPayment(c core.Context, uid int64, invoiceId int64,
 
 	received := (&models.InvoicePaymentInfo{Transaction: transaction, SettledAmount: settledAmount}).ReceivedAmount()
 
-	err = s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	err = s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		alreadyLinked, err := sess.Where("transaction_id=?", transactionId).Exist(&models.InvoicePayment{})
 
 		if err != nil {
@@ -1204,7 +1202,7 @@ func (s *InvoiceService) UnlinkPayment(c core.Context, uid int64, invoiceId int6
 		return errs.ErrUserIdInvalid
 	}
 
-	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		deletedRows, err := sess.Where("uid=? AND invoice_id=? AND transaction_id=?", uid, invoiceId, transactionId).Delete(&models.InvoicePayment{})
 
 		if err != nil {
@@ -1267,7 +1265,7 @@ func (s *InvoiceService) SetInvoicePublicToken(c core.Context, uid int64, invoic
 }
 
 func (s *InvoiceService) saveInvoicePublicToken(c core.Context, uid int64, invoiceId int64, token string) error {
-	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		updatedRows, err := sess.Cols("public_token", "updated_unix_time").Where("uid=? AND deleted=? AND invoice_id=?", uid, false, invoiceId).
 			Update(&models.Invoice{PublicToken: token, UpdatedUnixTime: time.Now().Unix()})
 

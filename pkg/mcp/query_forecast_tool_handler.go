@@ -79,6 +79,21 @@ func (h *mcpQueryForecastToolHandler) ToolType() core.MCPToolType {
 	return core.MCP_TOOL_TYPE_QUERY_FORECAST
 }
 
+// DataOperationType returns how the MCP tool operates on business records
+func (h *mcpQueryForecastToolHandler) DataOperationType() MCPToolDataOperationType {
+	return MCP_TOOL_DATA_OPERATION_READ_ONLY
+}
+
+// IsIdempotent returns whether repeated calls with the same arguments have no additional effects
+func (h *mcpQueryForecastToolHandler) IsIdempotent() bool {
+	return true
+}
+
+// DependsOnExternalData returns whether the MCP tool may depend on third-party data
+func (h *mcpQueryForecastToolHandler) DependsOnExternalData() bool {
+	return false
+}
+
 // Name returns the name of the MCP tool
 func (h *mcpQueryForecastToolHandler) Name() string {
 	return "query_forecast"

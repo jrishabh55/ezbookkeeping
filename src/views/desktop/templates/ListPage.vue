@@ -4,7 +4,7 @@
             <v-card>
                 <template #title>
                     <div class="title-and-toolbar d-flex align-center">
-                        <span>{{ templateType === TemplateType.Schedule.type ? tt('Scheduled Transactions') : (templateType === TemplateType.Forecast.type ? tt('Forecast Items') : tt('Transaction Templates')) }}</span>
+                        <span>{{ tt('Transaction Templates') }}</span>
                         <v-btn class="ms-3" color="default" variant="outlined"
                                :disabled="loading || updating" @click="add">{{ tt('Add') }}</v-btn>
                         <v-btn class="ms-3" color="primary" variant="tonal"
@@ -60,10 +60,7 @@
 
                     <tbody v-if="!loading && noAvailableTemplate">
                     <tr>
-                        <td v-if="templateType === TemplateType.Normal.type">{{ tt('No available template. Once you add templates, you can quickly add a new transaction using the dropdown menu of the Add button on the transaction list page') }}</td>
-                        <td v-else-if="templateType === TemplateType.Schedule.type">{{ tt('No available scheduled transactions') }}</td>
-                        <td v-else-if="templateType === TemplateType.Forecast.type">{{ tt('No forecast items') }}</td>
-                        <td v-else>{{ tt('No available template') }}</td>
+                        <td>{{ tt('No available template. Once you add templates, you can quickly add a new transaction using the dropdown menu of the Add button on the transaction list page') }}</td>
                     </tr>
                     </tbody>
 
@@ -81,11 +78,12 @@
                                     <div class="d-flex align-center">
                                         <div class="d-flex align-center">
                                             <v-badge class="right-bottom-icon" color="secondary"
-                                                     location="bottom right" offset-x="8" :icon="mdiEyeOffOutline"
+                                                     location="bottom right" offset-x="8"
+                                                     :aria-label="tt('Hidden')" :icon="mdiEyeOffOutline"
                                                      v-if="element.hidden">
-                                                <v-icon size="20" start :icon="templateType === TemplateType.Schedule.type ? mdiClockTimeNineOutline : (templateType === TemplateType.Forecast.type ? mdiChartLineVariant : mdiTextBoxOutline)"/>
+                                                <v-icon size="20" start :icon="mdiTextBoxOutline"/>
                                             </v-badge>
-                                            <v-icon size="20" start :icon="templateType === TemplateType.Schedule.type ? mdiClockTimeNineOutline : (templateType === TemplateType.Forecast.type ? mdiChartLineVariant : mdiTextBoxOutline)" v-else-if="!element.hidden"/>
+                                            <v-icon size="20" start :icon="mdiTextBoxOutline" v-else-if="!element.hidden"/>
                                             <span class="transaction-template-name">{{ element.name }}</span>
                                         </div>
 
@@ -142,12 +140,10 @@
     <edit-dialog ref="editDialog" :type="TransactionEditPageType.Template" />
 
     <confirm-dialog ref="confirmDialog"/>
-    <snack-bar ref="snackbar" />
 </template>
 
 <script setup lang="ts">
 import ConfirmDialog from '@/components/desktop/ConfirmDialog.vue';
-import SnackBar from '@/components/desktop/SnackBar.vue';
 import EditDialog from '@/views/desktop/transactions/list/dialogs/EditDialog.vue';
 import { TransactionEditPageType } from '@/views/base/transactions/TransactionEditPageBase.ts';
 
@@ -156,6 +152,7 @@ import { ref, computed, useTemplateRef } from 'vue';
 import { useI18n } from '@/locales/helpers.ts';
 
 import { useTransactionTemplatesStore } from '@/stores/transactionTemplate.ts';
+import { useDesktopPageStore } from '@/stores/desktopPage.ts';
 
 import { TemplateType } from '@/core/template.ts';
 import { TransactionTemplate } from '@/models/transaction_template.ts';
@@ -173,28 +170,20 @@ import {
     mdiDeleteOutline,
     mdiDrag,
     mdiDotsVertical,
-    mdiTextBoxOutline,
-    mdiClockTimeNineOutline,
-    mdiChartLineVariant
+    mdiTextBoxOutline
 } from '@mdi/js';
 
 type ConfirmDialogType = InstanceType<typeof ConfirmDialog>;
-type SnackBarType = InstanceType<typeof SnackBar>;
 type EditDialogType = InstanceType<typeof EditDialog>;
-
-const props = defineProps<{
-    initType: number;
-}>();
 
 const { tt } = useI18n();
 
 const transactionTemplatesStore = useTransactionTemplatesStore();
+const desktopPageStore = useDesktopPageStore();
 
 const confirmDialog = useTemplateRef<ConfirmDialogType>('confirmDialog');
-const snackbar = useTemplateRef<SnackBarType>('snackbar');
 const editDialog = useTemplateRef<EditDialogType>('editDialog');
 
-const templateType = ref<number>(TemplateType.Normal.type);
 const loading = ref<boolean>(true);
 const updating = ref<boolean>(false);
 const hoveredTemplateId = ref<string>('');
@@ -203,16 +192,14 @@ const templateRemoving = ref<Record<string, boolean>>({});
 const displayOrderModified = ref<boolean>(false);
 const showHidden = ref<boolean>(false);
 
-const templates = computed<TransactionTemplate[]>(() => transactionTemplatesStore.allTransactionTemplates[templateType.value] || []);
+const templates = computed<TransactionTemplate[]>(() => transactionTemplatesStore.allNormalTransactionTemplates);
 const noAvailableTemplate = computed<boolean>(() => isNoAvailableTemplate(templates.value, showHidden.value));
 const availableTemplateCount = computed<number>(() => getAvailableTemplateCount(templates.value, showHidden.value));
 
 function init(): void {
-    templateType.value = props.initType;
     loading.value = true;
 
-    transactionTemplatesStore.loadAllTemplates({
-        templateType: templateType.value,
+    transactionTemplatesStore.loadAllNormalTemplates({
         force: false
     }).then(() => {
         loading.value = false;
@@ -220,7 +207,7 @@ function init(): void {
         loading.value = false;
 
         if (!error.processed) {
-            snackbar.value?.showError(error);
+            desktopPageStore.addErrorToast(error);
         }
     });
 }
@@ -228,14 +215,13 @@ function init(): void {
 function reload(): void {
     loading.value = true;
 
-    transactionTemplatesStore.loadAllTemplates({
-        templateType: templateType.value,
+    transactionTemplatesStore.loadAllNormalTemplates({
         force: true
     }).then(() => {
         loading.value = false;
         displayOrderModified.value = false;
 
-        snackbar.value?.showMessage('Template list has been updated');
+        desktopPageStore.addToast('Template list has been updated');
     }).catch(error => {
         loading.value = false;
 
@@ -244,21 +230,21 @@ function reload(): void {
         }
 
         if (!error.processed) {
-            snackbar.value?.showError(error);
+            desktopPageStore.addErrorToast(error);
         }
     });
 }
 
 function add(): void {
     editDialog.value?.open({
-        templateType: templateType.value
+        templateType: TemplateType.Normal.type
     }).then(result => {
         if (result && result.message) {
-            snackbar.value?.showMessage(result.message);
+            desktopPageStore.addToast(result.message);
         }
     }).catch(error => {
         if (error) {
-            snackbar.value?.showError(error);
+            desktopPageStore.addErrorToast(error);
         }
     });
 }
@@ -269,11 +255,11 @@ function edit(template: TransactionTemplate): void {
         currentTemplate: template
     }).then(result => {
         if (result && result.message) {
-            snackbar.value?.showMessage(result.message);
+            desktopPageStore.addToast(result.message);
         }
     }).catch(error => {
         if (error) {
-            snackbar.value?.showError(error);
+            desktopPageStore.addErrorToast(error);
         }
     });
 }
@@ -293,7 +279,7 @@ function hide(template: TransactionTemplate, hidden: boolean): void {
         templateHiding.value[template.id] = false;
 
         if (!error.processed) {
-            snackbar.value?.showError(error);
+            desktopPageStore.addErrorToast(error);
         }
     });
 }
@@ -313,7 +299,7 @@ function remove(template: TransactionTemplate): void {
             templateRemoving.value[template.id] = false;
 
             if (!error.processed) {
-                snackbar.value?.showError(error);
+                desktopPageStore.addErrorToast(error);
             }
         });
     });
@@ -326,16 +312,14 @@ function saveSortResult(): void {
 
     loading.value = true;
 
-    transactionTemplatesStore.updateTemplateDisplayOrders({
-        templateType: templateType.value
-    }).then(() => {
+    transactionTemplatesStore.updateNormalTemplateDisplayOrders().then(() => {
         loading.value = false;
         displayOrderModified.value = false;
     }).catch(error => {
         loading.value = false;
 
         if (!error.processed) {
-            snackbar.value?.showError(error);
+            desktopPageStore.addErrorToast(error);
         }
     });
 }
@@ -348,57 +332,20 @@ function onMove(event: { moved: { element: { id: string }, oldIndex: number, new
     const moveEvent = event.moved;
 
     if (!moveEvent.element || !moveEvent.element.id) {
-        snackbar.value?.showMessage('Unable to move template');
+        desktopPageStore.addToast('Unable to move template');
         return;
     }
 
-    transactionTemplatesStore.changeTemplateDisplayOrder({
-        templateType: templateType.value,
+    transactionTemplatesStore.changeNormalTemplateDisplayOrder({
         templateId: moveEvent.element.id,
         from: moveEvent.oldIndex,
         to: moveEvent.newIndex
     }).then(() => {
         displayOrderModified.value = true;
     }).catch(error => {
-        snackbar.value?.showError(error);
+        desktopPageStore.addErrorToast(error);
     });
 }
 
 init();
 </script>
-
-<style>
-.transaction-templates-table tr:not(:last-child) > td > div {
-    padding-bottom: 1px;
-}
-
-.transaction-templates-table .has-bottom-border tr:last-child > td > div {
-    padding-bottom: 1px;
-}
-
-.transaction-templates-table tr.transaction-templates-table-row .right-bottom-icon .v-badge__badge {
-    padding-bottom: 1px;
-}
-
-.transaction-templates-table .v-text-field .v-input__prepend {
-    margin-inline-end: 0;
-    color: rgba(var(--v-theme-on-surface));
-}
-
-.transaction-templates-table .v-text-field .v-input__prepend .v-badge > .v-badge__wrapper > .v-icon {
-    opacity: var(--v-medium-emphasis-opacity);
-}
-
-.transaction-templates-table .v-text-field.v-input--plain-underlined .v-input__prepend {
-    padding-top: 10px;
-}
-
-.transaction-templates-table .v-text-field .v-field__input {
-    padding-top: 0;
-    color: rgba(var(--v-theme-on-surface));
-}
-
-.transaction-templates-table tr .v-text-field .v-field__input {
-    padding-bottom: 1px;
-}
-</style>

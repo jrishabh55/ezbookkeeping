@@ -431,6 +431,12 @@ export const useSettingsStore = defineStore('settings', () => {
         updateUserApplicationCloudSettingValue('mapCacheExpiration', value);
     }
 
+    function setTransactionPictureCacheExpiration(value: number): void {
+        updateApplicationSettingsValue('transactionPictureCacheExpiration', value);
+        appSettings.value.transactionPictureCacheExpiration = value;
+        updateUserApplicationCloudSettingValue('transactionPictureCacheExpiration', value);
+    }
+
     function setExchangeRatesDataCacheExpiration(value: number): void {
         updateApplicationSettingsValue('exchangeRatesDataCacheExpiration', value);
         appSettings.value.exchangeRatesDataCacheExpiration = value;
@@ -608,6 +614,17 @@ export const useSettingsStore = defineStore('settings', () => {
         }
     }
 
+    function getLocaleDefaultSettingsSnapshot(): LocaleDefaultSettings {
+        const snapshot: LocaleDefaultSettings = {
+            currency: localeDefaultSettings.value.currency,
+            firstDayOfWeek: localeDefaultSettings.value.firstDayOfWeek,
+            preferredExpenseAmountColor: localeDefaultSettings.value.preferredExpenseAmountColor,
+            preferredIncomeAmountColor: localeDefaultSettings.value.preferredIncomeAmountColor
+        };
+
+        return snapshot;
+    }
+
     function updateLocalizedDefaultSettings(newLocaleDefaultSettings: LocaleDefaultSettings | null) {
         if (!newLocaleDefaultSettings) {
             return;
@@ -687,6 +704,7 @@ export const useSettingsStore = defineStore('settings', () => {
         setCurrencySortByInExchangeRatesPage,
         // -- Browser Cache Management
         setMapCacheExpiration,
+        setTransactionPictureCacheExpiration,
         setExchangeRatesDataCacheExpiration,
         // -- Statistics Settings
         setStatisticsDefaultChartDataType,
@@ -705,6 +723,7 @@ export const useSettingsStore = defineStore('settings', () => {
         createApplicationCloudSettings,
         setApplicationSettingsFromCloudSettings,
         updateApplicationSyncSettingKeys,
+        getLocaleDefaultSettingsSnapshot,
         updateLocalizedDefaultSettings
     };
 });

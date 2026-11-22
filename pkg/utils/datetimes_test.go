@@ -292,12 +292,12 @@ func TestGetDateFirstTimeInTimezone_AmbiguousMidnight(t *testing.T) {
 	assert.Equal(t, nil, err)
 
 	// Select the first occurrence of midnight when it occurs twice.
-	expectedValue := "2026-11-01T00:00:00-04:00"
-	actualValue := GetDateFirstTimeInTimezone(time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC), havanaLocation).Format(time.RFC3339Nano)
+	expectedValue := "2025-11-02T00:00:00-04:00"
+	actualValue := GetDateFirstTimeInTimezone(time.Date(2025, 11, 2, 12, 0, 0, 0, time.UTC), havanaLocation).Format(time.RFC3339Nano)
 	assert.Equal(t, expectedValue, actualValue)
 
-	expectedValue = "2026-11-02T00:00:00-05:00"
-	actualValue = GetDateFirstTimeInTimezone(time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC), havanaLocation).Format(time.RFC3339Nano)
+	expectedValue = "2025-11-03T00:00:00-05:00"
+	actualValue = GetDateFirstTimeInTimezone(time.Date(2025, 11, 3, 12, 0, 0, 0, time.UTC), havanaLocation).Format(time.RFC3339Nano)
 	assert.Equal(t, expectedValue, actualValue)
 }
 
@@ -529,14 +529,14 @@ func TestParseFromLongDateLastTimeInTimezone_AmbiguousMidnight(t *testing.T) {
 	assert.Equal(t, nil, err)
 
 	// The previous date ends before the first occurrence of repeated midnight.
-	expectedValue := "2026-10-31T23:59:59.999999999-04:00"
-	actualTime, err := ParseFromLongDateLastTimeInTimezone("2026-10-31", havanaLocation)
+	expectedValue := "2025-11-01T23:59:59.999999999-04:00"
+	actualTime, err := ParseFromLongDateLastTimeInTimezone("2025-11-01", havanaLocation)
 	assert.Equal(t, nil, err)
 	actualValue := actualTime.Format(time.RFC3339Nano)
 	assert.Equal(t, expectedValue, actualValue)
 
-	expectedValue = "2026-11-01T23:59:59.999999999-05:00"
-	actualTime, err = ParseFromLongDateLastTimeInTimezone("2026-11-01", havanaLocation)
+	expectedValue = "2025-11-02T23:59:59.999999999-05:00"
+	actualTime, err = ParseFromLongDateLastTimeInTimezone("2025-11-02", havanaLocation)
 	assert.Equal(t, nil, err)
 	actualValue = actualTime.Format(time.RFC3339Nano)
 	assert.Equal(t, expectedValue, actualValue)

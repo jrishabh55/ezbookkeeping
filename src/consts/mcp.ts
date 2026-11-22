@@ -30,6 +30,10 @@ export const ALL_MCP_TOOLS: NameAndDisplayName[] = [
         displayName:'Add Transaction'
     },
     {
+        name: 'delete_transaction',
+        displayName:'Delete Transaction'
+    },
+    {
         name: 'query_forecast',
         displayName:'Query Forecast'
     }

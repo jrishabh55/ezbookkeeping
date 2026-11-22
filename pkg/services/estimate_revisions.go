@@ -2,9 +2,8 @@ package services
 
 import (
 	"fmt"
+	"github.com/mayswind/ezbookkeeping/pkg/datastore"
 	"time"
-
-	"xorm.io/xorm"
 
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/errs"
@@ -41,7 +40,7 @@ func estimateChainRootId(estimate *models.Invoice) int64 {
 
 // checkEstimateRevisable returns ErrEstimateCannotBeRevised unless the estimate is sent (expired included), declined or accepted,
 // nothing was invoiced from it, and no non-deleted version of its chain has a higher revision number
-func checkEstimateRevisable(sess *xorm.Session, estimate *models.Invoice) error {
+func checkEstimateRevisable(sess datastore.DatabaseSession, estimate *models.Invoice) error {
 	switch estimate.EstimateStatus {
 	case models.ESTIMATE_STATUS_SENT, models.ESTIMATE_STATUS_DECLINED, models.ESTIMATE_STATUS_ACCEPTED:
 	default:
@@ -145,7 +144,7 @@ func (s *InvoiceService) reviseEstimate(c core.Context, source *models.Invoice, 
 		return nil, err
 	}
 
-	err = s.UserDataDB(source.Uid).DoTransaction(c, func(sess *xorm.Session) error {
+	err = s.UserDataDB(source.Uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		if err := lockInvoiceRow(sess, source.Uid, source.InvoiceId, revision.CreatedUnixTime); err != nil {
 			return err
 		}
@@ -231,7 +230,7 @@ func isDraftEstimateRevision(estimate *models.Invoice) bool {
 // getEstimateChainIdsToDelete returns the ids of every non-deleted version of the estimate's chain, ascending revision number, after
 // locking each one (the caller has already locked the estimate itself; only estimate rows are locked, so the invoice → estimate lock
 // order holds). It returns ErrEstimateHasInvoices when a non-deleted invoice was made from any of them.
-func getEstimateChainIdsToDelete(sess *xorm.Session, estimate *models.Invoice, now int64) ([]int64, error) {
+func getEstimateChainIdsToDelete(sess datastore.DatabaseSession, estimate *models.Invoice, now int64) ([]int64, error) {
 	rootId := estimateChainRootId(estimate)
 
 	var versions []*models.Invoice
@@ -268,7 +267,7 @@ func getEstimateChainIdsToDelete(sess *xorm.Session, estimate *models.Invoice, n
 // restorePreviousEstimateVersion returns the version a deleted draft revision superseded (the chain's highest lower revision number
 // still there) to the status it had before Revise, inside the caller's transaction. The update is conditional on it still being
 // superseded; a version stored without SupersededFromStatus goes back to sent.
-func restorePreviousEstimateVersion(sess *xorm.Session, revision *models.Invoice, now int64) error {
+func restorePreviousEstimateVersion(sess datastore.DatabaseSession, revision *models.Invoice, now int64) error {
 	previous := &models.Invoice{}
 	has, err := sess.Where("uid=? AND deleted=? AND kind=? AND estimate_status=? AND revision_number<? AND (invoice_id=? OR revision_of=?)",
 		revision.Uid, false, models.INVOICE_KIND_ESTIMATE, models.ESTIMATE_STATUS_SUPERSEDED, revision.RevisionNumber, revision.RevisionOf, revision.RevisionOf).

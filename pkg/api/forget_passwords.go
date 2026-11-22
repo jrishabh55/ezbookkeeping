@@ -1,6 +1,7 @@
 package api
 
 import (
+	"strings"
 	"time"
 
 	"github.com/mayswind/ezbookkeeping/pkg/core"
@@ -31,7 +32,7 @@ var (
 			ApiUsingConfig: ApiUsingConfig{
 				container: settings.Container,
 			},
-			container: duplicatechecker.Container,
+			duplicateChecker: duplicatechecker.Container,
 		},
 		users:           services.Users,
 		tokens:          services.Tokens,
@@ -144,19 +145,20 @@ func (a *ForgetPasswordsApi) UserResetPasswordHandler(c *core.WebContext) (any, 
 		return nil, errs.ErrEmailIsNotVerified
 	}
 
-	if user.Email != request.Email {
+	oldTokenClaims := c.GetTokenClaims()
+	err = a.tokens.DeleteTokenByClaims(c, oldTokenClaims)
+
+	if err != nil {
+		log.Warnf(c, "[forget_passwords.UserResetPasswordHandler] failed to revoke password reset token \"utid:%s\" for user \"uid:%d\", because %s", oldTokenClaims.UserTokenId, user.Uid, err.Error())
+		return nil, errs.ErrSystemError
+	}
+
+	if strings.ToLower(user.Email) != strings.ToLower(request.Email) {
 		log.Warnf(c, "[forget_passwords.UserResetPasswordHandler] request email not equals the user email")
 		return nil, errs.ErrEmailIsInvalid
 	}
 
 	if a.users.IsPasswordEqualsUserPassword(request.Password, user) {
-		oldTokenClaims := c.GetTokenClaims()
-		err = a.tokens.DeleteTokenByClaims(c, oldTokenClaims)
-
-		if err != nil {
-			log.Warnf(c, "[forget_passwords.UserResetPasswordHandler] failed to revoke password reset token \"utid:%s\" for user \"uid:%d\", because %s", oldTokenClaims.UserTokenId, user.Uid, err.Error())
-		}
-
 		return nil, errs.ErrNewPasswordEqualsOldInvalid
 	}
 

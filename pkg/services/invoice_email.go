@@ -2,11 +2,10 @@ package services
 
 import (
 	"fmt"
+	"github.com/mayswind/ezbookkeeping/pkg/datastore"
 	"net/http"
 	"strings"
 	"time"
-
-	"xorm.io/xorm"
 
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/errs"
@@ -202,7 +201,7 @@ func (s *InvoiceService) SendInvoiceWithContent(c core.Context, uid, invoiceID i
 	}
 	now := time.Now().Unix()
 	sent := &models.InvoiceEmail{EmailId: s.GenerateUuid(uuid.UUID_TYPE_INVOICE), Uid: uid, InvoiceId: invoiceID, ToAddress: to, Subject: rendered.Subject, EmailHtml: rendered.EmailHTML, SentUnixTime: now}
-	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		if _, err := sess.Insert(sent); err != nil {
 			return err
 		}
@@ -254,7 +253,7 @@ func (s *InvoiceService) SaveInvoiceEmailTemplate(c core.Context, uid int64, sub
 		return nil, invoiceEmailTemplateError(err)
 	}
 	profile := &models.InvoiceProfile{}
-	err = s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	err = s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		exists, err := sess.Where("uid=?", uid).Get(profile)
 		if err != nil {
 			return err

@@ -1,10 +1,9 @@
 package services
 
 import (
+	"github.com/mayswind/ezbookkeeping/pkg/datastore"
 	"strings"
 	"unicode/utf8"
-
-	"xorm.io/xorm"
 
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/errs"
@@ -79,7 +78,7 @@ func (s *InvoiceService) CreateEstimate(c core.Context, estimate *models.Invoice
 		return err
 	}
 
-	return s.UserDataDB(estimate.Uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(estimate.Uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		if err := insertInvoice(sess, estimate, lines); err != nil {
 			return err
 		}

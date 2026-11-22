@@ -1,9 +1,8 @@
 package services
 
 import (
+	"github.com/mayswind/ezbookkeeping/pkg/datastore"
 	"time"
-
-	"xorm.io/xorm"
 
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/errs"
@@ -143,7 +142,7 @@ func (s *InvoiceService) CreateRecurringInvoice(c core.Context, recurring *model
 	recurring.CreatedUnixTime = time.Now().Unix()
 	recurring.UpdatedUnixTime = recurring.CreatedUnixTime
 
-	return s.UserDataDB(recurring.Uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(recurring.Uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		_, err := sess.Insert(recurring)
 		return err
 	})
@@ -186,7 +185,7 @@ func (s *InvoiceService) ModifyRecurringInvoice(c core.Context, recurring *model
 
 	recurring.UpdatedUnixTime = time.Now().Unix()
 
-	return s.UserDataDB(recurring.Uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(recurring.Uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		updatedRows, err := sess.Cols("day_of_month", "next_date", "enabled", "period_months", "mode", "updated_unix_time").
 			Where("uid=? AND deleted=? AND recurring_id=?", recurring.Uid, false, recurring.RecurringId).Update(recurring)
 
@@ -212,7 +211,7 @@ func (s *InvoiceService) DeleteRecurringInvoice(c core.Context, uid int64, recur
 
 	now := time.Now().Unix()
 
-	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		updatedRows, err := sess.Cols("deleted", "deleted_unix_time").Where("uid=? AND deleted=? AND recurring_id=?", uid, false, recurringId).
 			Update(&models.RecurringInvoice{Deleted: true, DeletedUnixTime: now})
 
@@ -571,7 +570,7 @@ func (s *InvoiceService) createRecurringInvoice(c core.Context, recurring *model
 	recurring.UpdatedUnixTime = recurring.LastRunUnixTime
 
 	// the invoice and the row advance commit together, so a crash in between cannot create the same period twice
-	err = s.UserDataDB(recurring.Uid).DoTransaction(c, func(sess *xorm.Session) error {
+	err = s.UserDataDB(recurring.Uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		if err := insertInvoice(sess, &invoice, lines); err != nil {
 			return err
 		}

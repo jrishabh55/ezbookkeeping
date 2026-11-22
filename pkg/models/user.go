@@ -179,18 +179,6 @@ type UserRegisterRequest struct {
 	TransactionCategoryCreateBatchRequest
 }
 
-// UserVerifyEmailRequest represents all parameters of user verify email request
-type UserVerifyEmailRequest struct {
-	RequestNewToken bool `json:"requestNewToken" binding:"omitempty"`
-}
-
-// UserVerifyEmailResponse represents all response parameters after user have verified email
-type UserVerifyEmailResponse struct {
-	NewToken            string         `json:"newToken,omitempty"`
-	User                *UserBasicInfo `json:"user"`
-	NotificationContent string         `json:"notificationContent,omitempty"`
-}
-
 // UserResendVerifyEmailRequest represents all parameters of user resend verify email request
 type UserResendVerifyEmailRequest struct {
 	Email    string `json:"email" binding:"omitempty,max=100,validEmail"`
@@ -229,8 +217,9 @@ type UserProfileUpdateRequest struct {
 
 // UserProfileUpdateResponse represents the data returns to frontend after updating profile
 type UserProfileUpdateResponse struct {
-	User     *UserBasicInfo `json:"user"`
-	NewToken string         `json:"newToken,omitempty"`
+	User             *UserBasicInfo `json:"user"`
+	NewToken         string         `json:"newToken,omitempty"`
+	NewMapProxyToken string         `json:"newMapProxyToken,omitempty"`
 }
 
 // UserProfileResponse represents a view-object of user profile
@@ -262,7 +251,7 @@ func (u *User) CanEditTransactionByTransactionTime(transactionTime int64, client
 	if u.TransactionEditScope == TRANSACTION_EDIT_SCOPE_TODAY_OR_LATER {
 		return transactionUnixTime > clientTodayStartTime.Unix()
 	} else if u.TransactionEditScope == TRANSACTION_EDIT_SCOPE_THIS_WEEK_OR_LATER {
-		dayOfWeek := int(now.Weekday()) - int(u.FirstDayOfWeek)
+		dayOfWeek := int(clientNow.Weekday()) - int(u.FirstDayOfWeek)
 
 		if dayOfWeek < 0 {
 			dayOfWeek += 7
@@ -271,10 +260,10 @@ func (u *User) CanEditTransactionByTransactionTime(transactionTime int64, client
 		clientWeekStartTime := clientTodayStartTime.AddDate(0, 0, -dayOfWeek)
 		return transactionUnixTime > clientWeekStartTime.Unix()
 	} else if u.TransactionEditScope == TRANSACTION_EDIT_SCOPE_THIS_MONTH_OR_LATER {
-		clientMonthStartTime := clientTodayStartTime.AddDate(0, 0, -(now.Day() - 1))
+		clientMonthStartTime := clientTodayStartTime.AddDate(0, 0, -(clientNow.Day() - 1))
 		return transactionUnixTime > clientMonthStartTime.Unix()
 	} else if u.TransactionEditScope == TRANSACTION_EDIT_SCOPE_THIS_YEAR_OR_LATER {
-		clientYearStartTime := clientTodayStartTime.AddDate(0, 0, -(now.YearDay() - 1))
+		clientYearStartTime := clientTodayStartTime.AddDate(0, 0, -(clientNow.YearDay() - 1))
 		return transactionUnixTime > clientYearStartTime.Unix()
 	} else if u.TransactionEditScope == TRANSACTION_EDIT_SCOPE_LAST_RECONCILED_TIME_OR_LATER && u.UseLastReconciledTime {
 		minAccountLastReconciledTime := int64(0)

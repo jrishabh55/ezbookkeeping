@@ -5,7 +5,7 @@ import type { ForecastResponse } from '@/models/forecast.ts';
 
 const mocks = vi.hoisted(() => ({
     loadAllAccounts: vi.fn(),
-    loadAllTemplates: vi.fn(),
+    loadAllScheduledTransactions: vi.fn(),
     getForecast: vi.fn()
 }));
 
@@ -22,7 +22,7 @@ vi.mock('@/stores/overview.ts', () => {
     const store = reactive({ dashboardReloadCount: 0 });
     return { useOverviewStore: () => store };
 });
-vi.mock('@/stores/transactionTemplate.ts', () => ({ useTransactionTemplatesStore: () => ({ loadAllTemplates: mocks.loadAllTemplates }) }));
+vi.mock('@/stores/transactionTemplate.ts', () => ({ useTransactionTemplatesStore: () => ({ loadAllScheduledTransactions: mocks.loadAllScheduledTransactions }) }));
 vi.mock('@/lib/services.ts', () => ({ default: { getForecast: mocks.getForecast } }));
 vi.mock('@/lib/datetime.ts', () => ({
     getCurrentDateTime: () => ({
@@ -49,18 +49,18 @@ describe('useForecastSummaryWidgetBase', () => {
     });
 
     it('is not empty when the user has forecast templates, even with no template items left this month', async () => {
-        mocks.loadAllTemplates.mockResolvedValue([{ id: '1' }]);
+        mocks.loadAllScheduledTransactions.mockResolvedValue([{ id: '1' }]);
 
         const widget = useForecastSummaryWidgetBase({});
         await widget.load();
 
-        expect(mocks.loadAllTemplates).toHaveBeenCalledWith({ templateType: 3, force: false });
+        expect(mocks.loadAllScheduledTransactions).toHaveBeenCalledWith({ templateType: 3 });
         expect(widget.isEmpty.value).toBe(false);
         expect(widget.summary.value?.closingCash).toBe(300);
     });
 
     it('is empty when the user has no forecast templates at all', async () => {
-        mocks.loadAllTemplates.mockResolvedValue([]);
+        mocks.loadAllScheduledTransactions.mockResolvedValue([]);
 
         const widget = useForecastSummaryWidgetBase({});
         await widget.load();

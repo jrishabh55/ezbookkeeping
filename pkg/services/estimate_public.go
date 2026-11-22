@@ -1,12 +1,11 @@
 package services
 
 import (
+	"github.com/mayswind/ezbookkeeping/pkg/datastore"
 	"html"
 	"strings"
 	"time"
 	"unicode/utf8"
-
-	"xorm.io/xorm"
 
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/errs"
@@ -75,7 +74,7 @@ func (s *InvoiceService) recordEstimateClientResponse(c core.Context, estimate *
 	now := time.Now().Unix()
 	recorded := false
 
-	err := s.UserDataDB(estimate.Uid).DoTransaction(c, func(sess *xorm.Session) error {
+	err := s.UserDataDB(estimate.Uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		if err := lockInvoiceRow(sess, estimate.Uid, estimate.InvoiceId, now); err != nil {
 			return err
 		}

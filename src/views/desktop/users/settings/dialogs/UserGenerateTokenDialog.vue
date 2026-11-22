@@ -102,14 +102,12 @@
                 </div>
 
                 <div class="my-3 flex-grow-1 overflow-y-auto" :style="codeContainerStyle" v-if="generatedToken">
-                    <div class="w-100 h-100 code-container">
-                        <v-textarea no-resize class="w-100 h-100 always-cursor-text" :readonly="true"
-                                    :value="generatedToken" v-if="(tokenType === 'api' && (!showAPIExample || !serverUrl)) || (tokenType === 'mcp' && (!showMCPConfiguration || !serverUrl))" />
-                        <v-textarea no-resize class="w-100 h-100 always-cursor-text" :readonly="true"
-                                    :value="apiExample" v-if="tokenType === 'api' && showAPIExample && serverUrl" />
-                        <v-textarea no-resize class="w-100 h-100 always-cursor-text" :readonly="true"
-                                    :value="mcpServerConfiguration" v-if="tokenType === 'mcp' && showMCPConfiguration && serverUrl" />
-                    </div>
+                    <v-textarea no-resize class="w-100 h-100 code-textarea always-cursor-text" :readonly="true"
+                                :value="generatedToken" v-if="(tokenType === 'api' && (!showAPIExample || !serverUrl)) || (tokenType === 'mcp' && (!showMCPConfiguration || !serverUrl))" />
+                    <v-textarea no-resize class="w-100 h-100 code-textarea always-cursor-text" :readonly="true"
+                                :value="apiExample" v-if="tokenType === 'api' && showAPIExample && serverUrl" />
+                    <v-textarea no-resize class="w-100 h-100 code-textarea always-cursor-text" :readonly="true"
+                                :value="mcpServerConfiguration" v-if="tokenType === 'mcp' && showMCPConfiguration && serverUrl" />
                 </div>
             </template>
 
@@ -126,18 +124,15 @@
             </template>
         </one-column-dialog-layout>
     </v-dialog>
-
-    <snack-bar ref="snackbar" />
 </template>
 
 <script setup lang="ts">
-import SnackBar from '@/components/desktop/SnackBar.vue';
-
 import { ref, computed, useTemplateRef } from 'vue';
 
 import { useI18n } from '@/locales/helpers.ts';
 
 import { useTokensStore } from '@/stores/token.ts';
+import { useDesktopPageStore } from '@/stores/desktopPage.ts';
 
 import type { NameAndDisplayName } from '@/core/base.ts';
 import { ALL_MCP_TOOL_NAMES, DEFAULT_ENABLED_MCP_TOOL_NAMES } from '@/consts/mcp.ts';
@@ -146,14 +141,12 @@ import { type TokenGenerateAPIResponse, type TokenGenerateMCPResponse } from '@/
 import { isAPITokenEnabled, isMCPServerEnabled } from '@/lib/server_settings.ts';
 import { copyTextToClipboard } from '@/lib/ui/common.ts';
 
-type SnackBarType = InstanceType<typeof SnackBar>;
-
 const { tt, getAllMCPTools, formatNumberToLocalizedNumerals } = useI18n();
 
 const tokensStore = useTokensStore();
+const desktopPageStore = useDesktopPageStore();
 
 const buttonContainer = useTemplateRef<HTMLElement>('buttonContainer');
-const snackbar = useTemplateRef<SnackBarType>('snackbar');
 
 let resolveFunc: (() => void) | null = null;
 let rejectFunc: ((reason?: unknown) => void) | null = null;
@@ -173,11 +166,11 @@ const generatedToken = ref<string>('');
 
 const codeContainerStyle = computed<string>(() => {
     if (tokenType.value === 'api' && showAPIExample.value && serverUrl.value) {
-        return 'height: 160px';
+        return 'height: 140px';
     } else if (tokenType.value === 'mcp' && showMCPConfiguration.value && serverUrl.value) {
-        return 'height: 390px';
+        return 'height: 360px';
     } else {
-        return 'height: 160px';
+        return 'height: 140px';
     }
 });
 
@@ -252,7 +245,7 @@ function generateToken(): void {
         generating.value = false;
 
         if (!error.processed) {
-            snackbar.value?.showError(error);
+            desktopPageStore.addErrorToast(error);
         }
     });
 }
@@ -266,7 +259,7 @@ function copy(): void {
         copyTextToClipboard(generatedToken.value, buttonContainer.value);
     }
 
-    snackbar.value?.showMessage('Data copied');
+    desktopPageStore.addToast('Data copied');
 }
 
 function cancel(): void {

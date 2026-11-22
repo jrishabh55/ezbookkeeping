@@ -51,6 +51,7 @@ import TagListPage from '@/views/mobile/tags/ListPage.vue';
 import TagGroupListPage from '@/views/mobile/tags/GroupListPage.vue';
 
 import TemplateListPage from '@/views/mobile/templates/ListPage.vue';
+import ScheduledTransactionListPage from '@/views/mobile/schedules/ListPage.vue';
 
 import BudgetListPage from '@/views/mobile/budgets/ListPage.vue';
 import BudgetEditPage from '@/views/mobile/budgets/EditPage.vue';
@@ -382,12 +383,12 @@ const routes: Router.RouteParameters[] = [
     },
     {
         path: '/schedule/list',
-        async: asyncResolve(TemplateListPage),
+        async: asyncResolve(ScheduledTransactionListPage),
         beforeEnter: [checkLogin]
     },
     {
         path: '/forecast/list',
-        async: asyncResolve(TemplateListPage),
+        async: asyncResolve(ScheduledTransactionListPage),
         beforeEnter: [checkLogin]
     },
     {

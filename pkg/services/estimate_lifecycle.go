@@ -1,9 +1,8 @@
 package services
 
 import (
+	"github.com/mayswind/ezbookkeeping/pkg/datastore"
 	"time"
-
-	"xorm.io/xorm"
 
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/errs"
@@ -11,7 +10,7 @@ import (
 )
 
 // estimateHasInvoices reports whether a non-deleted invoice was made from the estimate
-func estimateHasInvoices(sess *xorm.Session, uid int64, estimateId int64) (bool, error) {
+func estimateHasInvoices(sess datastore.DatabaseSession, uid int64, estimateId int64) (bool, error) {
 	return sess.Where("uid=? AND deleted=? AND kind=? AND estimate_id=?", uid, false, models.INVOICE_KIND_INVOICE, estimateId).Exist(&models.Invoice{})
 }
 
@@ -19,13 +18,13 @@ func estimateHasInvoices(sess *xorm.Session, uid int64, estimateId int64) (bool,
 // deletes of one estimate wait for each other and every read after it sees what the one before committed; the checks that follow
 // ("nothing invoiced yet", "milestone still open") are then not racy. It touches only updated_unix_time.
 // Lock order rule: when a transaction locks both, it locks the invoice's own row before its parent estimate's, never the reverse.
-func lockInvoiceRow(sess *xorm.Session, uid int64, invoiceId int64, now int64) error {
+func lockInvoiceRow(sess datastore.DatabaseSession, uid int64, invoiceId int64, now int64) error {
 	_, err := sess.Cols("updated_unix_time").Where("uid=? AND deleted=? AND invoice_id=?", uid, false, invoiceId).Update(&models.Invoice{UpdatedUnixTime: now})
 	return err
 }
 
 // getEstimateInSession reads an owned, non-deleted estimate with the caller's session; an invoice id is not found
-func getEstimateInSession(sess *xorm.Session, uid int64, estimateId int64) (*models.Invoice, error) {
+func getEstimateInSession(sess datastore.DatabaseSession, uid int64, estimateId int64) (*models.Invoice, error) {
 	estimate := &models.Invoice{}
 	has, err := sess.Where("uid=? AND deleted=? AND kind=? AND invoice_id=?", uid, false, models.INVOICE_KIND_ESTIMATE, estimateId).Get(estimate)
 
@@ -40,7 +39,7 @@ func getEstimateInSession(sess *xorm.Session, uid int64, estimateId int64) (*mod
 
 // checkEstimateEditable returns ErrEstimateLocked unless the estimate is a draft with nothing invoiced from it: once the client
 // may have seen it (sent, answered, superseded) it is changed only through ReviseEstimate
-func checkEstimateEditable(sess *xorm.Session, estimate *models.Invoice) error {
+func checkEstimateEditable(sess datastore.DatabaseSession, estimate *models.Invoice) error {
 	if estimate.EstimateStatus != models.ESTIMATE_STATUS_DRAFT {
 		return errs.ErrEstimateLocked
 	}
@@ -95,7 +94,7 @@ func (s *InvoiceService) ModifyEstimate(c core.Context, estimate *models.Invoice
 	estimate.Kind = models.INVOICE_KIND_ESTIMATE
 	estimate.UpdatedUnixTime = time.Now().Unix()
 
-	return s.UserDataDB(estimate.Uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(estimate.Uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		if err := lockInvoiceRow(sess, estimate.Uid, estimate.InvoiceId, estimate.UpdatedUnixTime); err != nil {
 			return err
 		}
@@ -164,7 +163,7 @@ func (s *InvoiceService) SetEstimateResponse(c core.Context, uid int64, estimate
 
 	now := time.Now().Unix()
 
-	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		if err := lockInvoiceRow(sess, uid, estimateId, now); err != nil {
 			return err
 		}
@@ -211,7 +210,7 @@ func (s *InvoiceService) ReopenEstimate(c core.Context, uid int64, estimateId in
 
 	now := time.Now().Unix()
 
-	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		if err := lockInvoiceRow(sess, uid, estimateId, now); err != nil {
 			return err
 		}

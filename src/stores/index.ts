@@ -3,6 +3,7 @@ import { defineStore } from 'pinia';
 
 import { useSettingsStore } from './setting.ts';
 import { useUserStore } from './user.ts';
+import { useTokensStore } from './token.ts';
 import { useAccountsStore } from './account.ts';
 import { useTransactionCategoriesStore } from './transactionCategory.ts';
 import { useTransactionTagsStore } from './transactionTag.ts';
@@ -23,7 +24,6 @@ import type {
     User,
     UserLoginRequest,
     UserResendVerifyEmailRequest,
-    UserVerifyEmailResponse,
     UserProfileUpdateRequest,
     UserProfileUpdateResponse
 } from '@/models/user.ts';
@@ -34,7 +34,7 @@ import {
     isObject,
     isString
 } from '@/lib/common.ts';
-import { clearCustomIconCache } from '@/lib/cache.ts';
+import { clearTransactionPictureCache, clearAllUserCaches } from '@/lib/cache.ts';
 import {
     hasUserAppLockState,
     getUserAppLockState,
@@ -49,6 +49,7 @@ import logger from '@/lib/logger.ts';
 export const useRootStore = defineStore('root', () => {
     const settingsStore = useSettingsStore();
     const userStore = useUserStore();
+    const tokensStore = useTokensStore();
     const accountsStore = useAccountsStore();
     const transactionCategoriesStore = useTransactionCategoriesStore();
     const transactionTagsStore = useTransactionTagsStore();
@@ -84,8 +85,9 @@ export const useRootStore = defineStore('root', () => {
         transactionsStore.resetTransactions();
         transactionTagsStore.resetTransactionTags();
         transactionCategoriesStore.resetTransactionCategories();
-        transactionTemplatesStore.resetTransactionTemplates();
+        transactionTemplatesStore.resetNormalTransactionTemplates();
         accountsStore.resetAccounts();
+        tokensStore.resetMapProxyToken();
 
         if (resetUserInfoAndSettings) {
             userStore.resetUserBasicInfo();
@@ -98,10 +100,6 @@ export const useRootStore = defineStore('root', () => {
 
     function generateOAuth2LoginUrl(platform: 'mobile' | 'desktop', clientSessionId: string): string {
         return services.generateOAuth2LoginUrl(platform, clientSessionId);
-    }
-
-    function generateOAuth2LinkUrl(platform: 'mobile' | 'desktop', clientSessionId: string): string {
-        return services.generateOAuth2LinkUrl(platform, clientSessionId);
     }
 
     function authorize(req: UserLoginRequest): Promise<AuthResponse> {
@@ -133,6 +131,7 @@ export const useRootStore = defineStore('root', () => {
                 settingsStore.setApplicationSettingsFromCloudSettings(data.result.applicationCloudSettings);
 
                 updateCurrentToken(data.result.token);
+                tokensStore.updateMapProxyToken(data.result.mapProxyToken);
 
                 if (data.result.user && isObject(data.result.user)) {
                     userStore.storeUserBasicInfo(data.result.user);
@@ -194,6 +193,7 @@ export const useRootStore = defineStore('root', () => {
                 settingsStore.setApplicationSettingsFromCloudSettings(data.result.applicationCloudSettings);
 
                 updateCurrentToken(data.result.token);
+                tokensStore.updateMapProxyToken(data.result.mapProxyToken);
 
                 if (data.result.user && isObject(data.result.user)) {
                     userStore.storeUserBasicInfo(data.result.user);
@@ -242,6 +242,7 @@ export const useRootStore = defineStore('root', () => {
                 settingsStore.setApplicationSettingsFromCloudSettings(data.result.applicationCloudSettings);
 
                 updateCurrentToken(data.result.token);
+                tokensStore.updateMapProxyToken(data.result.mapProxyToken);
 
                 if (data.result.user && isObject(data.result.user)) {
                     userStore.storeUserBasicInfo(data.result.user);
@@ -280,6 +281,7 @@ export const useRootStore = defineStore('root', () => {
 
                 if (data.result.token && isString(data.result.token)) {
                     updateCurrentToken(data.result.token);
+                    tokensStore.updateMapProxyToken(data.result.mapProxyToken);
                 }
 
                 if (data.result.user && isObject(data.result.user)) {
@@ -341,25 +343,14 @@ export const useRootStore = defineStore('root', () => {
         resetAllStates(true);
     }
 
-    function verifyEmail({ token, requestNewToken }: { token: string, requestNewToken: boolean }): Promise<UserVerifyEmailResponse> {
+    function verifyEmail(token: string): Promise<boolean> {
         return new Promise((resolve, reject) => {
-            services.verifyEmail({
-                token,
-                requestNewToken
-            }).then(response => {
+            services.verifyEmail(token).then(response => {
                 const data = response.data;
 
                 if (!data || !data.success || !data.result) {
                     reject({ message: 'Unable to verify email' });
                     return;
-                }
-
-                if (data.result.newToken && isString(data.result.newToken)) {
-                    updateCurrentToken(data.result.newToken);
-                }
-
-                if (data.result.user && isObject(data.result.user)) {
-                    userStore.storeUserBasicInfo(data.result.user);
                 }
 
                 resolve(data.result);
@@ -470,6 +461,11 @@ export const useRootStore = defineStore('root', () => {
 
                 if (data.result.newToken && isString(data.result.newToken)) {
                     updateCurrentToken(data.result.newToken);
+                    tokensStore.updateMapProxyToken(data.result.newMapProxyToken);
+
+                    if (!userCustomIconsStore.customIconListStateInvalid) {
+                        userCustomIconsStore.updateCustomIconListInvalidState(true);
+                    }
                 }
 
                 if (data.result.user && isObject(data.result.user)) {
@@ -557,6 +553,10 @@ export const useRootStore = defineStore('root', () => {
                     statisticsStore.updateTransactionStatisticsInvalidState(true);
                 }
 
+                clearTransactionPictureCache().catch(error => {
+                    logger.warn('failed to clear transaction picture cache', error);
+                });
+
                 resolve(data.result);
             }).catch(error => {
                 logger.error('failed to clear user data', error);
@@ -595,6 +595,10 @@ export const useRootStore = defineStore('root', () => {
                 if (!statisticsStore.transactionStatisticsStateInvalid) {
                     statisticsStore.updateTransactionStatisticsInvalidState(true);
                 }
+
+                clearTransactionPictureCache().catch(error => {
+                    logger.warn('failed to clear transaction picture cache', error);
+                });
 
                 resolve(data.result);
             }).catch(error => {
@@ -644,8 +648,11 @@ export const useRootStore = defineStore('root', () => {
                 }
 
                 userCustomIconsStore.resetCustomIcons();
-                clearCustomIconCache();
                 importPresetsStore.resetImportPresets();
+
+                clearAllUserCaches().catch(error => {
+                    logger.warn('failed to clear user caches', error);
+                });
 
                 resolve(data.result);
             }).catch(error => {
@@ -668,7 +675,6 @@ export const useRootStore = defineStore('root', () => {
         // functions
         setNotificationContent,
         generateOAuth2LoginUrl,
-        generateOAuth2LinkUrl,
         authorize,
         authorize2FA,
         authorizeOAuth2,

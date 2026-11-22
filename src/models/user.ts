@@ -205,12 +205,6 @@ export interface UserRegisterRequest {
     readonly incomeAmountColor?: number;
 }
 
-export interface UserVerifyEmailResponse {
-    readonly newToken?: string;
-    readonly user: UserBasicInfo;
-    readonly notificationContent?: string;
-}
-
 export interface UserResendVerifyEmailRequest {
     readonly email: string;
     readonly password: string;
@@ -248,6 +242,7 @@ export interface UserProfileUpdateRequest {
 export interface UserProfileUpdateResponse {
     readonly user: UserBasicInfo;
     readonly newToken?: string;
+    readonly newMapProxyToken?: string;
 }
 
 export interface UserProfileResponse extends UserBasicInfo {

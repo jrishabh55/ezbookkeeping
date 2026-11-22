@@ -584,7 +584,6 @@
 import { ref, computed } from 'vue';
 import type { Router } from 'framework7/types';
 
-import type { LanguageOption } from '@/locales/index.ts';
 import { useI18n } from '@/locales/helpers.ts';
 import { useI18nUIComponents, showLoading, hideLoading } from '@/lib/ui/mobile.ts';
 import { useUserProfilePageBase } from '@/views/base/users/UserProfilePageBase.ts';
@@ -594,6 +593,7 @@ import { useUserStore } from '@/stores/user.ts';
 import { useAccountsStore } from '@/stores/account.ts';
 
 import { TextDirection } from '@/core/text.ts';
+import type { LanguageOption } from '@/core/language.ts';
 import { NumeralSystem } from '@/core/numeral.ts';
 import type { LocalizedCurrencyInfo } from '@/core/currency.ts';
 import { TransactionEditScopeType } from '@/core/transaction.ts';
@@ -753,16 +753,20 @@ function save(confirm?: boolean): void {
     showLoading(() => saving.value);
 
     rootStore.updateUserProfile(newProfile.value.toProfileUpdateRequest(currentPassword.value)).then(response => {
-        saving.value = false;
-        hideLoading();
         currentPassword.value = '';
 
-        doAfterProfileUpdate(response.user);
-        showToast('Your profile has been successfully updated');
+        doAfterProfileUpdate(response.user).then(() => {
+            showToast('Your profile has been successfully updated');
+        }).catch(() => {
+            showToast('Your profile has been successfully updated, but the language resources could not be loaded.');
+        }).finally(() => {
+            saving.value = false;
+            hideLoading();
 
-        if (oldTextDirection === getCurrentLanguageTextDirection()) {
-            router.back(); // if text direction is changed, the page will be reloaded, so it don't need to go back
-        }
+            if (oldTextDirection === getCurrentLanguageTextDirection()) {
+                router.back(); // if text direction is changed, the page will be reloaded, so it don't need to go back
+            }
+        });
     }).catch(error => {
         saving.value = false;
         hideLoading();
