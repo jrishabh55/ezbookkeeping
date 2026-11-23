@@ -1,6 +1,7 @@
 import axios, { type AxiosRequestConfig, type AxiosRequestHeaders, type AxiosResponse } from 'axios';
 
 import type { ApiResponse } from '@/core/api.ts';
+import type { OverviewNamedRange } from '@/core/overview_layout.ts';
 
 import type {
     ApplicationCloudSetting
@@ -707,6 +708,24 @@ export default {
     getTransactionAmounts: (params: TransactionAmountsRequestParams, excludeAccountIds: string[], excludeCategoryIds: string[], tagFilter: string): ApiResponsePromise<TransactionAmountsResponse> => {
         const req = TransactionAmountsRequest.of(params);
         let queryParams = req.buildQuery();
+
+        if (excludeAccountIds && excludeAccountIds.length) {
+            queryParams = queryParams + `&exclude_account_ids=${excludeAccountIds.join(',')}`;
+        }
+
+        if (excludeCategoryIds && excludeCategoryIds.length) {
+            queryParams = queryParams + `&exclude_category_ids=${excludeCategoryIds.join(',')}`;
+        }
+
+        if (tagFilter) {
+            queryParams = queryParams + `&tag_filter=${encodeURIComponent(tagFilter)}`;
+        }
+
+        return axios.get<ApiResponse<TransactionAmountsResponse>>(`v1/transactions/amounts.json?${queryParams}`);
+    },
+    getTransactionAmountsByRanges: (ranges: OverviewNamedRange[], excludeAccountIds: string[], excludeCategoryIds: string[], tagFilter: string, useTransactionTimezone: boolean): ApiResponsePromise<TransactionAmountsResponse> => {
+        const query = ranges.map(range => `${range.name}_${range.startTime}_${range.endTime}`).join('|');
+        let queryParams = `use_transaction_timezone=${useTransactionTimezone}` + (query.length ? '&query=' + query : '');
 
         if (excludeAccountIds && excludeAccountIds.length) {
             queryParams = queryParams + `&exclude_account_ids=${excludeAccountIds.join(',')}`;

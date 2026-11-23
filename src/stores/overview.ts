@@ -13,7 +13,7 @@ import { type StartEndTime, type WritableStartEndTime, DateRange} from '@/core/d
 import { TimezoneTypeForStatistics } from '@/core/timezone.ts';
 import { KeywordMatchMode } from '@/core/text.ts';
 import { TransactionType } from '@/core/transaction.ts';
-import type { OverviewRecentTransactionsQuery } from '@/core/overview_layout.ts';
+import type { OverviewRecentTransactionsQuery, OverviewWidgetAmountsQuery, OverviewWidgetStatisticsQuery } from '@/core/overview_layout.ts';
 
 import { KnownErrorCode } from '@/consts/api.ts';
 
@@ -23,6 +23,8 @@ import type {
     TransactionInfoPageWrapperResponse,
     TransactionUnreconciledCountItem,
     TransactionAmountsResponse,
+    TransactionAmountsResponseItem,
+    TransactionOverviewDataItem,
     TransactionOverviewData,
     TransactionStatisticResponse,
     TransactionStatisticAssetTrendsResponseItem,
@@ -64,6 +66,7 @@ import {
 
 import { getFinalAccountIdsByFilteredAccountIds } from '@/lib/account.ts';
 import { getFinalCategoryIdsByFilteredCategoryIds } from '@/lib/category.ts';
+import { getWidgetQueryCacheKey } from '@/lib/overview_widget_query.ts';
 import services, { type ApiResponsePromise } from '@/lib/services.ts';
 import logger from '@/lib/logger.ts';
 
@@ -170,6 +173,55 @@ export const useOverviewStore = defineStore('overview', () => {
     const currentMonthTransactionsStateInvalid = ref<boolean>(true);
     const transactionDailyAmountsData = ref<TransactionDailyAmountsResponseItem[]>([]);
     const transactionDailyAmountsStateInvalid = ref<boolean>(true);
+    const widgetQueryKeys = ref<Record<string, string>>({});
+    const widgetAmountsQueries = ref<Record<string, OverviewWidgetAmountsQuery>>({});
+    const widgetAmountsData = ref<Record<string, TransactionAmountsResponse>>({});
+    const widgetAmountsStateInvalid = ref<Record<string, boolean>>({});
+    const widgetStatisticsQueryKeys = ref<Record<string, string>>({});
+    const widgetStatisticsData = ref<Record<string, TransactionStatisticResponse>>({});
+    const widgetStatisticsStateInvalid = ref<Record<string, boolean>>({});
+
+    function toOverviewDataItem(item: TransactionAmountsResponseItem): TransactionOverviewDataItem {
+        const defaultCurrency = userStore.currentUserDefaultCurrency;
+
+        let totalIncomeAmount = BIG_DECIMAL_ZERO;
+        let totalExpenseAmount = BIG_DECIMAL_ZERO;
+        let hasUnCalculatedTotalIncome = false;
+        let hasUnCalculatedTotalExpense = false;
+
+        if (item.amounts) {
+            for (const amount of item.amounts) {
+                if (amount.currency !== defaultCurrency) {
+                    const incomeAmount = exchangeRatesStore.getExchangedAmount(parseBigDecimal(amount.incomeAmount), amount.currency, defaultCurrency);
+                    const expenseAmount = exchangeRatesStore.getExchangedAmount(parseBigDecimal(amount.expenseAmount), amount.currency, defaultCurrency);
+
+                    if (incomeAmount) {
+                        totalIncomeAmount = totalIncomeAmount.add(incomeAmount.truncate());
+                    } else {
+                        hasUnCalculatedTotalIncome = true;
+                    }
+
+                    if (expenseAmount) {
+                        totalExpenseAmount = totalExpenseAmount.add(expenseAmount.truncate());
+                    } else {
+                        hasUnCalculatedTotalExpense = true;
+                    }
+                } else {
+                    totalIncomeAmount = totalIncomeAmount.add(parseBigDecimal(amount.incomeAmount));
+                    totalExpenseAmount = totalExpenseAmount.add(parseBigDecimal(amount.expenseAmount));
+                }
+            }
+        }
+
+        return {
+            valid: true,
+            incomeAmount: totalIncomeAmount,
+            expenseAmount: totalExpenseAmount,
+            incompleteIncomeAmount: hasUnCalculatedTotalIncome,
+            incompleteExpenseAmount: hasUnCalculatedTotalExpense,
+            amounts: item.amounts || []
+        };
+    }
 
     const transactionOverview = computed<TransactionOverviewData>(() => {
         const overviewData = transactionOverviewData.value;
@@ -187,7 +239,6 @@ export const useOverviewStore = defineStore('overview', () => {
         }
 
         const finalOverviewData: TransactionOverviewData = {};
-        const defaultCurrency = userStore.currentUserDefaultCurrency;
 
         ALL_TRANSACTION_AMOUNTS_REQUEST_TYPE.forEach(field => {
             const item = overviewData[field];
@@ -196,43 +247,7 @@ export const useOverviewStore = defineStore('overview', () => {
                 return;
             }
 
-            let totalIncomeAmount = BIG_DECIMAL_ZERO;
-            let totalExpenseAmount = BIG_DECIMAL_ZERO;
-            let hasUnCalculatedTotalIncome = false;
-            let hasUnCalculatedTotalExpense = false;
-
-            if (item.amounts) {
-                for (const amount of item.amounts) {
-                    if (amount.currency !== defaultCurrency) {
-                        const incomeAmount = exchangeRatesStore.getExchangedAmount(parseBigDecimal(amount.incomeAmount), amount.currency, defaultCurrency);
-                        const expenseAmount = exchangeRatesStore.getExchangedAmount(parseBigDecimal(amount.expenseAmount), amount.currency, defaultCurrency);
-
-                        if (incomeAmount) {
-                            totalIncomeAmount = totalIncomeAmount.add(incomeAmount.truncate());
-                        } else {
-                            hasUnCalculatedTotalIncome = true;
-                        }
-
-                        if (expenseAmount) {
-                            totalExpenseAmount = totalExpenseAmount.add(expenseAmount.truncate());
-                        } else {
-                            hasUnCalculatedTotalExpense = true;
-                        }
-                    } else {
-                        totalIncomeAmount = totalIncomeAmount.add(parseBigDecimal(amount.incomeAmount));
-                        totalExpenseAmount = totalExpenseAmount.add(parseBigDecimal(amount.expenseAmount));
-                    }
-                }
-            }
-
-            finalOverviewData[field] = {
-                valid: true,
-                incomeAmount: totalIncomeAmount,
-                expenseAmount: totalExpenseAmount,
-                incompleteIncomeAmount: hasUnCalculatedTotalIncome,
-                incompleteExpenseAmount: hasUnCalculatedTotalExpense,
-                amounts: item.amounts || []
-            };
+            finalOverviewData[field] = toOverviewDataItem(item);
         });
 
         return finalOverviewData;
@@ -318,6 +333,14 @@ export const useOverviewStore = defineStore('overview', () => {
 
         currentMonthTransactionsStateInvalid.value = invalidState;
         transactionDailyAmountsStateInvalid.value = invalidState;
+
+        for (const key of keys(widgetAmountsData.value)) {
+            widgetAmountsStateInvalid.value[key] = invalidState;
+        }
+
+        for (const key of keys(widgetStatisticsData.value)) {
+            widgetStatisticsStateInvalid.value[key] = invalidState;
+        }
     }
 
     function resetTransactionOverview(): void {
@@ -340,6 +363,13 @@ export const useOverviewStore = defineStore('overview', () => {
         currentMonthTransactionsStateInvalid.value = true;
         transactionDailyAmountsData.value = [];
         transactionDailyAmountsStateInvalid.value = true;
+        widgetQueryKeys.value = {};
+        widgetAmountsQueries.value = {};
+        widgetAmountsData.value = {};
+        widgetAmountsStateInvalid.value = {};
+        widgetStatisticsQueryKeys.value = {};
+        widgetStatisticsData.value = {};
+        widgetStatisticsStateInvalid.value = {};
     }
 
     function loadTransactionOverview({ force, months }: { force: boolean, months?: number }): Promise<TransactionAmountsResponse> {
@@ -471,6 +501,169 @@ export const useOverviewStore = defineStore('overview', () => {
                 }
             });
         });
+    }
+
+    function loadWidgetAmounts({ force, queries }: { force: boolean, queries: Record<string, OverviewWidgetAmountsQuery> }): Promise<void> {
+        const newQueryKeys: Record<string, string> = {};
+        const queryByKey: Record<string, OverviewWidgetAmountsQuery> = {};
+
+        for (const [widgetId, query] of entries(queries)) {
+            const cacheKey = getWidgetQueryCacheKey(query);
+            newQueryKeys[widgetId] = cacheKey;
+            queryByKey[cacheKey] = query;
+        }
+
+        const requestedKeys = keys(queryByKey);
+        const newData: Record<string, TransactionAmountsResponse> = {};
+        const newInvalid: Record<string, boolean> = {};
+        const keysToLoad: string[] = [];
+
+        for (const cacheKey of requestedKeys) {
+            if (!force && !widgetAmountsStateInvalid.value[cacheKey] && widgetAmountsData.value[cacheKey]) {
+                newData[cacheKey] = widgetAmountsData.value[cacheKey]!;
+                newInvalid[cacheKey] = false;
+            } else {
+                keysToLoad.push(cacheKey);
+            }
+        }
+
+        widgetQueryKeys.value = newQueryKeys;
+        widgetAmountsQueries.value = { ...queries };
+        widgetAmountsData.value = newData;
+        widgetAmountsStateInvalid.value = newInvalid;
+
+        if (!keysToLoad.length) {
+            return Promise.resolve();
+        }
+
+        const useTransactionTimezone = settingsStore.appSettings.timezoneUsedForStatisticsInHomePage === TimezoneTypeForStatistics.TransactionTimezone.type;
+
+        return Promise.all(keysToLoad.map(cacheKey => {
+            const query = queryByKey[cacheKey]!;
+
+            return new Promise<void>((resolve, reject) => {
+                services.getTransactionAmountsByRanges(query.ranges, query.excludeAccountIds, query.excludeCategoryIds, query.tagFilter, useTransactionTimezone).then(response => {
+                    const data = response.data;
+
+                    if (!data || !data.success || !data.result) {
+                        reject({ message: 'Unable to retrieve transaction overview' });
+                        return;
+                    }
+
+                    widgetAmountsData.value[cacheKey] = data.result;
+                    widgetAmountsStateInvalid.value[cacheKey] = false;
+                    resolve();
+                }).catch(error => {
+                    logger.error('failed to load widget amounts', error);
+
+                    if (error.response && error.response.data && error.response.data.errorMessage) {
+                        reject({ error: error.response.data });
+                    } else if (!error.processed) {
+                        reject({ message: 'Unable to retrieve transaction overview' });
+                    } else {
+                        reject(error);
+                    }
+                });
+            });
+        })).then(() => undefined);
+    }
+
+    function getWidgetAmountsQuery(widgetId: string): OverviewWidgetAmountsQuery | undefined {
+        return widgetAmountsQueries.value[widgetId];
+    }
+
+    function getWidgetAmounts(widgetId: string): Record<string, TransactionOverviewDataItem> | undefined {
+        const cacheKey = widgetQueryKeys.value[widgetId];
+        const data = cacheKey ? widgetAmountsData.value[cacheKey] as Record<string, TransactionAmountsResponseItem> | undefined : undefined;
+
+        if (!data) {
+            return undefined;
+        }
+
+        const ret: Record<string, TransactionOverviewDataItem> = {};
+
+        for (const [name, item] of entries(data)) {
+            if (item) {
+                ret[name] = toOverviewDataItem(item);
+            }
+        }
+
+        return ret;
+    }
+
+    function loadWidgetCategoryStatistics({ force, queries }: { force: boolean, queries: Record<string, OverviewWidgetStatisticsQuery> }): Promise<void> {
+        const newQueryKeys: Record<string, string> = {};
+        const queryByKey: Record<string, OverviewWidgetStatisticsQuery> = {};
+
+        for (const [widgetId, query] of entries(queries)) {
+            const cacheKey = getWidgetQueryCacheKey(query);
+            newQueryKeys[widgetId] = cacheKey;
+            queryByKey[cacheKey] = query;
+        }
+
+        const newData: Record<string, TransactionStatisticResponse> = {};
+        const newInvalid: Record<string, boolean> = {};
+        const keysToLoad: string[] = [];
+
+        for (const cacheKey of keys(queryByKey)) {
+            if (!force && !widgetStatisticsStateInvalid.value[cacheKey] && widgetStatisticsData.value[cacheKey]) {
+                newData[cacheKey] = widgetStatisticsData.value[cacheKey]!;
+                newInvalid[cacheKey] = false;
+            } else {
+                keysToLoad.push(cacheKey);
+            }
+        }
+
+        widgetStatisticsQueryKeys.value = newQueryKeys;
+        widgetStatisticsData.value = newData;
+        widgetStatisticsStateInvalid.value = newInvalid;
+
+        if (!keysToLoad.length) {
+            return Promise.resolve();
+        }
+
+        const useTransactionTimezone = settingsStore.appSettings.timezoneUsedForStatisticsInHomePage === TimezoneTypeForStatistics.TransactionTimezone.type;
+
+        return Promise.all(keysToLoad.map(cacheKey => {
+            const query = queryByKey[cacheKey]!;
+
+            return new Promise<void>((resolve, reject) => {
+                services.getTransactionStatistics({
+                    startTime: query.startTime,
+                    endTime: query.endTime,
+                    tagFilter: query.tagFilter,
+                    keyword: '',
+                    matchMode: KeywordMatchMode.Default.type,
+                    useTransactionTimezone: useTransactionTimezone
+                }).then(response => {
+                    const data = response.data;
+
+                    if (!data || !data.success || !data.result) {
+                        reject({ message: 'Unable to retrieve transaction statistics' });
+                        return;
+                    }
+
+                    widgetStatisticsData.value[cacheKey] = data.result;
+                    widgetStatisticsStateInvalid.value[cacheKey] = false;
+                    resolve();
+                }).catch(error => {
+                    logger.error('failed to retrieve widget transaction statistics', error);
+
+                    if (error.response && error.response.data && error.response.data.errorMessage) {
+                        reject({ error: error.response.data });
+                    } else if (!error.processed) {
+                        reject({ message: 'Unable to retrieve transaction statistics' });
+                    } else {
+                        reject(error);
+                    }
+                });
+            });
+        })).then(() => undefined);
+    }
+
+    function getWidgetCategoryStatistics(widgetId: string): TransactionStatisticResponse | undefined {
+        const cacheKey = widgetStatisticsQueryKeys.value[widgetId];
+        return cacheKey ? widgetStatisticsData.value[cacheKey] : undefined;
     }
 
     function loadTransactionCategoryStatistics({ force, dateType }: { force: boolean, dateType: number }): Promise<TransactionStatisticResponse> {
@@ -911,6 +1104,7 @@ export const useOverviewStore = defineStore('overview', () => {
         currentMonthTransactionIncomeExpenseDailyTotalAmounts,
         currentMonthTransactionsStateInvalid,
         transactionDailyAmountsData,
+        widgetAmountsData,
         // computed states,
         transactionOverview,
         // functions
@@ -920,6 +1114,11 @@ export const useOverviewStore = defineStore('overview', () => {
         loadTransactionOverview,
         loadTransactionUnreconciledCounts,
         loadTransactionCategoryStatistics,
+        loadWidgetAmounts,
+        getWidgetAmounts,
+        getWidgetAmountsQuery,
+        loadWidgetCategoryStatistics,
+        getWidgetCategoryStatistics,
         loadTransactionAssetTrends,
         loadRecentTransactions,
         loadCurrentMonthTransactions,
