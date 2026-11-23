@@ -331,6 +331,19 @@ describe('overview widget queries', () => {
         expect(getOverviewWidgetAmountsQueries(mk(DateRange.ThisYear.type), EXTRA_CTX)['p']).toBeDefined();
     });
 
+    test('mobile period income and expense with multiple dateRanges', () => {
+        const mk = (dateRanges: number[], extra: Record<string, string> = {}) => layoutOf({ id: 'm', type: OverviewWidgetType.PeriodIncomeExpense, settings: { dateRanges, ...extra } });
+        const filtered = getOverviewWidgetAmountsQueries(mk([DateRange.ThisMonth.type, DateRange.ThisFiscalYear.type], { filterTags: '0:T1' }), HOME_CTX)['m'];
+
+        expect(filtered?.ranges.map(r => r.name)).toEqual(['r' + DateRange.ThisMonth.type, 'r' + DateRange.ThisFiscalYear.type]);
+        expect(filtered?.tagFilter).toBe('0:H;0:T1');
+
+        const shared = [DateRange.Today.type, DateRange.ThisWeek.type, DateRange.ThisMonth.type, DateRange.ThisYear.type];
+        expect(getOverviewWidgetAmountsQueries(mk(shared), HOME_CTX)['m']).toBeUndefined();
+        expect(getOverviewWidgetAmountsQueries(mk(shared), EXTRA_CTX)['m']?.ranges).toHaveLength(4);
+        expect(getOverviewWidgetAmountsQueries(mk([DateRange.LastMonth.type]), HOME_CTX)['m']).toBeDefined();
+    });
+
     test('key figure with comparison gets current and compare ranges', () => {
         const layout = layoutOf({ id: 'k', type: OverviewWidgetType.KeyFigure, settings: { metric: 'net', dateRange: DateRange.ThisMonth.type, comparison: OverviewComparisonMode.PreviousPeriod } });
         const query = getOverviewWidgetAmountsQueries(layout, HOME_CTX)['k'];

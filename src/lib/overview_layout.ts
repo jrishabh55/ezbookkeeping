@@ -633,9 +633,25 @@ export function getOverviewWidgetAmountsQueries(layout: OverviewLayoutBase, ctx:
                 }
             }
         } else if (widget.type === OverviewWidgetType.PeriodIncomeExpense || widget.type === OverviewWidgetType.PeriodNetIncomeAndSavingsRate) {
+            const dateRanges = settings['dateRanges'];
             const current = getWidgetCurrentRange(settings, ctx);
 
-            if (current && (!common.filterEmpty || !SHARED_OVERVIEW_PERIOD_DATE_RANGES.includes(current.dateType) || !ctx.homeFilter)) {
+            if (isArray(dateRanges)) {
+                const selected = dateRanges.filter(isInteger);
+                const multiRanges: OverviewNamedRange[] = [];
+
+                for (const dateType of selected) {
+                    const range = getDateRangeByDateType(dateType, ctx.firstDayOfWeek, ctx.fiscalYearStart);
+
+                    if (range) {
+                        multiRanges.push({ name: 'r' + dateType, startTime: range.minTime, endTime: range.maxTime });
+                    }
+                }
+
+                if (multiRanges.length && (!common.filterEmpty || !ctx.homeFilter || selected.some(dateType => !SHARED_OVERVIEW_PERIOD_DATE_RANGES.includes(dateType)))) {
+                    ranges = multiRanges;
+                }
+            } else if (current && (!common.filterEmpty || !SHARED_OVERVIEW_PERIOD_DATE_RANGES.includes(current.dateType) || !ctx.homeFilter)) {
                 ranges = [current.range];
             }
         } else if (widget.type === OverviewWidgetType.IncomeExpenseTrend) {

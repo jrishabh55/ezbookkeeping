@@ -76,11 +76,7 @@ const WIDGET_FILTER_SETTINGS: OverviewWidgetSettingItem[] = [
     }
 ];
 
-const WIDGET_FILTER_TAGS_SETTING: OverviewWidgetSettingItem = {
-    settingType: 'tagSelect',
-    settingName: 'filterTags',
-    displayName: 'Filter Tags'
-};
+const WIDGET_FILTER_TAGS_SETTING = WIDGET_FILTER_SETTINGS.find(setting => setting.settingName === 'filterTags') as OverviewWidgetSettingItem;
 
 const PERIOD_DATE_RANGES: DateRange[] = [
     DateRange.Today,
