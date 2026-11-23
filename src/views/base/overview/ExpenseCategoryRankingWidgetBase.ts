@@ -55,7 +55,10 @@ export function useExpenseCategoryRankingWidgetBase(props: CommonExpenseCategory
 
 
     const rankingData = computed<{ total: BigDecimal; incomplete: boolean; items: RankingItem[] }>(() => {
-        const response = (props.widgetId ? overviewStore.getWidgetCategoryStatistics(props.widgetId) : undefined) ?? overviewStore.transactionCategoryStatisticsData[props.dateType];
+        // a widget with its own query only reads its own data (none while loading); the others read the shared data
+        const response = props.widgetId && overviewStore.getWidgetCategoryStatisticsQuery(props.widgetId)
+            ? overviewStore.getWidgetCategoryStatistics(props.widgetId)
+            : overviewStore.transactionCategoryStatisticsData[props.dateType];
         const values: Record<string, RankingItem> = {};
         let total: BigDecimal = BIG_DECIMAL_ZERO;
         let hasIncompleteAmount: boolean = false;

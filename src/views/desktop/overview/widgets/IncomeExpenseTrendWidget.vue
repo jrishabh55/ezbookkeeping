@@ -66,7 +66,14 @@ const { tt } = useI18n();
 const overviewStore = useOverviewStore();
 
 const isDarkMode = computed<boolean>(() => theme.global.name.value === ThemeType.Dark);
-const transactionOverview = computed<TransactionOverviewData>(() => (props.widgetId ? overviewStore.getWidgetAmounts(props.widgetId) : undefined) ?? overviewStore.transactionOverview);
+// a widget with its own query only reads its own data (none while loading); the others read the shared data
+const transactionOverview = computed<TransactionOverviewData>(() => {
+    if (props.widgetId && overviewStore.getWidgetAmountsQuery(props.widgetId)) {
+        return overviewStore.getWidgetAmounts(props.widgetId) ?? {};
+    }
+
+    return overviewStore.transactionOverview;
+});
 
 const displayTitle = computed<string>(() => {
     if (props.title) {

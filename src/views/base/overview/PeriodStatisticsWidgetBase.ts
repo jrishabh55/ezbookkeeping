@@ -64,6 +64,8 @@ export function usePeriodStatisticsWidgetBase(props: CommonPeriodStatisticsWidge
     const defaultCurrency = computed<string>(() => userStore.currentUserDefaultCurrency);
 
     const transactionOverview = computed<TransactionOverviewData>(() => overviewStore.transactionOverview);
+    // a widget with its own query only reads its own data (none while loading); the others read the shared data
+    const hasWidgetQuery = computed<boolean>(() => !!props.widgetId && !!overviewStore.getWidgetAmountsQuery(props.widgetId));
     const widgetAmounts = computed<Record<string, TransactionOverviewDataItem> | undefined>(() => props.widgetId ? overviewStore.getWidgetAmounts(props.widgetId) : undefined);
 
     const displayDateRange = computed<TransactionOverviewDisplayTime>(() => {
@@ -142,8 +144,8 @@ export function usePeriodStatisticsWidgetBase(props: CommonPeriodStatisticsWidge
     }
 
     function getOverviewItem(dateType: number | undefined): TransactionOverviewDataItem | undefined {
-        if (widgetAmounts.value) {
-            return widgetAmounts.value[getWidgetRangeName(dateType)];
+        if (hasWidgetQuery.value) {
+            return widgetAmounts.value?.[getWidgetRangeName(dateType)];
         }
 
         if (dateType === DateRange.Today.type) {

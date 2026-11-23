@@ -66,7 +66,7 @@ import {
 
 import { getFinalAccountIdsByFilteredAccountIds } from '@/lib/account.ts';
 import { getFinalCategoryIdsByFilteredCategoryIds } from '@/lib/category.ts';
-import { getWidgetQueryCacheKey, mergeTagFilters } from '@/lib/overview_widget_query.ts';
+import { getWidgetQueryCacheKey, getWidgetLinkIncludeIds, mergeTagFilters } from '@/lib/overview_widget_query.ts';
 import services, { type ApiResponsePromise } from '@/lib/services.ts';
 import logger from '@/lib/logger.ts';
 
@@ -184,6 +184,7 @@ export const useOverviewStore = defineStore('overview', () => {
     const widgetAmountsData = ref<Record<string, TransactionAmountsResponse>>({});
     const widgetAmountsStateInvalid = ref<Record<string, boolean>>({});
     const widgetStatisticsQueryKeys = ref<Record<string, string>>({});
+    const widgetStatisticsQueries = ref<Record<string, OverviewWidgetStatisticsQuery>>({});
     const widgetStatisticsData = ref<Record<string, TransactionStatisticResponse>>({});
     const widgetStatisticsStateInvalid = ref<Record<string, boolean>>({});
 
@@ -375,6 +376,7 @@ export const useOverviewStore = defineStore('overview', () => {
         widgetAmountsData.value = {};
         widgetAmountsStateInvalid.value = {};
         widgetStatisticsQueryKeys.value = {};
+        widgetStatisticsQueries.value = {};
         widgetStatisticsData.value = {};
         widgetStatisticsStateInvalid.value = {};
     }
@@ -634,6 +636,7 @@ export const useOverviewStore = defineStore('overview', () => {
         const requestToken = ++widgetStatisticsRequestToken;
         const invalidationCount = widgetInvalidationCount;
         widgetStatisticsQueryKeys.value = newQueryKeys;
+        widgetStatisticsQueries.value = { ...queries };
         widgetStatisticsData.value = newData;
         widgetStatisticsStateInvalid.value = newInvalid;
 
@@ -686,6 +689,10 @@ export const useOverviewStore = defineStore('overview', () => {
                 });
             });
         })).then(() => undefined);
+    }
+
+    function getWidgetCategoryStatisticsQuery(widgetId: string): OverviewWidgetStatisticsQuery | undefined {
+        return widgetStatisticsQueries.value[widgetId];
     }
 
     function getWidgetCategoryStatistics(widgetId: string): TransactionStatisticResponse | undefined {
@@ -1100,16 +1107,27 @@ export const useOverviewStore = defineStore('overview', () => {
             }
         }
 
+        const excludedCategories = settingsStore.appSettings.overviewTransactionCategoryFilterInHomePage;
+        const excludedAccounts = settingsStore.appSettings.overviewAccountFilterInHomePage;
+        const filterCategoryIds = filter ? getWidgetLinkIncludeIds(filter.categoryIds, keys(transactionCategoriesStore.allTransactionCategoriesMap), id => {
+            const category = transactionCategoriesStore.allTransactionCategoriesMap[id];
+            return useHomeFilters && (!!excludedCategories[id] || (!!category && category.parentId !== '0' && !!excludedCategories[category.parentId]));
+        }) : [];
+        const filterAccountIds = filter ? getWidgetLinkIncludeIds(filter.accountIds, keys(accountsStore.allAccountsMap), id => {
+            const account = accountsStore.allAccountsMap[id];
+            return useHomeFilters && (!!excludedAccounts[id] || (!!account && account.parentId !== '0' && !!excludedAccounts[account.parentId]));
+        }) : [];
+
         if (categoryIds && categoryIds.length > 0) {
             querys.push('categoryIds=' + categoryIds.join(','));
-        } else if (filter && filter.categoryIds.length > 0) {
-            querys.push('categoryIds=' + filter.categoryIds.join(','));
+        } else if (filterCategoryIds.length > 0) {
+            querys.push('categoryIds=' + filterCategoryIds.join(','));
         } else if (useHomeFilters && !isObjectEmpty(settingsStore.appSettings.overviewTransactionCategoryFilterInHomePage)) {
             querys.push('categoryIds=' + getFinalCategoryIdsByFilteredCategoryIds(transactionCategoriesStore.allTransactionCategoriesMap, settingsStore.appSettings.overviewTransactionCategoryFilterInHomePage));
         }
 
-        if (filter && filter.accountIds.length > 0) {
-            querys.push('accountIds=' + filter.accountIds.join(','));
+        if (filterAccountIds.length > 0) {
+            querys.push('accountIds=' + filterAccountIds.join(','));
         } else if (useHomeFilters && !isObjectEmpty(settingsStore.appSettings.overviewAccountFilterInHomePage)) {
             querys.push('accountIds=' + getFinalAccountIdsByFilteredAccountIds(accountsStore.allAccountsMap, settingsStore.appSettings.overviewAccountFilterInHomePage));
         }
@@ -1153,6 +1171,7 @@ export const useOverviewStore = defineStore('overview', () => {
         getWidgetAmounts,
         getWidgetAmountsQuery,
         loadWidgetCategoryStatistics,
+        getWidgetCategoryStatisticsQuery,
         getWidgetCategoryStatistics,
         loadTransactionAssetTrends,
         loadRecentTransactions,

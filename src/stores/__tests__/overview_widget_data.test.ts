@@ -201,4 +201,20 @@ describe('overview store widget data', () => {
 
         expect(spy).toHaveBeenCalledTimes(2);
     });
+
+    it('reports the widget queries while their data is still loading', async () => {
+        const store = useOverviewStore();
+        vi.spyOn(services, 'getTransactionAmountsByRanges').mockImplementation(() => new Promise(() => {}) as never);
+        vi.spyOn(services, 'getTransactionStatistics').mockImplementation(() => new Promise(() => {}) as never);
+        const statsQuery: OverviewWidgetStatisticsQuery = { startTime: 1, endTime: 2, tagFilter: 'T' };
+
+        void store.loadWidgetAmounts({ force: false, queries: { w1: amountsQuery(10) } });
+        void store.loadWidgetCategoryStatistics({ force: false, queries: { w2: statsQuery } });
+
+        expect(store.getWidgetAmountsQuery('w1')).toEqual(amountsQuery(10));
+        expect(store.getWidgetAmounts('w1')).toBeUndefined();
+        expect(store.getWidgetCategoryStatisticsQuery('w2')).toEqual(statsQuery);
+        expect(store.getWidgetCategoryStatistics('w2')).toBeUndefined();
+        expect(store.getWidgetCategoryStatisticsQuery('w1')).toBeUndefined();
+    });
 });

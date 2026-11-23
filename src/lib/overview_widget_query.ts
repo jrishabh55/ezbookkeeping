@@ -46,6 +46,18 @@ export function getExcludedIds(includeIds: string[], allIds: string[]): string[]
     return allIds.filter(id => !included.has(id));
 }
 
+// The ids a transaction list link uses for a widget's include filter, matching the widget's totals query:
+// include ids no item has are ignored (an include with no known id is no filter, like getExcludedIds), and ids
+// the Home filter excludes are left out. A link cannot express "nothing", so when every known include id is
+// excluded the known include ids are used as given. Returns [] when the include filter does not apply.
+export function getWidgetLinkIncludeIds(includeIds: string[], allIds: Iterable<string>, isExcluded: (id: string) => boolean): string[] {
+    const all = new Set(allIds);
+    const known = includeIds.filter(id => all.has(id));
+    const remaining = known.filter(id => !isExcluded(id));
+
+    return remaining.length ? remaining : known;
+}
+
 export function mergeTagFilters(...filters: string[]): string {
     return filters.filter(f => !!f).join(';');
 }
