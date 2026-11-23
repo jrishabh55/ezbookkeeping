@@ -15,7 +15,8 @@ export enum OverviewWidgetType {
     TransactionCalendar = 'transaction-calendar',
     TransactionCalendarHeatmap = 'transaction-calendar-heatmap',
     AddTransactionButton = 'add-transaction-button',
-    ForecastSummary = 'forecast-summary'
+    ForecastSummary = 'forecast-summary',
+    KeyFigure = 'key-figure'
 }
 
 export enum OverviewWidgetDataRequirement {
@@ -29,7 +30,53 @@ export enum OverviewWidgetDataRequirement {
     AssetTrends = 'assetTrends',
     RecentTransactions = 'recentTransactions',
     CurrentMonthTransactions = 'currentMonthTransactions',
-    DailyTransactionAmounts = 'dailyTransactionAmounts'
+    DailyTransactionAmounts = 'dailyTransactionAmounts',
+    WidgetAmounts = 'widgetAmounts',
+    WidgetCategoryStatistics = 'widgetCategoryStatistics'
+}
+
+export enum OverviewKeyFigureMetric {
+    Income = 'income',
+    Expense = 'expense',
+    Net = 'net',
+    Margin = 'margin'
+}
+
+export enum OverviewComparisonMode {
+    None = 'none',
+    PreviousPeriod = 'previous',
+    SamePeriodLastYear = 'lastYear'
+}
+
+export interface OverviewWidgetFilter {
+    accountIds: string[];
+    categoryIds: string[];
+    tagFilter: string;
+}
+
+export interface OverviewNamedRange {
+    name: string;
+    startTime: number;
+    endTime: number;
+}
+
+export interface OverviewWidgetAmountsQuery {
+    ranges: OverviewNamedRange[];
+    excludeAccountIds: string[];
+    excludeCategoryIds: string[];
+    tagFilter: string;
+}
+
+export interface OverviewWidgetStatisticsQuery {
+    startTime: number;
+    endTime: number;
+    tagFilter: string;
+}
+
+export interface OverviewHomeFilter {
+    excludeAccountIds: string[];
+    excludeCategoryIds: string[];
+    tagFilter: string;
 }
 
 export type OverviewWidgetSettingValue = string | number | boolean | (string | number)[];
