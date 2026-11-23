@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 
-import { OverviewWidgetType, OverviewWidgetDataRequirement } from '@/core/overview_layout.ts';
+import { type OverviewLayoutBase, OverviewWidgetType, OverviewWidgetDataRequirement, OverviewComparisonMode } from '@/core/overview_layout.ts';
+import { ALL_TRANSACTION_AMOUNTS_REQUEST_TYPE, type TransactionAmountsRequestType } from '@/models/transaction.ts';
 import { DateRange } from '@/core/datetime.ts';
 
 import {
@@ -27,7 +28,17 @@ import {
     isDefaultMobileOverviewLayout,
     normalizeMobileOverviewLayout,
     parseMobileOverviewLayout,
-    serializeMobileOverviewLayout
+    serializeMobileOverviewLayout,
+    OVERVIEW_HOME_DASHBOARD_ID,
+    OVERVIEW_MAX_EXTRA_DASHBOARDS,
+    type OverviewWidgetQueryContext,
+    getOverviewWidgetAmountsQueries,
+    getOverviewWidgetStatisticsQueries,
+    parseDesktopOverviewExtraDashboards,
+    serializeDesktopOverviewExtraDashboards,
+    parseMobileOverviewExtraDashboards,
+    serializeMobileOverviewExtraDashboards,
+    resolveSelectedDashboardId
 } from '../overview_layout.ts';
 
 describe('desktop overview layout', () => {
@@ -259,5 +270,159 @@ describe('mobile overview layout', () => {
         expect(isDefaultMobileOverviewLayout(layout)).toBe(true);
         expect(layout).not.toBe(DEFAULT_MOBILE_OVERVIEW_LAYOUT);
         expect(layout.widgets).not.toBe(DEFAULT_MOBILE_OVERVIEW_LAYOUT.widgets);
+    });
+});
+
+function makeContext(homeFilter: OverviewWidgetQueryContext['homeFilter']): OverviewWidgetQueryContext {
+    const monthRanges = {} as Record<TransactionAmountsRequestType, { startTime: number; endTime: number }>;
+
+    ALL_TRANSACTION_AMOUNTS_REQUEST_TYPE.forEach((type, index) => {
+        monthRanges[type] = { startTime: 1000 + index * 10, endTime: 1009 + index * 10 };
+    });
+
+    return {
+        allAccountIds: ['a1', 'a2', 'a3'],
+        allCategoryIds: ['c1', 'c2'],
+        homeFilter,
+        todayLastUnixTime: 1767225599,
+        firstDayOfWeek: 0,
+        fiscalYearStart: 101,
+        monthRanges
+    };
+}
+
+const HOME_CTX = makeContext({ excludeAccountIds: ['a3'], excludeCategoryIds: ['c2'], tagFilter: '0:H' });
+const EXTRA_CTX = makeContext(null);
+
+function layoutOf(...widgets: { id: string; type: OverviewWidgetType | string; settings: Record<string, string | number | boolean | (string | number)[]> }[]): OverviewLayoutBase {
+    return { widgets: widgets.map(w => ({ x: 0, y: 0, w: 6, h: 6, ...w })) } as unknown as OverviewLayoutBase;
+}
+
+describe('overview widget queries', () => {
+    test('Home with no filters produces no queries', () => {
+        expect(getOverviewWidgetAmountsQueries(DEFAULT_DESKTOP_OVERVIEW_LAYOUT, HOME_CTX)).toEqual({});
+        expect(getOverviewWidgetStatisticsQueries(DEFAULT_DESKTOP_OVERVIEW_LAYOUT, HOME_CTX)).toEqual({});
+    });
+
+    test('period widget with own tag merges with home tag and home exclusions', () => {
+        const layout = layoutOf({ id: 'p', type: OverviewWidgetType.PeriodIncomeExpense, settings: { dateRange: DateRange.ThisMonth.type, filterTags: '0:T1', filterAccountIds: ['a1'] } });
+        const query = getOverviewWidgetAmountsQueries(layout, HOME_CTX)['p'];
+
+        expect(query?.tagFilter).toBe('0:H;0:T1');
+        expect(query?.excludeAccountIds).toEqual(expect.arrayContaining(['a3', 'a2']));
+        expect(query?.excludeAccountIds).not.toContain('a1');
+        expect(query?.excludeCategoryIds).toEqual(['c2']);
+        expect(query?.ranges.map(r => r.name)).toEqual(['current']);
+    });
+
+    test('same widget without home filter uses only its own tag', () => {
+        const layout = layoutOf({ id: 'p', type: OverviewWidgetType.PeriodIncomeExpense, settings: { dateRange: DateRange.ThisMonth.type, filterTags: '0:T1' } });
+        const query = getOverviewWidgetAmountsQueries(layout, EXTRA_CTX)['p'];
+
+        expect(query?.tagFilter).toBe('0:T1');
+        expect(query?.excludeAccountIds).toEqual([]);
+    });
+
+    test('unfiltered period widget: Home keeps shared data, non-standard range or extra dashboard gets a query', () => {
+        const mk = (dateRange: number) => layoutOf({ id: 'p', type: OverviewWidgetType.PeriodNetIncomeAndSavingsRate, settings: { dateRange } });
+
+        expect(getOverviewWidgetAmountsQueries(mk(DateRange.ThisYear.type), HOME_CTX)['p']).toBeUndefined();
+        expect(getOverviewWidgetAmountsQueries(mk(DateRange.LastMonth.type), HOME_CTX)['p']).toBeDefined();
+        expect(getOverviewWidgetAmountsQueries(mk(DateRange.ThisYear.type), EXTRA_CTX)['p']).toBeDefined();
+    });
+
+    test('key figure with comparison gets current and compare ranges', () => {
+        const layout = layoutOf({ id: 'k', type: OverviewWidgetType.KeyFigure, settings: { metric: 'net', dateRange: DateRange.ThisMonth.type, comparison: OverviewComparisonMode.PreviousPeriod } });
+        const query = getOverviewWidgetAmountsQueries(layout, HOME_CTX)['k'];
+
+        expect(query?.ranges.map(r => r.name)).toEqual(['current', 'compare']);
+        expect(query!.ranges[1]!.endTime).toBeLessThan(query!.ranges[0]!.startTime);
+    });
+
+    test('key figure without comparison has only current range, and always gets a query', () => {
+        const layout = layoutOf({ id: 'k', type: OverviewWidgetType.KeyFigure, settings: { metric: 'income', dateRange: DateRange.Today.type, comparison: OverviewComparisonMode.None } });
+
+        expect(getOverviewWidgetAmountsQueries(layout, HOME_CTX)['k']?.ranges.map(r => r.name)).toEqual(['current']);
+    });
+
+    test('trend widget uses shared month names and boundaries only when filtered or off Home', () => {
+        const layout = layoutOf({ id: 't', type: OverviewWidgetType.IncomeExpenseTrend, settings: { months: 3 } });
+
+        expect(getOverviewWidgetAmountsQueries(layout, HOME_CTX)['t']).toBeUndefined();
+
+        const query = getOverviewWidgetAmountsQueries(layout, EXTRA_CTX)['t'];
+
+        expect(query?.ranges.map(r => r.name)).toEqual(['monthBeforeLastMonth', 'lastMonth', 'thisMonth']);
+        expect(query?.ranges[2]).toEqual({ name: 'thisMonth', ...EXTRA_CTX.monthRanges.thisMonth });
+    });
+
+    test('category ranking gets a statistics query when tag filtered, fiscal range or off Home', () => {
+        const mk = (dateRange: number, filterTags?: string) => layoutOf({ id: 'r', type: OverviewWidgetType.ExpenseCategoryRanking, settings: filterTags ? { dateRange, filterTags } : { dateRange } });
+
+        expect(getOverviewWidgetStatisticsQueries(mk(DateRange.ThisMonth.type), HOME_CTX)['r']).toBeUndefined();
+        expect(getOverviewWidgetStatisticsQueries(mk(DateRange.ThisFiscalYear.type), HOME_CTX)['r']).toBeDefined();
+        expect(getOverviewWidgetStatisticsQueries(mk(DateRange.ThisMonth.type, '0:T1'), HOME_CTX)['r']?.tagFilter).toBe('0:H;0:T1');
+        expect(getOverviewWidgetStatisticsQueries(mk(DateRange.ThisMonth.type), EXTRA_CTX)['r']?.tagFilter).toBe('');
+    });
+});
+
+describe('extra dashboards', () => {
+    const widget = { id: 'w1', type: OverviewWidgetType.AssetSummary, x: 0, y: 0, w: 6, h: 4, settings: {} };
+    const entry = (id: string, name: string, widgets: unknown[] = [widget]) => ({ id, name, layout: { widgets } });
+
+    test('invalid JSON yields empty list', () => {
+        expect(parseDesktopOverviewExtraDashboards('not json')).toEqual([]);
+        expect(parseDesktopOverviewExtraDashboards('')).toEqual([]);
+        expect(parseDesktopOverviewExtraDashboards('{"a":1}')).toEqual([]);
+    });
+
+    test('drops duplicate ids, the home id and empty names', () => {
+        const value = JSON.stringify([entry('a', 'First'), entry('a', 'Dup'), entry(OVERVIEW_HOME_DASHBOARD_ID, 'Home'), entry('b', '  '), entry('c', 'Valid')]);
+        const result = parseDesktopOverviewExtraDashboards(value);
+
+        expect(result.map(d => d.id)).toEqual(['a', 'c']);
+    });
+
+    test('trims and caps names at 40 characters', () => {
+        const result = parseDesktopOverviewExtraDashboards(JSON.stringify([entry('a', '  ' + 'x'.repeat(60) + '  ')]));
+
+        expect(result[0]?.name).toBe('x'.repeat(40));
+    });
+
+    test('keeps dashboard but drops widget with unknown type', () => {
+        const result = parseDesktopOverviewExtraDashboards(JSON.stringify([entry('a', 'A', [widget, { ...widget, id: 'w2', type: 'no-such-widget' }])]));
+
+        expect(result).toHaveLength(1);
+        expect(result[0]?.layout.widgets.map(w => w.id)).toEqual(['w1']);
+    });
+
+    test('keeps only the first 20 dashboards', () => {
+        const value = JSON.stringify(Array.from({ length: 25 }, (_, i) => entry('d' + i, 'D' + i)));
+        const result = parseDesktopOverviewExtraDashboards(value);
+
+        expect(result).toHaveLength(OVERVIEW_MAX_EXTRA_DASHBOARDS);
+        expect(result[19]?.id).toBe('d19');
+    });
+
+    test('serialize returns empty string for empty list and round trips', () => {
+        expect(serializeDesktopOverviewExtraDashboards([])).toBe('');
+        expect(serializeMobileOverviewExtraDashboards([])).toBe('');
+
+        const dashboards = parseDesktopOverviewExtraDashboards(JSON.stringify([entry('a', 'A')]));
+        expect(parseDesktopOverviewExtraDashboards(serializeDesktopOverviewExtraDashboards(dashboards))).toEqual(dashboards);
+    });
+
+    test('mobile parse uses the mobile layout normaliser', () => {
+        const mobileWidget = { id: 'w1', type: OverviewWidgetType.AssetSummary, settings: {} };
+        const result = parseMobileOverviewExtraDashboards(JSON.stringify([entry('a', 'A', [mobileWidget])]));
+
+        expect(result).toHaveLength(1);
+        expect(parseMobileOverviewExtraDashboards(serializeMobileOverviewExtraDashboards(result))).toEqual(result);
+    });
+
+    test('resolveSelectedDashboardId falls back to home', () => {
+        expect(resolveSelectedDashboardId('gone', [{ id: 'a' }])).toBe('home');
+        expect(resolveSelectedDashboardId('a', [{ id: 'a' }])).toBe('a');
+        expect(resolveSelectedDashboardId('home', [{ id: 'a' }])).toBe('home');
     });
 });

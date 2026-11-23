@@ -228,6 +228,23 @@ export const useSettingsStore = defineStore('settings', () => {
         updateUserApplicationCloudSettingValue('mobileOverviewPageLayout', value);
     }
 
+    function setDesktopOverviewExtraDashboards(value: string): void {
+        updateApplicationSettingsValue('desktopOverviewExtraDashboards', value);
+        appSettings.value.desktopOverviewExtraDashboards = value;
+        updateUserApplicationCloudSettingValue('desktopOverviewExtraDashboards', value);
+    }
+
+    function setMobileOverviewExtraDashboards(value: string): void {
+        updateApplicationSettingsValue('mobileOverviewExtraDashboards', value);
+        appSettings.value.mobileOverviewExtraDashboards = value;
+        updateUserApplicationCloudSettingValue('mobileOverviewExtraDashboards', value);
+    }
+
+    function setOverviewSelectedDashboardId(value: string): void {
+        updateApplicationSettingsValue('overviewSelectedDashboardId', value);
+        appSettings.value.overviewSelectedDashboardId = value;
+    }
+
     function setShowAmountInHomePage(value: boolean): void {
         updateApplicationSettingsValue('showAmountInHomePage', value);
         appSettings.value.showAmountInHomePage = value;
@@ -664,6 +681,9 @@ export const useSettingsStore = defineStore('settings', () => {
         // -- Overview Page
         setDesktopOverviewPageLayout,
         setMobileOverviewPageLayout,
+        setDesktopOverviewExtraDashboards,
+        setMobileOverviewExtraDashboards,
+        setOverviewSelectedDashboardId,
         setShowAmountInHomePage,
         setTimezoneUsedForStatisticsInHomePage,
         setOverviewAccountFilterInHomePage,

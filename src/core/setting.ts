@@ -54,6 +54,9 @@ export interface ApplicationSettings extends BaseApplicationSetting {
     // Overview Page
     desktopOverviewPageLayout: string;
     mobileOverviewPageLayout: string;
+    desktopOverviewExtraDashboards: string;
+    mobileOverviewExtraDashboards: string;
+    overviewSelectedDashboardId: string;
     showAmountInHomePage: boolean;
     timezoneUsedForStatisticsInHomePage: number;
     overviewAccountFilterInHomePage: Record<string, boolean>;
@@ -152,6 +155,8 @@ export const ALL_ALLOWED_CLOUD_SYNC_APP_SETTING_KEY_TYPES: Record<string, UserAp
     // Overview Page
     'desktopOverviewPageLayout': UserApplicationCloudSettingType.String,
     'mobileOverviewPageLayout': UserApplicationCloudSettingType.String,
+    'desktopOverviewExtraDashboards': UserApplicationCloudSettingType.String,
+    'mobileOverviewExtraDashboards': UserApplicationCloudSettingType.String,
     'showAmountInHomePage': UserApplicationCloudSettingType.Boolean,
     'timezoneUsedForStatisticsInHomePage': UserApplicationCloudSettingType.Number,
     'overviewAccountFilterInHomePage': UserApplicationCloudSettingType.StringBooleanMap,
@@ -230,6 +235,9 @@ export const DEFAULT_APPLICATION_SETTINGS: ApplicationSettings = {
     // Overview Page
     desktopOverviewPageLayout: '',
     mobileOverviewPageLayout: '',
+    desktopOverviewExtraDashboards: '',
+    mobileOverviewExtraDashboards: '',
+    overviewSelectedDashboardId: 'home',
     showAmountInHomePage: true,
     timezoneUsedForStatisticsInHomePage: TimezoneTypeForStatistics.Default.type,
     overviewAccountFilterInHomePage: {},
