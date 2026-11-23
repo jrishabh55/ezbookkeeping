@@ -261,7 +261,7 @@ describe('mobile overview layout', () => {
         const layout = parseMobileOverviewLayout(json);
 
         expect(serializeMobileOverviewLayout(layout)).toBe(serializeMobileOverviewLayout(DEFAULT_MOBILE_OVERVIEW_LAYOUT));
-        expect(getOverviewDataRequirements(layout, MOBILE_OVERVIEW_WIDGET_DEFINITIONS)).toEqual({[OverviewWidgetDataRequirement.TransactionOverview]: true});
+        expect(getOverviewDataRequirements(layout, MOBILE_OVERVIEW_WIDGET_DEFINITIONS)).toEqual({[OverviewWidgetDataRequirement.TransactionOverview]: true, [OverviewWidgetDataRequirement.WidgetAmounts]: true});
     });
 
     test('empty setting uses a cloned default layout', () => {
@@ -424,5 +424,110 @@ describe('extra dashboards', () => {
         expect(resolveSelectedDashboardId('gone', [{ id: 'a' }])).toBe('home');
         expect(resolveSelectedDashboardId('a', [{ id: 'a' }])).toBe('a');
         expect(resolveSelectedDashboardId('home', [{ id: 'a' }])).toBe('home');
+    });
+});
+
+describe('widget filter and key figure definitions', () => {
+    const FILTERS = ['filterAccountIds', 'filterCategoryIds', 'filterTags'];
+    const names = (def: { supportsSettings: { settingName: string }[] } | undefined) => (def?.supportsSettings ?? []).map(s => s.settingName);
+    const dateValues = (def: { supportsSettings: { settingName: string, selectValues?: { value: string | number }[] }[] } | undefined, settingName: string) =>
+        (def?.supportsSettings.find(s => s.settingName === settingName)?.selectValues ?? []).map(v => v.value);
+
+    test('desktop widgets list the filter settings', () => {
+        const defs = DESKTOP_OVERVIEW_WIDGET_DEFINITIONS;
+        for (const type of [OverviewWidgetType.PeriodIncomeExpense, OverviewWidgetType.PeriodNetIncomeAndSavingsRate, OverviewWidgetType.KeyFigure, OverviewWidgetType.IncomeExpenseTrend]) {
+            expect(names(defs[type])).toEqual(expect.arrayContaining(FILTERS));
+        }
+        expect(names(defs[OverviewWidgetType.ExpenseCategoryRanking])).toContain('filterTags');
+        expect(names(defs[OverviewWidgetType.ExpenseCategoryRanking])).not.toContain('filterAccountIds');
+        expect(names(defs[OverviewWidgetType.ExpenseCategoryRanking])).not.toContain('filterCategoryIds');
+        expect(defs[OverviewWidgetType.KeyFigure]?.supportsSettings.find(s => s.settingName === 'filterAccountIds')?.displayName).toBe('Filter Accounts');
+        expect(defs[OverviewWidgetType.KeyFigure]?.defaultSettings['filterTags']).toBeUndefined();
+    });
+
+    test('mobile widgets list the filter settings and have no trend', () => {
+        const defs = MOBILE_OVERVIEW_WIDGET_DEFINITIONS;
+        for (const type of [OverviewWidgetType.PeriodIncomeExpense, OverviewWidgetType.PeriodNetIncomeAndSavingsRate, OverviewWidgetType.KeyFigure]) {
+            expect(names(defs[type])).toEqual(expect.arrayContaining(FILTERS));
+        }
+        expect(names(defs[OverviewWidgetType.ExpenseCategoryRanking])).toContain('filterTags');
+        expect(names(defs[OverviewWidgetType.ExpenseCategoryRanking])).not.toContain('filterAccountIds');
+        expect(defs[OverviewWidgetType.IncomeExpenseTrend]).toBeUndefined();
+    });
+
+    test('fiscal year and last month date ranges', () => {
+        for (const defs of [DESKTOP_OVERVIEW_WIDGET_DEFINITIONS, MOBILE_OVERVIEW_WIDGET_DEFINITIONS]) {
+            const period2 = defs[OverviewWidgetType.PeriodNetIncomeAndSavingsRate];
+            expect(dateValues(period2, 'dateRange')).toEqual(expect.arrayContaining([DateRange.LastMonth.type, DateRange.ThisFiscalYear.type, DateRange.LastFiscalYear.type]));
+            const period1 = defs[OverviewWidgetType.PeriodIncomeExpense];
+            const key = defs === DESKTOP_OVERVIEW_WIDGET_DEFINITIONS ? 'dateRange' : 'dateRanges';
+            expect(dateValues(period1, key)).toEqual(expect.arrayContaining([DateRange.LastMonth.type, DateRange.ThisFiscalYear.type, DateRange.LastFiscalYear.type]));
+            expect(dateValues(defs[OverviewWidgetType.ExpenseCategoryRanking], 'dateRange')).toEqual(expect.arrayContaining([DateRange.ThisFiscalYear.type, DateRange.LastFiscalYear.type]));
+            expect(dateValues(defs[OverviewWidgetType.KeyFigure], 'dateRange')).toEqual([
+                DateRange.Today.type, DateRange.ThisWeek.type, DateRange.ThisMonth.type, DateRange.LastMonth.type, DateRange.ThisYear.type, DateRange.ThisFiscalYear.type, DateRange.LastFiscalYear.type
+            ]);
+        }
+    });
+
+    test('key figure defaults, size and data requirements', () => {
+        const desktop = DESKTOP_OVERVIEW_WIDGET_DEFINITIONS[OverviewWidgetType.KeyFigure];
+        const mobile = MOBILE_OVERVIEW_WIDGET_DEFINITIONS[OverviewWidgetType.KeyFigure];
+        expect(desktop?.defaultSettings).toMatchObject({ metric: 'net', dateRange: DateRange.ThisMonth.type, comparison: 'previous' });
+        expect(mobile?.defaultSettings).toMatchObject({ metric: 'net', dateRange: DateRange.ThisMonth.type, comparison: 'previous' });
+        expect([desktop?.defaultWidth, desktop?.defaultHeight, desktop?.minWidth, desktop?.minHeight]).toEqual([3, 2, 2, 2]);
+        expect(desktop?.dataRequirements).toEqual([OverviewWidgetDataRequirement.WidgetAmounts]);
+        expect(mobile?.dataRequirements).toEqual([OverviewWidgetDataRequirement.WidgetAmounts]);
+        const metrics = desktop?.supportsSettings.find(s => s.settingName === 'metric');
+        expect((metrics as { selectValues: { name: string }[] }).selectValues.map(v => v.name)).toEqual(['Income', 'Expense', 'Net Income', 'Margin']);
+        const comparison = desktop?.supportsSettings.find(s => s.settingName === 'comparison');
+        expect((comparison as { selectValues: { name: string }[] }).selectValues.map(v => v.name)).toEqual(['No Comparison', 'Previous Period', 'Same Period Last Year']);
+    });
+
+    test('other widgets list the new data requirements', () => {
+        for (const defs of [DESKTOP_OVERVIEW_WIDGET_DEFINITIONS, MOBILE_OVERVIEW_WIDGET_DEFINITIONS]) {
+            expect(defs[OverviewWidgetType.PeriodIncomeExpense]?.dataRequirements).toContain(OverviewWidgetDataRequirement.WidgetAmounts);
+            expect(defs[OverviewWidgetType.PeriodNetIncomeAndSavingsRate]?.dataRequirements).toContain(OverviewWidgetDataRequirement.WidgetAmounts);
+            expect(defs[OverviewWidgetType.ExpenseCategoryRanking]?.dataRequirements).toContain(OverviewWidgetDataRequirement.WidgetCategoryStatistics);
+        }
+        expect(DESKTOP_OVERVIEW_WIDGET_DEFINITIONS[OverviewWidgetType.IncomeExpenseTrend]?.dataRequirements).toContain(OverviewWidgetDataRequirement.WidgetAmounts);
+    });
+
+    test('old default layouts are unchanged by normalisation', () => {
+        const desktop = normalizeDesktopOverviewLayout(DEFAULT_DESKTOP_OVERVIEW_LAYOUT);
+        const mobile = normalizeMobileOverviewLayout(DEFAULT_MOBILE_OVERVIEW_LAYOUT);
+        expect(normalizeDesktopOverviewLayout(desktop)).toEqual(desktop);
+        expect(normalizeMobileOverviewLayout(mobile)).toEqual(mobile);
+        expect(desktop.widgets.map(w => w.type)).toEqual(DEFAULT_DESKTOP_OVERVIEW_LAYOUT.widgets.map(w => w.type));
+        for (const widget of [...desktop.widgets, ...mobile.widgets]) {
+            for (const name of FILTERS) {
+                expect(widget.settings).not.toHaveProperty(name);
+            }
+        }
+    });
+
+    test('category statistic date types exclude fiscal year ranges', () => {
+        const layout = normalizeDesktopOverviewLayout({
+            widgets: [
+                { id: 'fy', type: OverviewWidgetType.ExpenseCategoryRanking, x: 0, y: 0, w: 3, h: 4, settings: { dateRange: DateRange.ThisFiscalYear.type } },
+                { id: 'lfy', type: OverviewWidgetType.ExpenseCategoryRanking, x: 3, y: 0, w: 3, h: 4, settings: { dateRange: DateRange.LastFiscalYear.type } },
+                { id: 'm', type: OverviewWidgetType.ExpenseCategoryRanking, x: 6, y: 0, w: 3, h: 4, settings: { dateRange: DateRange.ThisMonth.type } }
+            ]
+        });
+        expect(getOverviewTransactionCategoryStatisticDateTypes(layout)).toEqual([DateRange.ThisMonth.type]);
+    });
+
+    test('key figure with all settings round trips through extra dashboards', () => {
+        const settings = {
+            metric: 'margin',
+            dateRange: DateRange.LastFiscalYear.type,
+            comparison: 'lastYear',
+            filterAccountIds: ['a1', 'a2'],
+            filterCategoryIds: ['c1'],
+            filterTags: 't1,t2'
+        };
+        const input = JSON.stringify([{ id: 'x', name: 'X', layout: { widgets: [{ id: 'k', type: OverviewWidgetType.KeyFigure, x: 0, y: 0, w: 3, h: 2, settings }] } }]);
+        const result = parseDesktopOverviewExtraDashboards(input);
+        expect(result[0]?.layout.widgets[0]?.settings).toEqual(settings);
+        expect(parseDesktopOverviewExtraDashboards(serializeDesktopOverviewExtraDashboards(result))).toEqual(result);
     });
 });

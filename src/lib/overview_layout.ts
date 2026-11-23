@@ -293,7 +293,8 @@ export function getOverviewTransactionCategoryStatisticDateTypes(layout: Overvie
 
         const dateType = widget.settings['dateRange'];
 
-        if (isNumber(dateType) && !existingDateTypes[dateType]) {
+        // the shared loader only supports this month / this year; fiscal year ranges use the per-widget statistics query
+        if (isNumber(dateType) && (dateType === DateRange.ThisMonth.type || dateType === DateRange.ThisYear.type) && !existingDateTypes[dateType]) {
             dateTypes.push(dateType);
             existingDateTypes[dateType] = true;
         }

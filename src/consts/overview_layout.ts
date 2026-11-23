@@ -8,12 +8,15 @@ import {
     type OverviewWidgetSwitchSettingItem,
     type OverviewWidgetColorSettingItem,
     type OverviewWidgetTextboxSettingItem,
+    type OverviewWidgetSettingItem,
     type DesktopOverviewLayout,
     type DesktopOverviewWidgetDefinition,
     type MobileOverviewLayout,
     type MobileOverviewWidgetDefinition,
     OverviewWidgetType,
     OverviewWidgetDataRequirement,
+    OverviewKeyFigureMetric,
+    OverviewComparisonMode,
     AddTransactionButtonDefaultAction
 } from '@/core/overview_layout.ts';
 
@@ -54,6 +57,86 @@ const WIDGET_BACKGROUND_COLOR_SETTINGS: OverviewWidgetColorSettingItem[] = [
         displayName: 'Dark Mode Background Color'
     }
 ];
+
+const WIDGET_FILTER_SETTINGS: OverviewWidgetSettingItem[] = [
+    {
+        settingType: 'accountSelect',
+        settingName: 'filterAccountIds',
+        displayName: 'Filter Accounts'
+    },
+    {
+        settingType: 'categorySelect',
+        settingName: 'filterCategoryIds',
+        displayName: 'Filter Categories'
+    },
+    {
+        settingType: 'tagSelect',
+        settingName: 'filterTags',
+        displayName: 'Filter Tags'
+    }
+];
+
+const WIDGET_FILTER_TAGS_SETTING: OverviewWidgetSettingItem = {
+    settingType: 'tagSelect',
+    settingName: 'filterTags',
+    displayName: 'Filter Tags'
+};
+
+const PERIOD_DATE_RANGES: DateRange[] = [
+    DateRange.Today,
+    DateRange.ThisWeek,
+    DateRange.ThisMonth,
+    DateRange.LastMonth,
+    DateRange.ThisYear,
+    DateRange.ThisFiscalYear,
+    DateRange.LastFiscalYear
+];
+
+const RANKING_DATE_RANGES: DateRange[] = [
+    DateRange.ThisMonth,
+    DateRange.ThisYear,
+    DateRange.ThisFiscalYear,
+    DateRange.LastFiscalYear
+];
+
+const KEY_FIGURE_SETTINGS: OverviewWidgetSettingItem[] = [
+    {
+        settingType: 'customSelect',
+        settingName: 'metric',
+        displayName: 'Metric',
+        selectValues: [
+            { name: 'Income', value: OverviewKeyFigureMetric.Income },
+            { name: 'Expense', value: OverviewKeyFigureMetric.Expense },
+            { name: 'Net Income', value: OverviewKeyFigureMetric.Net },
+            { name: 'Margin', value: OverviewKeyFigureMetric.Margin }
+        ]
+    },
+    {
+        settingType: 'customSelect',
+        settingName: 'dateRange',
+        displayName: 'Date Range',
+        selectValues: PERIOD_DATE_RANGES.map(dateRange => ({
+            name: dateRange.name,
+            value: dateRange.type
+        }))
+    },
+    {
+        settingType: 'customSelect',
+        settingName: 'comparison',
+        displayName: 'Comparison',
+        selectValues: [
+            { name: 'No Comparison', value: OverviewComparisonMode.None },
+            { name: 'Previous Period', value: OverviewComparisonMode.PreviousPeriod },
+            { name: 'Same Period Last Year', value: OverviewComparisonMode.SamePeriodLastYear }
+        ]
+    }
+];
+
+const KEY_FIGURE_DEFAULT_SETTINGS: Record<string, OverviewWidgetSettingValue> = {
+    metric: OverviewKeyFigureMetric.Net,
+    dateRange: DateRange.ThisMonth.type,
+    comparison: OverviewComparisonMode.PreviousPeriod
+};
 
 export const DESKTOP_OVERVIEW_WIDGET_DEFINITIONS: PartialRecord<OverviewWidgetType, DesktopOverviewWidgetDefinition> = {
     [OverviewWidgetType.AssetSummary]: {
@@ -213,16 +296,12 @@ export const DESKTOP_OVERVIEW_WIDGET_DEFINITIONS: PartialRecord<OverviewWidgetTy
                 settingType: 'customSelect',
                 settingName: 'dateRange',
                 displayName: 'Date Range',
-                selectValues: [
-                    DateRange.Today,
-                    DateRange.ThisWeek,
-                    DateRange.ThisMonth,
-                    DateRange.ThisYear
-                ].map(dateRange => ({
+                selectValues: PERIOD_DATE_RANGES.map(dateRange => ({
                     name: dateRange.name,
                     value: dateRange.type
                 }))
-            }
+            },
+            ...WIDGET_FILTER_SETTINGS
         ],
         defaultSettings: {
             dateRange: DateRange.Today.type
@@ -232,7 +311,8 @@ export const DESKTOP_OVERVIEW_WIDGET_DEFINITIONS: PartialRecord<OverviewWidgetTy
         minWidth: 2,
         minHeight: 3,
         dataRequirements: [
-            OverviewWidgetDataRequirement.TransactionOverview
+            OverviewWidgetDataRequirement.TransactionOverview,
+            OverviewWidgetDataRequirement.WidgetAmounts
         ]
     },
     [OverviewWidgetType.PeriodNetIncomeAndSavingsRate]: {
@@ -244,16 +324,12 @@ export const DESKTOP_OVERVIEW_WIDGET_DEFINITIONS: PartialRecord<OverviewWidgetTy
                 settingType: 'customSelect',
                 settingName: 'dateRange',
                 displayName: 'Date Range',
-                selectValues: [
-                    DateRange.Today,
-                    DateRange.ThisWeek,
-                    DateRange.ThisMonth,
-                    DateRange.ThisYear
-                ].map(dateRange => ({
+                selectValues: PERIOD_DATE_RANGES.map(dateRange => ({
                     name: dateRange.name,
                     value: dateRange.type
                 }))
-            }
+            },
+            ...WIDGET_FILTER_SETTINGS
         ],
         defaultSettings: {
             dateRange: DateRange.ThisMonth.type
@@ -263,7 +339,8 @@ export const DESKTOP_OVERVIEW_WIDGET_DEFINITIONS: PartialRecord<OverviewWidgetTy
         minWidth: 2,
         minHeight: 3,
         dataRequirements: [
-            OverviewWidgetDataRequirement.TransactionOverview
+            OverviewWidgetDataRequirement.TransactionOverview,
+            OverviewWidgetDataRequirement.WidgetAmounts
         ]
     },
     [OverviewWidgetType.IncomeExpenseTrend]: {
@@ -326,7 +403,8 @@ export const DESKTOP_OVERVIEW_WIDGET_DEFINITIONS: PartialRecord<OverviewWidgetTy
                 settingType: 'switch',
                 settingName: 'showLegend',
                 displayName: 'Show Legend'
-            }
+            },
+            ...WIDGET_FILTER_SETTINGS
         ],
         defaultSettings: {
             chartType: TrendChartType.Column.type,
@@ -344,7 +422,8 @@ export const DESKTOP_OVERVIEW_WIDGET_DEFINITIONS: PartialRecord<OverviewWidgetTy
         minWidth: 3,
         minHeight: 3,
         dataRequirements: [
-            OverviewWidgetDataRequirement.TransactionOverviewLast12Months
+            OverviewWidgetDataRequirement.TransactionOverviewLast12Months,
+            OverviewWidgetDataRequirement.WidgetAmounts
         ]
     },
     [OverviewWidgetType.NetAssetsTrend]: {
@@ -398,10 +477,7 @@ export const DESKTOP_OVERVIEW_WIDGET_DEFINITIONS: PartialRecord<OverviewWidgetTy
                 settingType: 'customSelect',
                 settingName: 'dateRange',
                 displayName: 'Date Range',
-                selectValues: [
-                    DateRange.ThisMonth,
-                    DateRange.ThisYear
-                ].map(dateRange => ({
+                selectValues: RANKING_DATE_RANGES.map(dateRange => ({
                     name: dateRange.name,
                     value: dateRange.type
                 }))
@@ -426,7 +502,8 @@ export const DESKTOP_OVERVIEW_WIDGET_DEFINITIONS: PartialRecord<OverviewWidgetTy
                 settingName: 'itemCount',
                 displayName: 'Item Count',
                 itemCountValues: [3, 4, 5, 6, 7, 8, 9, 10]
-            }
+            },
+            WIDGET_FILTER_TAGS_SETTING
         ],
         defaultSettings: {
             dateRange: DateRange.ThisMonth.type,
@@ -440,7 +517,8 @@ export const DESKTOP_OVERVIEW_WIDGET_DEFINITIONS: PartialRecord<OverviewWidgetTy
         dataRequirements: [
             OverviewWidgetDataRequirement.Accounts,
             OverviewWidgetDataRequirement.TransactionCategories,
-            OverviewWidgetDataRequirement.TransactionCategoryStatistics
+            OverviewWidgetDataRequirement.TransactionCategoryStatistics,
+            OverviewWidgetDataRequirement.WidgetCategoryStatistics
         ]
     },
     [OverviewWidgetType.RecentTransactions]: {
@@ -656,6 +734,25 @@ export const DESKTOP_OVERVIEW_WIDGET_DEFINITIONS: PartialRecord<OverviewWidgetTy
         minHeight: 3,
         dataRequirements: [
             OverviewWidgetDataRequirement.DailyTransactionAmounts
+        ]
+    },
+    [OverviewWidgetType.KeyFigure]: {
+        type: OverviewWidgetType.KeyFigure,
+        name: 'Key Figure',
+        supportsSettings: [
+            WIDGET_TITLE_SETTING,
+            ...KEY_FIGURE_SETTINGS,
+            ...WIDGET_FILTER_SETTINGS
+        ],
+        defaultSettings: {
+            ...KEY_FIGURE_DEFAULT_SETTINGS
+        },
+        defaultWidth: 3,
+        defaultHeight: 2,
+        minWidth: 2,
+        minHeight: 2,
+        dataRequirements: [
+            OverviewWidgetDataRequirement.WidgetAmounts
         ]
     },
     [OverviewWidgetType.ForecastSummary]: {
@@ -980,17 +1077,13 @@ export const MOBILE_OVERVIEW_WIDGET_DEFINITIONS: PartialRecord<OverviewWidgetTyp
                 settingType: 'customSelect',
                 settingName: 'dateRanges',
                 displayName: 'Date Range',
-                selectValues: [
-                    DateRange.Today,
-                    DateRange.ThisWeek,
-                    DateRange.ThisMonth,
-                    DateRange.ThisYear
-                ].map(dateRange => ({
+                selectValues: PERIOD_DATE_RANGES.map(dateRange => ({
                     name: dateRange.name,
                     value: dateRange.type
                 })),
                 multiple: true
-            }
+            },
+            ...WIDGET_FILTER_SETTINGS
         ],
         defaultSettings: {
             dateRanges: [
@@ -1001,7 +1094,8 @@ export const MOBILE_OVERVIEW_WIDGET_DEFINITIONS: PartialRecord<OverviewWidgetTyp
             ]
         },
         dataRequirements: [
-            OverviewWidgetDataRequirement.TransactionOverview
+            OverviewWidgetDataRequirement.TransactionOverview,
+            OverviewWidgetDataRequirement.WidgetAmounts
         ]
     },
     [OverviewWidgetType.PeriodNetIncomeAndSavingsRate]: {
@@ -1014,20 +1108,17 @@ export const MOBILE_OVERVIEW_WIDGET_DEFINITIONS: PartialRecord<OverviewWidgetTyp
                 settingType: 'customSelect',
                 settingName: 'dateRange',
                 displayName: 'Date Range',
-                selectValues: [
-                    DateRange.Today,
-                    DateRange.ThisWeek,
-                    DateRange.ThisMonth,
-                    DateRange.ThisYear
-                ].map(dateRange => ({ name: dateRange.name, value: dateRange.type }))
-            }
+                selectValues: PERIOD_DATE_RANGES.map(dateRange => ({ name: dateRange.name, value: dateRange.type }))
+            },
+            ...WIDGET_FILTER_SETTINGS
         ],
         defaultSettings: {
             showTitle: false,
             dateRange: DateRange.ThisMonth.type
         },
         dataRequirements: [
-            OverviewWidgetDataRequirement.TransactionOverview
+            OverviewWidgetDataRequirement.TransactionOverview,
+            OverviewWidgetDataRequirement.WidgetAmounts
         ]
     },
     [OverviewWidgetType.ExpenseCategoryRanking]: {
@@ -1040,10 +1131,7 @@ export const MOBILE_OVERVIEW_WIDGET_DEFINITIONS: PartialRecord<OverviewWidgetTyp
                 settingType: 'customSelect',
                 settingName: 'dateRange',
                 displayName: 'Date Range',
-                selectValues: [
-                    DateRange.ThisMonth,
-                    DateRange.ThisYear
-                ].map(dateRange => ({
+                selectValues: RANKING_DATE_RANGES.map(dateRange => ({
                     name: dateRange.name,
                     value: dateRange.type
                 }))
@@ -1068,7 +1156,8 @@ export const MOBILE_OVERVIEW_WIDGET_DEFINITIONS: PartialRecord<OverviewWidgetTyp
                 settingName: 'itemCount',
                 displayName: 'Item Count',
                 itemCountValues: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-            }
+            },
+            WIDGET_FILTER_TAGS_SETTING
         ],
         defaultSettings: {
             showTitle: false,
@@ -1079,7 +1168,8 @@ export const MOBILE_OVERVIEW_WIDGET_DEFINITIONS: PartialRecord<OverviewWidgetTyp
         dataRequirements: [
             OverviewWidgetDataRequirement.Accounts,
             OverviewWidgetDataRequirement.TransactionCategories,
-            OverviewWidgetDataRequirement.TransactionCategoryStatistics
+            OverviewWidgetDataRequirement.TransactionCategoryStatistics,
+            OverviewWidgetDataRequirement.WidgetCategoryStatistics
         ]
     },
     [OverviewWidgetType.RecentTransactions]: {
@@ -1244,6 +1334,23 @@ export const MOBILE_OVERVIEW_WIDGET_DEFINITIONS: PartialRecord<OverviewWidgetTyp
             darkBackgroundColor: DEFAULT_MOBILE_ADD_TRANSACTION_BUTTON_BACKGROUND_COLOR
         },
         dataRequirements: []
+    },
+    [OverviewWidgetType.KeyFigure]: {
+        type: OverviewWidgetType.KeyFigure,
+        name: 'Key Figure',
+        supportsSettings: [
+            WIDGET_TITLE_SETTING,
+            WIDGET_SHOW_TITLE_SETTING,
+            ...KEY_FIGURE_SETTINGS,
+            ...WIDGET_FILTER_SETTINGS
+        ],
+        defaultSettings: {
+            showTitle: false,
+            ...KEY_FIGURE_DEFAULT_SETTINGS
+        },
+        dataRequirements: [
+            OverviewWidgetDataRequirement.WidgetAmounts
+        ]
     },
     [OverviewWidgetType.ForecastSummary]: {
         type: OverviewWidgetType.ForecastSummary,
