@@ -137,6 +137,7 @@ func (s *InvoiceService) SendInvoiceWithContent(c core.Context, uid, invoiceID i
 		return err
 	}
 	received := models.InvoiceReceivedAmount(payments[invoiceID])
+	invoice.PaidDate = models.InvoicePaidDate(invoice, payments[invoiceID])
 	profile, err := s.GetProfile(c, uid)
 	if err != nil {
 		return err

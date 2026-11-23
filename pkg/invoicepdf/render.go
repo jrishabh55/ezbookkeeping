@@ -10,6 +10,7 @@ import (
 	_ "image/jpeg" // logo decoding
 	_ "image/png"  // logo decoding
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/go-pdf/fpdf"
@@ -50,6 +51,7 @@ var (
 	colorMuted      = rgb{107, 114, 128} // #6b7280
 	colorHighlight  = rgb{243, 244, 246} // #f3f4f6
 	colorTotalsRule = rgb{229, 231, 235} // #e5e7eb
+	colorPaid       = rgb{21, 128, 61}   // #15803d, the PAID stamp
 )
 
 type renderer struct {
@@ -623,7 +625,15 @@ func (r *renderer) drawTotals(invoice *models.Invoice, received int64, y float64
 	rowHeight := lineHeight + 2*rowPadding
 	blockX := r.right - labelWidth - valueWidth
 
-	y = r.ensureSpace(y, float64(len(rows))*rowHeight)
+	stamp := paidStampLines(invoice, received)
+	blockHeight := float64(len(rows)) * rowHeight
+
+	if len(stamp) > 0 {
+		blockHeight = max(blockHeight, 26) // the tilted stamp reaches about 26mm below the top of the block
+	}
+
+	y = r.ensureSpace(y, blockHeight)
+	r.drawPaidStamp(stamp, blockX-8, y)
 
 	for _, row := range rows {
 		if row.due {
@@ -640,6 +650,57 @@ func (r *renderer) drawTotals(invoice *models.Invoice, received int64, y float64
 	}
 
 	return y
+}
+
+// paidStampLines is the text of the PAID stamp ("PAID" and the paid date when known); nil when the invoice is not paid.
+// InvoiceDocumentContent.vue prints the same stamp.
+func paidStampLines(invoice *models.Invoice, received int64) []string {
+	if !models.InvoiceIsPaid(invoice, received) {
+		return nil
+	}
+
+	if paid, err := time.Parse("2006-01-02", invoice.PaidDate); err == nil {
+		return []string{"PAID", strings.ToUpper(paid.Format("02 Jan 2006"))}
+	}
+
+	return []string{"PAID"}
+}
+
+// drawPaidStamp draws a tilted rubber-stamp box ending at right, top-aligned with the totals block
+func (r *renderer) drawPaidStamp(lines []string, right float64, top float64) {
+	if len(lines) == 0 {
+		return
+	}
+
+	const (
+		width  = 44.0
+		height = 20.0
+	)
+
+	x, y := right-width, top
+	r.pdf.TransformBegin()
+	r.pdf.TransformRotate(12, x+width/2, y+height/2)
+	r.pdf.SetDrawColor(colorPaid.r, colorPaid.g, colorPaid.b)
+	r.pdf.SetLineWidth(1.2)
+	// ponytail: square corners; fpdf's RoundedRect emits an unbalanced "q" that leaks this rotation into the rest of the page
+	r.pdf.Rect(x, y, width, height, "D")
+	r.pdf.SetLineWidth(0.4)
+	r.pdf.Rect(x+1.5, y+1.5, width-3, height-3, "D")
+
+	if len(lines) == 1 {
+		r.font(true, 22, colorPaid)
+		r.pdf.SetXY(x, y)
+		r.pdf.CellFormat(width, height, lines[0], "", 0, "CM", false, 0, "")
+	} else {
+		r.font(true, 18, colorPaid)
+		r.pdf.SetXY(x, y+2.5)
+		r.pdf.CellFormat(width, 9, lines[0], "", 0, "CM", false, 0, "")
+		r.font(true, 9, colorPaid)
+		r.pdf.SetXY(x, y+11.5)
+		r.pdf.CellFormat(width, 5, lines[1], "", 0, "CM", false, 0, "")
+	}
+
+	r.pdf.TransformEnd()
 }
 
 // drawNotes prints the Notes / Terms block when the invoice has notes

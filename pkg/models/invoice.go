@@ -1,6 +1,8 @@
 package models
 
 import (
+	"time"
+
 	"github.com/mayswind/ezbookkeeping/pkg/invoiceemail"
 	"github.com/mayswind/ezbookkeeping/pkg/utils"
 )
@@ -159,6 +161,8 @@ type Invoice struct {
 	CreatedUnixTime    int64
 	UpdatedUnixTime    int64
 	DeletedUnixTime    int64
+	// PaidDate is not stored: set from the payments (InvoicePaidDate) where a document is rendered
+	PaidDate string `xorm:"-"`
 	// ponytail: a plain (non-unique) index: empty means "no public link" and would collide under UNIQUE on every
 	// database, while two equal 256-bit random tokens will not happen; works unchanged on SQLite, MySQL and Postgres
 	PublicToken string `xorm:"VARCHAR(43) INDEX(IDX_invoice_public_token) NOT NULL DEFAULT ''"`
@@ -264,6 +268,34 @@ func InvoiceReceivedAmount(payments []*InvoicePaymentInfo) int64 {
 	}
 
 	return received
+}
+
+// InvoiceIsPaid is the paid rule: closed manually, or the balance due within InvoicePaidTolerance; estimates are never paid
+func InvoiceIsPaid(invoice *Invoice, received int64) bool {
+	if invoice.Kind == INVOICE_KIND_ESTIMATE {
+		return false
+	}
+
+	return invoice.ClosedManually || float64(invoice.Total-received) <= float64(invoice.Total)*InvoicePaidTolerance
+}
+
+// InvoicePaidDate is the local date (YYYY-MM-DD, in the transaction's own offset) of the latest linked payment of a paid invoice;
+// empty when unpaid or closed manually without payments. The PAID stamp prints it.
+func InvoicePaidDate(invoice *Invoice, payments []*InvoicePaymentInfo) string {
+	if len(payments) < 1 || !InvoiceIsPaid(invoice, InvoiceReceivedAmount(payments)) {
+		return ""
+	}
+
+	latest := payments[0].Transaction
+
+	for _, payment := range payments[1:] {
+		if payment.Transaction.TransactionTime > latest.TransactionTime {
+			latest = payment.Transaction
+		}
+	}
+
+	unixTime := utils.GetUnixTimeFromTransactionTime(latest.TransactionTime) + int64(latest.TimezoneUtcOffset)*60
+	return time.Unix(unixTime, 0).UTC().Format("2006-01-02")
 }
 
 // InvoiceProfileUpdateRequest represents all parameters of invoice profile update request
@@ -524,6 +556,7 @@ type InvoiceInfoResponse struct {
 	TaxAmount          int64                               `json:"taxAmount"`
 	Received           int64                               `json:"received"`
 	ClosedManually     bool                                `json:"closedManually"`
+	PaidDate           string                              `json:"paidDate,omitempty"`
 	Lines              []*InvoiceLineResponse              `json:"lines,omitempty"`
 	Payments           []*InvoicePaymentResponse           `json:"payments,omitempty"`
 	PublicToken        string                              `json:"publicToken,omitempty"`
@@ -576,6 +609,7 @@ type PublicInvoiceResponse struct {
 	Total              int64                         `json:"total"`
 	Received           int64                         `json:"received"`
 	ClosedManually     bool                          `json:"closedManually"`
+	PaidDate           string                        `json:"paidDate,omitempty"`
 	Lines              []*InvoiceLineResponse        `json:"lines"`
 	Profile            *PublicInvoiceProfileResponse `json:"profile"`
 
@@ -671,6 +705,7 @@ func (i *Invoice) ToInvoiceInfoResponse(lines []*InvoiceLine, payments []*Invoic
 		ClosedManually:     i.ClosedManually,
 		SentUnixTime:       i.SentUnixTime,
 		Received:           InvoiceReceivedAmount(payments),
+		PaidDate:           InvoicePaidDate(i, payments),
 		EstimateStatus:     i.EstimateStatus,
 		RespondedUnixTime:  i.RespondedUnixTime,
 		RespondedByClient:  i.RespondedByClient,
@@ -738,6 +773,7 @@ func (i *Invoice) ToPublicInvoiceResponse(lines []*InvoiceLine, received int64, 
 		Total:              i.Total,
 		Received:           received,
 		ClosedManually:     i.ClosedManually,
+		PaidDate:           i.PaidDate,
 		Lines:              make([]*InvoiceLineResponse, len(lines)),
 		Profile: &PublicInvoiceProfileResponse{
 			BusinessName: profile.BusinessName,

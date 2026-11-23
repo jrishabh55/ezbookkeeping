@@ -155,6 +155,23 @@ export function formatInvoiceDocumentDate(date: string): string {
     return new Date(Date.UTC(year!, month! - 1, day!)).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
 }
 
+// the PAID stamp text: "PAID" and the paid date (e.g. "02 NOV 2026") when known; empty unless a paid invoice.
+// Mirrors paidStampLines in pkg/invoicepdf/render.go.
+export function getInvoicePaidStampLines(invoice: InvoiceAmounts & { readonly paidDate: string, readonly kind: string }): string[] {
+    if (invoice.kind === 'estimate' || getInvoiceStatus(invoice) !== 'paid') {
+        return [];
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(invoice.paidDate)) {
+        return ['PAID'];
+    }
+
+    const [year, month, day] = invoice.paidDate.split('-').map(Number);
+    const date = new Date(Date.UTC(year!, month! - 1, day!));
+    const monthName = date.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' }).toUpperCase();
+    return ['PAID', `${String(day).padStart(2, '0')} ${monthName} ${year}`];
+}
+
 export function getInvoicePdfFileName(number: string, dueDate: string, kind: string = 'invoice'): string {
     return `${kind === 'estimate' ? 'Estimate' : 'Invoice'}_${number.replace(/[\\/:*?"<>|\s]+/g, '_')}_${dueDate}`;
 }

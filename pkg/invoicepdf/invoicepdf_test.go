@@ -341,3 +341,40 @@ func TestRenderEstimateWithPaymentTerms(t *testing.T) {
 		assert.Nil(t, os.WriteFile(filepath.Join(dir, "estimate-sample.pdf"), pdf, 0644))
 	}
 }
+
+func TestPaidStampLines(t *testing.T) {
+	invoice, _ := sampleInvoice()
+	assert.Nil(t, paidStampLines(invoice, 0), "unpaid")
+	assert.Nil(t, paidStampLines(invoice, invoice.Total/2), "partly paid")
+	assert.Equal(t, []string{"PAID"}, paidStampLines(invoice, invoice.Total), "paid without a known date")
+
+	invoice.PaidDate = "2026-11-02"
+	assert.Equal(t, []string{"PAID", "02 NOV 2026"}, paidStampLines(invoice, invoice.Total))
+
+	estimate, _, _ := sampleEstimate()
+	estimate.PaidDate = "2026-11-02"
+	assert.Nil(t, paidStampLines(estimate, estimate.Total), "estimates are never stamped")
+}
+
+func TestRenderPaidStamp(t *testing.T) {
+	invoice, lines := sampleInvoice()
+	invoice.PaidDate = "2026-11-02"
+
+	pdf, err := Render(sampleProfile(), invoice, lines, invoice.Total, "https://books.codeation.io/i/abc")
+	assert.Nil(t, err)
+
+	if dir := os.Getenv("INVOICE_PDF_SAMPLE_DIR"); dir != "" {
+		assert.Nil(t, os.WriteFile(filepath.Join(dir, "invoice-paid-sample.pdf"), pdf, 0644))
+	}
+
+	if _, err := exec.LookPath("pdftotext"); err != nil {
+		t.Skip("pdftotext not installed")
+	}
+
+	file := filepath.Join(t.TempDir(), "paid.pdf")
+	assert.Nil(t, os.WriteFile(file, pdf, 0644))
+	out, err := exec.Command("pdftotext", file, "-").Output()
+	assert.Nil(t, err)
+	assert.Contains(t, string(out), "PAID")
+	assert.Contains(t, string(out), "02 NOV 2026")
+}
