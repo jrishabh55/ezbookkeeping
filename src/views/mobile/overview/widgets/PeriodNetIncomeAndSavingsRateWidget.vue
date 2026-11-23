@@ -2,6 +2,7 @@
     <f7-list strong inset dividers class="overview-transaction-list no-margin-top margin-bottom">
         <f7-list-item group-title v-if="showTitle">
             <small>{{ title || currentPeriodTitle }}</small>
+            <f7-icon class="margin-left-half" f7="line_horizontal_3_decrease" size="14px" v-if="filtered"></f7-icon>
         </f7-list-item>
         <f7-list-item class="combined-item item-no-divider">
             <template #header>
@@ -46,11 +47,16 @@
 import { useI18n } from '@/locales/helpers.ts';
 import { usePeriodStatisticsWidgetBase } from '@/views/base/overview/PeriodStatisticsWidgetBase.ts';
 
+import type { OverviewWidgetFilter } from '@/core/overview_layout.ts';
+
 const props = defineProps<{
     loading: boolean;
     title?: string;
     showTitle: boolean;
     dateType: number;
+    widgetId?: string;
+    filter?: OverviewWidgetFilter;
+    filtered?: boolean;
 }>();
 
 const { tt } = useI18n();

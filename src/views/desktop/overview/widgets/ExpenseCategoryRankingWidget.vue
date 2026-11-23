@@ -1,7 +1,7 @@
 <template>
     <v-card class="overview-widget expense-ranking-widget h-100" :class="{ disabled: loading }">
         <template #title>
-            <overview-widget-header :title="title || tt('Expense Category Ranking')" :icon="mdiSortVariant" />
+            <overview-widget-header :title="title || tt('Expense Category Ranking')" :icon="mdiSortVariant" :filtered="filtered" />
         </template>
 
         <v-card-text class="overview-widget__body">
@@ -59,7 +59,11 @@ import {
     mdiRhombusSplitOutline
 } from '@mdi/js';
 
-const props = defineProps<CommonExpenseCategoryRankingWidgetProps>();
+interface ExpenseCategoryRankingWidgetProps extends CommonExpenseCategoryRankingWidgetProps {
+    filtered?: boolean;
+}
+
+const props = defineProps<ExpenseCategoryRankingWidgetProps>();
 
 const { tt, formatPercentToLocalizedNumerals } = useI18n();
 const {

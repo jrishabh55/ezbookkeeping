@@ -12,6 +12,7 @@ import { useExchangeRatesStore } from '@/stores/exchangeRates.ts';
 import type { BigDecimal } from '@/core/numeral.ts';
 import { CategoryType } from '@/core/category.ts';
 import { TransactionType } from '@/core/transaction.ts';
+import type { OverviewWidgetFilter } from '@/core/overview_layout.ts';
 import { DISPLAY_HIDDEN_AMOUNT, INCOMPLETE_AMOUNT_SUFFIX } from '@/consts/numeral.ts';
 
 import type { Account } from '@/models/account.ts';
@@ -35,6 +36,8 @@ export interface CommonExpenseCategoryRankingWidgetProps {
     dateType: number;
     categoryLevel: string;
     itemCount: number;
+    widgetId?: string;
+    filter?: OverviewWidgetFilter;
 }
 
 export function useExpenseCategoryRankingWidgetBase(props: CommonExpenseCategoryRankingWidgetProps) {
@@ -52,7 +55,7 @@ export function useExpenseCategoryRankingWidgetBase(props: CommonExpenseCategory
 
 
     const rankingData = computed<{ total: BigDecimal; incomplete: boolean; items: RankingItem[] }>(() => {
-        const response = overviewStore.transactionCategoryStatisticsData[props.dateType];
+        const response = (props.widgetId ? overviewStore.getWidgetCategoryStatistics(props.widgetId) : undefined) ?? overviewStore.transactionCategoryStatisticsData[props.dateType];
         const values: Record<string, RankingItem> = {};
         let total: BigDecimal = BIG_DECIMAL_ZERO;
         let hasIncompleteAmount: boolean = false;
@@ -122,12 +125,21 @@ export function useExpenseCategoryRankingWidgetBase(props: CommonExpenseCategory
 
     const rankingItems = computed<RankingItem[]>(() => rankingData.value.items.slice(0, props.itemCount));
 
+    // widgets on a dashboard other than Home ignore the Home-wide filters
     function isAccountExcluded(account: Account): boolean {
+        if (!overviewStore.activeDashboardIsHome) {
+            return false;
+        }
+
         const excludedAccounts = settingsStore.appSettings.overviewAccountFilterInHomePage;
         return !!excludedAccounts[account.id] || (account.parentId !== '0' && !!excludedAccounts[account.parentId]);
     }
 
     function isCategoryExcluded(category: TransactionCategory): boolean {
+        if (!overviewStore.activeDashboardIsHome) {
+            return false;
+        }
+
         const excludedCategories = settingsStore.appSettings.overviewTransactionCategoryFilterInHomePage;
         return !!excludedCategories[category.id] || (category.parentId !== '0' && !!excludedCategories[category.parentId]);
     }
@@ -141,7 +153,8 @@ export function useExpenseCategoryRankingWidgetBase(props: CommonExpenseCategory
     }
 
     function getTransactionItemLinkUrl(categoryId: string): string {
-        return `/transaction/list?${overviewStore.getTransactionListPageParams({ type: TransactionType.Expense, dateType: props.dateType, categoryIds: [categoryId] })}`;
+        const filter = props.filter ? { ...props.filter, ignoreHomeFilters: !overviewStore.activeDashboardIsHome } : undefined;
+        return `/transaction/list?${overviewStore.getTransactionListPageParams({ type: TransactionType.Expense, dateType: props.dateType, categoryIds: [categoryId], filter: filter })}`;
     }
 
     return {

@@ -1,7 +1,7 @@
 <template>
     <v-card class="overview-widget d-flex flex-column" :class="{ 'disabled': loading }">
         <template #title>
-            <overview-widget-header :title="displayTitle" :icon="mdiPoll" />
+            <overview-widget-header :title="displayTitle" :icon="mdiPoll" :filtered="filtered" />
         </template>
 
         <monthly-income-and-expense-chart :data="monthlyIncomeAndExpenseData" :is-dark-mode="isDarkMode"
@@ -30,6 +30,7 @@ import { useOverviewStore } from '@/stores/overview.ts';
 import { DateRange } from '@/core/datetime.ts';
 import { ThemeType } from '@/core/theme.ts';
 import { TransactionType } from '@/core/transaction.ts';
+import type { OverviewWidgetFilter } from '@/core/overview_layout.ts';
 import {
     type TransactionOverviewData,
     type TransactionMonthlyIncomeAndExpenseData,
@@ -52,6 +53,9 @@ const props = defineProps<{
     smoothCurve: boolean;
     showXAxisLabels: boolean;
     showLegend: boolean;
+    widgetId?: string;
+    filter?: OverviewWidgetFilter;
+    filtered?: boolean;
 }>();
 
 const router = useRouter();
@@ -62,7 +66,7 @@ const { tt } = useI18n();
 const overviewStore = useOverviewStore();
 
 const isDarkMode = computed<boolean>(() => theme.global.name.value === ThemeType.Dark);
-const transactionOverview = computed<TransactionOverviewData>(() => overviewStore.transactionOverview);
+const transactionOverview = computed<TransactionOverviewData>(() => (props.widgetId ? overviewStore.getWidgetAmounts(props.widgetId) : undefined) ?? overviewStore.transactionOverview);
 
 const displayTitle = computed<string>(() => {
     if (props.title) {
@@ -122,7 +126,8 @@ function clickMonthlyIncomeOrExpense(e: MonthlyIncomeAndExpenseCardClickEvent): 
         type: type,
         dateType: DateRange.Custom.type,
         minTime: minTime,
-        maxTime: maxTime
+        maxTime: maxTime,
+        filter: props.filter ? { ...props.filter, ignoreHomeFilters: !overviewStore.activeDashboardIsHome } : undefined
     })}`);
 }
 </script>

@@ -26,10 +26,12 @@
 
     <period-income-expense-widget :loading="loading" :editing="editing" :title="widgetTitle"
                                   :date-type="widget.settings['dateRange'] as number"
+                                  :widget-id="widget.id" :filter="widgetFilter" :filtered="widgetFiltered"
                                   v-else-if="widget.type === OverviewWidgetType.PeriodIncomeExpense" />
 
     <period-net-income-and-savings-rate-widget :loading="loading" :editing="editing" :title="widgetTitle"
                                                :date-type="widget.settings['dateRange'] as number"
+                                               :widget-id="widget.id" :filter="widgetFilter" :filtered="widgetFiltered"
                                                v-else-if="widget.type === OverviewWidgetType.PeriodNetIncomeAndSavingsRate" />
 
     <income-expense-trend-widget :loading="loading" :title="widgetTitle"
@@ -39,6 +41,7 @@
                                  :smooth-curve="widget.settings['smoothCurve'] as boolean"
                                  :show-x-axis-labels="widget.settings['showXAxisLabels'] as boolean"
                                  :show-legend="widget.settings['showLegend'] as boolean"
+                                 :widget-id="widget.id" :filter="widgetFilter" :filtered="widgetFiltered"
                                  v-else-if="widget.type === OverviewWidgetType.IncomeExpenseTrend" />
 
     <net-assets-trend-widget :loading="loading" :title="widgetTitle" :months="widget.settings['months'] as number"
@@ -51,6 +54,7 @@
                                       :date-type="widget.settings['dateRange'] as number"
                                       :category-level="widget.settings['categoryLevel'] as string"
                                       :item-count="widget.settings['itemCount'] as number"
+                                      :widget-id="widget.id" :filter="widgetFilter" :filtered="widgetFiltered"
                                       v-else-if="widget.type === OverviewWidgetType.ExpenseCategoryRanking" />
 
     <recent-transactions-widget :loading="loading" :editing="editing" :title="widgetTitle"
@@ -104,8 +108,11 @@ import { TransactionType } from '@/core/transaction.ts';
 import { TransactionCalendarHeatmapOutlierColorMode } from '@/core/chart.ts';
 import {
     type DesktopOverviewWidgetLayout,
+    type OverviewWidgetFilter,
     OverviewWidgetType
 } from '@/core/overview_layout.ts';
+
+import { getWidgetFilter, isWidgetFilterEmpty } from '@/lib/overview_widget_query.ts';
 
 const props = defineProps<{
     widget: DesktopOverviewWidgetLayout;
@@ -121,4 +128,7 @@ const widgetTitle = computed<string>(() => {
     const title = props.widget.settings['title'];
     return typeof title === 'string' ? title.trim() : '';
 });
+
+const widgetFilter = computed<OverviewWidgetFilter>(() => getWidgetFilter(props.widget.settings));
+const widgetFiltered = computed<boolean>(() => !isWidgetFilterEmpty(widgetFilter.value));
 </script>

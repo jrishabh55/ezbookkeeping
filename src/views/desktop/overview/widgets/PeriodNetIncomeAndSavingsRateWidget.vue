@@ -1,7 +1,7 @@
 <template>
     <v-card class="overview-widget savings-rate-widget h-100" :class="{ disabled: loading }">
         <template #title>
-            <overview-widget-header :title="title || currentPeriodTitle" :icon="mdiPiggyBankOutline">
+            <overview-widget-header :title="title || currentPeriodTitle" :icon="mdiPiggyBankOutline" :filtered="filtered">
                 <v-btn density="compact" color="default" variant="text" :aria-label="tt('More')" :icon="true" v-if="!editing">
                     <v-icon :icon="mdiDotsVertical" />
                     <v-menu activator="parent">
@@ -65,6 +65,7 @@ interface PeriodNetIncomeAndSavingsRateWidgetProps extends CommonPeriodStatistic
     loading?: boolean;
     editing?: boolean;
     title?: string;
+    filtered?: boolean;
 }
 
 const props = defineProps<PeriodNetIncomeAndSavingsRateWidgetProps>();

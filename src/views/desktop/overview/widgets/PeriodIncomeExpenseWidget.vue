@@ -1,7 +1,7 @@
 <template>
     <v-card class="overview-widget period-income-expense-widget h-100" :class="{ 'disabled': loading }">
         <template #title>
-            <overview-widget-header :title="title || currentPeriodTitle" :icon="currentPeriodIcon">
+            <overview-widget-header :title="title || currentPeriodTitle" :icon="currentPeriodIcon" :filtered="filtered">
                 <v-btn density="compact" color="default" variant="text" :aria-label="tt('More')" :icon="true" v-if="!editing">
                     <v-icon :icon="mdiDotsVertical" />
                     <v-menu activator="parent">
@@ -79,6 +79,7 @@ interface PeriodIncomeExpenseWidgetProps extends CommonPeriodStatisticsWidgetPro
     loading?: boolean;
     editing?: boolean;
     title?: string;
+    filtered?: boolean;
 }
 
 const props = defineProps<PeriodIncomeExpenseWidgetProps>();
@@ -96,7 +97,10 @@ const allSupportedPeriodIcons: Record<number, string> = {
     [DateRange.Today.type]: mdiCalendarTodayOutline,
     [DateRange.ThisWeek.type]: mdiCalendarWeekOutline,
     [DateRange.ThisMonth.type]: mdiCalendarMonthOutline,
-    [DateRange.ThisYear.type]: mdiLayersTripleOutline
+    [DateRange.LastMonth.type]: mdiCalendarMonthOutline,
+    [DateRange.ThisYear.type]: mdiLayersTripleOutline,
+    [DateRange.ThisFiscalYear.type]: mdiLayersTripleOutline,
+    [DateRange.LastFiscalYear.type]: mdiLayersTripleOutline
 };
 
 const currentPeriodIcon = computed<string>(() => isInteger(props.dateType) ? (allSupportedPeriodIcons[props.dateType] || mdiCalendarTodayOutline) : mdiCalendarTodayOutline);

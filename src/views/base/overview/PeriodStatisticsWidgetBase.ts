@@ -8,6 +8,7 @@ import { useOverviewStore } from '@/stores/overview.ts';
 
 import type { BigDecimal } from '@/core/numeral.ts';
 import { DateRange } from '@/core/datetime.ts';
+import type { OverviewWidgetFilter, OverviewNamedRange } from '@/core/overview_layout.ts';
 
 import {
     DISPLAY_HIDDEN_AMOUNT,
@@ -15,7 +16,7 @@ import {
     INCOMPLETE_AMOUNT_SUFFIX
 } from '@/consts/numeral.ts';
 
-import { isInteger } from '@/lib/common.ts';
+import { isDefined, isInteger } from '@/lib/common.ts';
 import { BIG_DECIMAL_ZERO } from '@/lib/numeral.ts';
 import { parseDateTimeFromUnixTime } from '@/lib/datetime.ts';
 
@@ -27,7 +28,17 @@ import type {
 
 export interface CommonPeriodStatisticsWidgetProps {
     dateType?: number;
+    widgetId?: string;
+    filter?: OverviewWidgetFilter;
 }
+
+// the date ranges the shared overview data covers; other ranges only come from the widget's own data
+const SHARED_OVERVIEW_DATE_RANGE_TYPES: number[] = [
+    DateRange.Today.type,
+    DateRange.ThisWeek.type,
+    DateRange.ThisMonth.type,
+    DateRange.ThisYear.type
+];
 
 export function usePeriodStatisticsWidgetBase(props: CommonPeriodStatisticsWidgetProps) {
     const {
@@ -53,6 +64,7 @@ export function usePeriodStatisticsWidgetBase(props: CommonPeriodStatisticsWidge
     const defaultCurrency = computed<string>(() => userStore.currentUserDefaultCurrency);
 
     const transactionOverview = computed<TransactionOverviewData>(() => overviewStore.transactionOverview);
+    const widgetAmounts = computed<Record<string, TransactionOverviewDataItem> | undefined>(() => props.widgetId ? overviewStore.getWidgetAmounts(props.widgetId) : undefined);
 
     const displayDateRange = computed<TransactionOverviewDisplayTime>(() => {
         return {
@@ -115,11 +127,25 @@ export function usePeriodStatisticsWidgetBase(props: CommonPeriodStatisticsWidge
         return formatPercentToLocalizedNumerals(rate, 2, '<0.01');
     });
 
-    const currentDetailsUrl = computed<string>(() => {
-        return `/transaction/list?${overviewStore.getTransactionListPageParams({ dateType: props.dateType })}`
-    });
+    const currentDetailsUrl = computed<string>(() => getDetailsUrl(props.dateType));
+
+    // a widget with one date range (dateType prop) reads the range named "current" from its own data,
+    // the mobile widget with several date ranges reads one range per date type named "r<dateType>"
+    function getWidgetRangeName(dateType: number | undefined): string {
+        return isDefined(props.dateType) ? 'current' : `r${dateType}`;
+    }
+
+    function getWidgetRange(dateType: number | undefined): OverviewNamedRange | undefined {
+        const query = props.widgetId ? overviewStore.getWidgetAmountsQuery(props.widgetId) : undefined;
+        const rangeName = getWidgetRangeName(dateType);
+        return query?.ranges.find(range => range.name === rangeName);
+    }
 
     function getOverviewItem(dateType: number | undefined): TransactionOverviewDataItem | undefined {
+        if (widgetAmounts.value) {
+            return widgetAmounts.value[getWidgetRangeName(dateType)];
+        }
+
         if (dateType === DateRange.Today.type) {
             return transactionOverview.value.today;
         } else if (dateType === DateRange.ThisWeek.type) {
@@ -134,6 +160,16 @@ export function usePeriodStatisticsWidgetBase(props: CommonPeriodStatisticsWidge
     }
 
     function getDisplayDateTime(dateType: number | undefined): string {
+        if (isInteger(dateType) && !SHARED_OVERVIEW_DATE_RANGE_TYPES.includes(dateType)) {
+            const range = getWidgetRange(dateType);
+
+            if (!range) {
+                return '';
+            }
+
+            return formatRange(formatDateTimeToLongDate(parseDateTimeFromUnixTime(range.startTime)), formatDateTimeToLongDate(parseDateTimeFromUnixTime(range.endTime)));
+        }
+
         if (dateType === DateRange.Today.type) {
             return displayDateRange.value.today?.displayTime || '';
         } else if (dateType === DateRange.ThisWeek.type) {
@@ -145,6 +181,11 @@ export function usePeriodStatisticsWidgetBase(props: CommonPeriodStatisticsWidge
         } else {
             return '';
         }
+    }
+
+    function getDetailsUrl(dateType: number | undefined): string {
+        const filter = props.filter ? { ...props.filter, ignoreHomeFilters: !overviewStore.activeDashboardIsHome } : undefined;
+        return `/transaction/list?${overviewStore.getTransactionListPageParams({ dateType: dateType, filter: filter })}`;
     }
 
     function getDisplayAmount(amount: BigDecimal, incomplete: boolean): string {
@@ -183,6 +224,7 @@ export function usePeriodStatisticsWidgetBase(props: CommonPeriodStatisticsWidge
         // functions
         getOverviewItem,
         getDisplayDateTime,
+        getDetailsUrl,
         getDisplayAmount,
         getDisplayIncomeAmount,
         getDisplayExpenseAmount

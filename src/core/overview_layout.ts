@@ -54,6 +54,10 @@ export interface OverviewWidgetFilter {
     tagFilter: string;
 }
 
+export interface OverviewTransactionListFilter extends OverviewWidgetFilter {
+    ignoreHomeFilters: boolean;
+}
+
 export interface OverviewNamedRange {
     name: string;
     startTime: number;

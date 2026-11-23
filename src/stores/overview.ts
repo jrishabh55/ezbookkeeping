@@ -13,7 +13,7 @@ import { type StartEndTime, type WritableStartEndTime, DateRange} from '@/core/d
 import { TimezoneTypeForStatistics } from '@/core/timezone.ts';
 import { KeywordMatchMode } from '@/core/text.ts';
 import { TransactionType } from '@/core/transaction.ts';
-import type { OverviewRecentTransactionsQuery, OverviewWidgetAmountsQuery, OverviewWidgetStatisticsQuery } from '@/core/overview_layout.ts';
+import type { OverviewRecentTransactionsQuery, OverviewWidgetAmountsQuery, OverviewWidgetStatisticsQuery, OverviewTransactionListFilter } from '@/core/overview_layout.ts';
 
 import { KnownErrorCode } from '@/consts/api.ts';
 
@@ -66,7 +66,7 @@ import {
 
 import { getFinalAccountIdsByFilteredAccountIds } from '@/lib/account.ts';
 import { getFinalCategoryIdsByFilteredCategoryIds } from '@/lib/category.ts';
-import { getWidgetQueryCacheKey } from '@/lib/overview_widget_query.ts';
+import { getWidgetQueryCacheKey, mergeTagFilters } from '@/lib/overview_widget_query.ts';
 import services, { type ApiResponsePromise } from '@/lib/services.ts';
 import logger from '@/lib/logger.ts';
 
@@ -149,6 +149,9 @@ export const useOverviewStore = defineStore('overview', () => {
     // refresh, pull-to-refresh, returning to the page). Widgets that fetch their own data outside of the
     // dataRequirements pipeline (e.g. the forecast summary widget) can watch this to know when to refetch.
     const dashboardReloadCount = ref<number>(0);
+
+    // whether the dashboard being shown is Home; widgets on other dashboards ignore the Home-wide filters
+    const activeDashboardIsHome = ref<boolean>(true);
 
     const transactionDataRange = ref<TransactionDataRange>(getTransactionDateRange());
 
@@ -1075,8 +1078,9 @@ export const useOverviewStore = defineStore('overview', () => {
         return recentTransactions.value[cacheKey] ?? [];
     }
 
-    function getTransactionListPageParams({ type, dateType, minTime, maxTime, categoryIds }: { type?: TransactionType, dateType?: number, minTime?: number, maxTime?: number, categoryIds?: string[] }): string {
+    function getTransactionListPageParams({ type, dateType, minTime, maxTime, categoryIds, filter }: { type?: TransactionType, dateType?: number, minTime?: number, maxTime?: number, categoryIds?: string[], filter?: OverviewTransactionListFilter }): string {
         const querys: string[] = [];
+        const useHomeFilters = !filter || !filter.ignoreHomeFilters;
 
         if (isDefined(type)) {
             querys.push('type=' + type);
@@ -1098,16 +1102,22 @@ export const useOverviewStore = defineStore('overview', () => {
 
         if (categoryIds && categoryIds.length > 0) {
             querys.push('categoryIds=' + categoryIds.join(','));
-        } else if (!isObjectEmpty(settingsStore.appSettings.overviewTransactionCategoryFilterInHomePage)) {
+        } else if (filter && filter.categoryIds.length > 0) {
+            querys.push('categoryIds=' + filter.categoryIds.join(','));
+        } else if (useHomeFilters && !isObjectEmpty(settingsStore.appSettings.overviewTransactionCategoryFilterInHomePage)) {
             querys.push('categoryIds=' + getFinalCategoryIdsByFilteredCategoryIds(transactionCategoriesStore.allTransactionCategoriesMap, settingsStore.appSettings.overviewTransactionCategoryFilterInHomePage));
         }
 
-        if (!isObjectEmpty(settingsStore.appSettings.overviewAccountFilterInHomePage)) {
+        if (filter && filter.accountIds.length > 0) {
+            querys.push('accountIds=' + filter.accountIds.join(','));
+        } else if (useHomeFilters && !isObjectEmpty(settingsStore.appSettings.overviewAccountFilterInHomePage)) {
             querys.push('accountIds=' + getFinalAccountIdsByFilteredAccountIds(accountsStore.allAccountsMap, settingsStore.appSettings.overviewAccountFilterInHomePage));
         }
 
-        if (settingsStore.appSettings.overviewTransactionTagFilterInHomePage) {
-            querys.push('tagFilter=' + encodeURIComponent(settingsStore.appSettings.overviewTransactionTagFilterInHomePage));
+        const tagFilter = mergeTagFilters(useHomeFilters ? settingsStore.appSettings.overviewTransactionTagFilterInHomePage : '', filter?.tagFilter ?? '');
+
+        if (tagFilter) {
+            querys.push('tagFilter=' + encodeURIComponent(tagFilter));
         }
 
         return querys.join('&');
@@ -1116,6 +1126,7 @@ export const useOverviewStore = defineStore('overview', () => {
     return {
         // states
         dashboardReloadCount,
+        activeDashboardIsHome,
         transactionDataRange,
         transactionOverviewOptions,
         transactionOverviewData,

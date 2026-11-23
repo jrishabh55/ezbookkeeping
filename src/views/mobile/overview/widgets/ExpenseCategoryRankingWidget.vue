@@ -2,6 +2,7 @@
     <f7-list strong inset dividers class="overview-widget-list no-margin-top margin-bottom">
         <f7-list-item group-title v-if="showTitle">
             <small>{{ title || tt('Expense Category Ranking') }}</small>
+            <f7-icon class="margin-left-half" f7="line_horizontal_3_decrease" size="14px" v-if="filtered"></f7-icon>
         </f7-list-item>
 
         <template v-if="loading && !rankingItems.length">
@@ -84,6 +85,7 @@ import { getCategoryDisplayColor } from '@/lib/color.ts';
 
 interface MobileExpenseCategoryRankingWidgetProps extends CommonExpenseCategoryRankingWidgetProps {
     showTitle: boolean;
+    filtered?: boolean;
 }
 
 const props = defineProps<MobileExpenseCategoryRankingWidgetProps>();
