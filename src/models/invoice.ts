@@ -195,6 +195,7 @@ export interface InvoiceInfoResponse {
     readonly taxAmount: number;
     readonly received: number;
     readonly closedManually: boolean;
+    readonly paidDate?: string; // YYYY-MM-DD of the latest payment of a paid invoice, empty otherwise
     readonly lines?: InvoiceLine[];
     readonly payments?: InvoicePayment[];
     readonly publicToken?: string;
@@ -323,6 +324,7 @@ export interface PublicInvoiceResponse {
     readonly total: number;
     readonly received: number;
     readonly closedManually: boolean;
+    readonly paidDate?: string; // YYYY-MM-DD of the latest payment of a paid invoice, empty otherwise
     readonly lines: InvoiceLine[];
     readonly profile: PublicInvoiceProfileResponse;
     readonly kind?: string;
@@ -525,6 +527,7 @@ export class Invoice implements InvoiceInfoResponse {
     public taxAmount: number = 0;
     public received: number = 0;
     public closedManually: boolean = false;
+    public paidDate: string = '';
     public lines: InvoiceLine[] = [];
     public payments: InvoicePayment[] = [];
     public publicToken: string = ''; // empty = no public link
@@ -581,6 +584,7 @@ export class Invoice implements InvoiceInfoResponse {
         this.taxAmount = other.taxAmount;
         this.received = other.received;
         this.closedManually = other.closedManually;
+        this.paidDate = other.paidDate ?? '';
         this.lines = (other.lines ?? []).map(line => ({ ...line, productId: line.productId ?? '' }));
         this.payments = (other.payments ?? []).map(payment => ({ ...payment }));
         this.publicToken = other.publicToken ?? '';

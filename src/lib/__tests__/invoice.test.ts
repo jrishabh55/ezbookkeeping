@@ -17,7 +17,8 @@ import {
     formatInvoiceDocumentDate,
     getInvoicePdfFileName,
     addDaysToDate,
-    getDaysBetweenDates
+    getDaysBetweenDates,
+    getInvoicePaidStampLines
 } from '@/lib/invoice.ts';
 import type { TextualYearMonthDay } from '@/core/datetime.ts';
 
@@ -187,5 +188,19 @@ describe('document formatting', () => {
     test('days between dates across month end', () => {
         expect(getDaysBetweenDates('2026-04-28', '2026-05-05')).toBe(7);
         expect(getDaysBetweenDates('2026-04-23', '2026-04-23')).toBe(0);
+    });
+});
+
+describe('getInvoicePaidStampLines', () => {
+    const stamped = (received: number, paidDate: string, kind = 'invoice', closedManually = false) =>
+        getInvoicePaidStampLines({ total: 100000, received, closedManually, paidDate, kind });
+
+    test('mirrors paidStampLines in pkg/invoicepdf', () => {
+        expect(stamped(0, '')).toEqual([]);
+        expect(stamped(50000, '')).toEqual([]);
+        expect(stamped(100000, '2026-11-02')).toEqual(['PAID', '02 NOV 2026']);
+        expect(stamped(97000, '2026-11-02')).toEqual(['PAID', '02 NOV 2026']);
+        expect(stamped(0, '', 'invoice', true)).toEqual(['PAID']);
+        expect(stamped(100000, '2026-11-02', 'estimate')).toEqual([]);
     });
 });

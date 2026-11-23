@@ -1,11 +1,13 @@
 <template>
     <div class="public-invoice-page">
+        <div class="public-invoice-banner" :class="`public-invoice-banner-${status}`" role="status" v-if="invoice && !isEstimate">
+            <v-icon :icon="statusIcon" />
+            <span class="public-invoice-banner-title">{{ statusTitle }}</span>
+            <span class="public-invoice-banner-detail" v-if="statusDetail">{{ statusDetail }}</span>
+        </div>
         <div class="public-invoice-toolbar" v-if="invoice">
             <span class="public-invoice-status" v-if="isEstimate">
                 {{ estimateStatusText || tt('Total') + ': ' + formatInvoiceDocumentAmount(invoice.total, invoice.currency) }}
-            </span>
-            <span class="public-invoice-status" :class="{ 'public-invoice-status-paid': isPaid }" v-else>
-                {{ isPaid ? tt('Paid') : tt('Amount Due') + ': ' + formatInvoiceDocumentAmount(balanceDue, invoice.currency) }}
             </span>
             <a class="public-invoice-latest-link" :href="latestVersionUrl" v-if="latestVersionUrl">{{ tt('View the latest version') }}</a>
             <v-spacer />
@@ -47,13 +49,14 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 
-import { mdiPrinterOutline, mdiDownloadOutline } from '@mdi/js';
+import { mdiPrinterOutline, mdiDownloadOutline, mdiCheckCircle, mdiAlertCircle, mdiClockOutline, mdiProgressCheck } from '@mdi/js';
 
 import InvoiceDocument from '@/components/common/InvoiceDocument.vue';
 
 import { useI18n } from '@/locales/helpers.ts';
 
 import { Invoice, InvoiceProfile } from '@/models/invoice.ts';
+import type { InvoiceDisplayStatus } from '@/lib/invoice.ts';
 
 import services from '@/lib/services.ts';
 import { readInvoicePdf } from '@/lib/invoicePdf.ts';
@@ -64,6 +67,7 @@ import {
     getInvoicePdfFileName,
     getInvoiceDisplayBalanceDue,
     getInvoiceDisplayStatus,
+    getDaysBetweenDates,
     getInvoicePublicLinkUrl,
     getTodayTextualDate,
     printInvoiceDocument
@@ -93,8 +97,34 @@ const declineNote = ref<string>('');
 const supersededBy = ref<string>('');
 const latestVersionUrl = computed<string>(() => supersededBy.value ? getInvoicePublicLinkUrl(supersededBy.value) : '');
 
-const isPaid = computed<boolean>(() => !!invoice.value && getInvoiceDisplayStatus(invoice.value, getTodayTextualDate()) === 'paid');
+const status = computed<InvoiceDisplayStatus>(() => invoice.value ? getInvoiceDisplayStatus(invoice.value, today) : 'unpaid');
 const balanceDue = computed<number>(() => invoice.value ? getInvoiceDisplayBalanceDue(invoice.value) : 0);
+
+const statusIcon = computed<string>(() => ({ paid: mdiCheckCircle, partial: mdiProgressCheck, overdue: mdiAlertCircle, unpaid: mdiClockOutline })[status.value]);
+const statusTitle = computed<string>(() => tt(({ paid: 'Paid', partial: 'Partially Paid', overdue: 'Overdue', unpaid: 'Amount Due' })[status.value]));
+
+// the banner's second half: when it was paid, or what is still owed and by when
+const statusDetail = computed<string>(() => {
+    const current = invoice.value;
+
+    if (!current) {
+        return '';
+    }
+
+    const due = formatInvoiceDocumentAmount(balanceDue.value, current.currency);
+    const date = formatInvoiceDocumentDate(current.dueDate);
+
+    switch (status.value) {
+        case 'paid':
+            return current.paidDate ? tt('format.misc.invoicePaidOn', { date: formatInvoiceDocumentDate(current.paidDate) }) : '';
+        case 'overdue':
+            return tt('format.misc.invoiceOverdueBy', { days: getDaysBetweenDates(current.dueDate, today), due });
+        case 'partial':
+            return tt('format.misc.invoicePartlyPaid', { received: formatInvoiceDocumentAmount(current.received, current.currency), due, date });
+        default:
+            return tt('format.misc.invoiceDueBy', { due, date });
+    }
+});
 
 const isEstimate = computed<boolean>(() => invoice.value?.kind === 'estimate');
 // the server checks the same: sent and still valid
@@ -208,8 +238,42 @@ load();
     font-weight: 700;
 }
 
-.public-invoice-status-paid {
-    color: #15803d;
+.public-invoice-banner {
+    max-width: 864px;
+    margin: 0 auto 16px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    padding: 14px 20px;
+    border-radius: 8px;
+    font-size: 16px;
+    background: #f3f4f6;
+    color: #111827;
+    border: 1px solid #d1d5db;
+}
+
+.public-invoice-banner-title {
+    font-size: 20px;
+    font-weight: 700;
+}
+
+.public-invoice-banner-paid {
+    background: #dcfce7;
+    color: #14532d;
+    border-color: #86efac;
+}
+
+.public-invoice-banner-partial {
+    background: #fef3c7;
+    color: #78350f;
+    border-color: #fcd34d;
+}
+
+.public-invoice-banner-overdue {
+    background: #fee2e2;
+    color: #7f1d1d;
+    border-color: #fca5a5;
 }
 
 .public-invoice-latest-link {

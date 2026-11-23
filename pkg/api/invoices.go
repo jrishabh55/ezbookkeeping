@@ -761,6 +761,7 @@ func (a *InvoicesApi) InvoicePdfHandler(c *core.WebContext) ([]byte, string, *er
 	}
 
 	received := models.InvoiceReceivedAmount(payments[invoiceId])
+	invoice.PaidDate = models.InvoicePaidDate(invoice, payments[invoiceId])
 
 	var milestones []*models.EstimateMilestone
 

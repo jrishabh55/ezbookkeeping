@@ -1326,5 +1326,7 @@ func (s *InvoiceService) GetInvoiceByPublicToken(c core.Context, token string) (
 		return nil, nil, 0, nil, err
 	}
 
+	invoice.PaidDate = models.InvoicePaidDate(invoice, payments[invoice.InvoiceId])
+
 	return invoice, lines, models.InvoiceReceivedAmount(payments[invoice.InvoiceId]), profile, nil
 }
