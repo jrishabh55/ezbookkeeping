@@ -174,6 +174,9 @@ export const useOverviewStore = defineStore('overview', () => {
     const transactionDailyAmountsData = ref<TransactionDailyAmountsResponseItem[]>([]);
     const transactionDailyAmountsStateInvalid = ref<boolean>(true);
     const widgetQueryKeys = ref<Record<string, string>>({});
+    let widgetAmountsRequestToken = 0;
+    let widgetStatisticsRequestToken = 0;
+    let widgetInvalidationCount = 0;
     const widgetAmountsQueries = ref<Record<string, OverviewWidgetAmountsQuery>>({});
     const widgetAmountsData = ref<Record<string, TransactionAmountsResponse>>({});
     const widgetAmountsStateInvalid = ref<Record<string, boolean>>({});
@@ -318,6 +321,7 @@ export const useOverviewStore = defineStore('overview', () => {
     }
 
     function updateTransactionOverviewInvalidState(invalidState: boolean): void {
+        widgetInvalidationCount++;
         transactionOverviewStateInvalid.value = invalidState;
         transactionUnreconciledCountsStateInvalid.value = invalidState;
 
@@ -527,6 +531,8 @@ export const useOverviewStore = defineStore('overview', () => {
             }
         }
 
+        const requestToken = ++widgetAmountsRequestToken;
+        const invalidationCount = widgetInvalidationCount;
         widgetQueryKeys.value = newQueryKeys;
         widgetAmountsQueries.value = { ...queries };
         widgetAmountsData.value = newData;
@@ -550,8 +556,16 @@ export const useOverviewStore = defineStore('overview', () => {
                         return;
                     }
 
+                    // A newer call replaced the maps, so this response is stale
+                    if (requestToken !== widgetAmountsRequestToken) {
+                        resolve();
+                        return;
+                    }
+
                     widgetAmountsData.value[cacheKey] = data.result;
-                    widgetAmountsStateInvalid.value[cacheKey] = false;
+
+                    widgetAmountsStateInvalid.value[cacheKey] = invalidationCount !== widgetInvalidationCount;
+
                     resolve();
                 }).catch(error => {
                     logger.error('failed to load widget amounts', error);
@@ -614,6 +628,8 @@ export const useOverviewStore = defineStore('overview', () => {
             }
         }
 
+        const requestToken = ++widgetStatisticsRequestToken;
+        const invalidationCount = widgetInvalidationCount;
         widgetStatisticsQueryKeys.value = newQueryKeys;
         widgetStatisticsData.value = newData;
         widgetStatisticsStateInvalid.value = newInvalid;
@@ -643,8 +659,16 @@ export const useOverviewStore = defineStore('overview', () => {
                         return;
                     }
 
+                    // A newer call replaced the maps, so this response is stale
+                    if (requestToken !== widgetStatisticsRequestToken) {
+                        resolve();
+                        return;
+                    }
+
                     widgetStatisticsData.value[cacheKey] = data.result;
-                    widgetStatisticsStateInvalid.value[cacheKey] = false;
+
+                    widgetStatisticsStateInvalid.value[cacheKey] = invalidationCount !== widgetInvalidationCount;
+
                     resolve();
                 }).catch(error => {
                     logger.error('failed to retrieve widget transaction statistics', error);

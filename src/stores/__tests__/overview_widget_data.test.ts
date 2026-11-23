@@ -152,4 +152,53 @@ describe('overview store widget data', () => {
         await store.loadWidgetCategoryStatistics({ force: false, queries: { w1: query } });
         expect(spy).toHaveBeenCalledTimes(2);
     });
+
+    it('ignores a slow amounts response that resolves after a newer call', async () => {
+        const store = useOverviewStore();
+        const ok = (income: string) => ({ data: { success: true, result: { a: { startTime: 1, endTime: 2, amounts: [{ currency: 'INR', incomeAmount: income, expenseAmount: '0' }] } } } });
+        let resolveSlow: (v: unknown) => void = () => {};
+        const spy = vi.spyOn(services, 'getTransactionAmountsByRanges')
+            .mockImplementationOnce(() => new Promise(resolve => { resolveSlow = resolve; }) as never)
+            .mockResolvedValueOnce(ok('7') as never);
+
+        const slow = store.loadWidgetAmounts({ force: false, queries: { w1: amountsQuery(10) } });
+        await store.loadWidgetAmounts({ force: false, queries: { w1: amountsQuery(500) } });
+        resolveSlow(ok('1'));
+        await slow;
+
+        expect(spy).toHaveBeenCalledTimes(2);
+        expect(Object.keys(store.widgetAmountsData)).toHaveLength(1);
+        expect(store.getWidgetAmounts('w1')?.['a']?.incomeAmount.toString()).toBe('7');
+    });
+
+    it('ignores a slow statistics response that resolves after a newer call', async () => {
+        const store = useOverviewStore();
+        let resolveSlow: (v: unknown) => void = () => {};
+        vi.spyOn(services, 'getTransactionStatistics')
+            .mockImplementationOnce(() => new Promise(resolve => { resolveSlow = resolve; }) as never)
+            .mockResolvedValueOnce({ data: { success: true, result: { items: ['new'] } } } as never);
+
+        const slow = store.loadWidgetCategoryStatistics({ force: false, queries: { w1: { startTime: 1, endTime: 2, tagFilter: '' } } });
+        await store.loadWidgetCategoryStatistics({ force: false, queries: { w1: { startTime: 3, endTime: 4, tagFilter: '' } } });
+        resolveSlow({ data: { success: true, result: { items: ['old'] } } });
+        await slow;
+
+        expect(store.getWidgetCategoryStatistics('w1')).toEqual({ items: ['new'] });
+    });
+
+    it('keeps the invalid flag set when invalidated while a request is in flight', async () => {
+        const store = useOverviewStore();
+        let resolveSlow: (v: unknown) => void = () => {};
+        const spy = vi.spyOn(services, 'getTransactionAmountsByRanges')
+            .mockImplementationOnce(() => new Promise(resolve => { resolveSlow = resolve; }) as never)
+            .mockResolvedValue({ data: { success: true, result: { a: { startTime: 1, endTime: 2, amounts: [] } } } } as never);
+
+        const pending = store.loadWidgetAmounts({ force: false, queries: { w1: amountsQuery(10) } });
+        store.updateTransactionOverviewInvalidState(true);
+        resolveSlow({ data: { success: true, result: { a: { startTime: 1, endTime: 2, amounts: [] } } } });
+        await pending;
+        await store.loadWidgetAmounts({ force: false, queries: { w1: amountsQuery(10) } });
+
+        expect(spy).toHaveBeenCalledTimes(2);
+    });
 });
