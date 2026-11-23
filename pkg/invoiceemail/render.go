@@ -20,7 +20,7 @@ import (
 const MaxSubjectLength = 256
 const MaxBodyLength = 32000
 const DefaultSubjectTemplate = "Invoice {{invoice_number}} from {{business_name}}"
-const DefaultBodyTemplate = `<h1><span data-invoice-variable="business_name">{{business_name}}</span> sent you an invoice</h1><p>Hello <span data-invoice-variable="contact_name">{{contact_name}}</span>,</p><p>Please find your invoice attached.</p><h2>Amount due: <span data-invoice-variable="amount_due">{{amount_due}}</span></h2><p>Due <span data-invoice-variable="due_date">{{due_date}}</span></p><div data-invoice-button="true" style="text-align: center">View Invoice</div><p>Thank you for your business.</p><p><strong><span data-invoice-variable="business_name">{{business_name}}</span></strong><br><span data-invoice-variable="business_address">{{business_address}}</span><br><span data-invoice-variable="business_phone">{{business_phone}}</span><br><span data-invoice-variable="business_website">{{business_website}}</span></p>`
+const DefaultBodyTemplate = `<h1><span data-invoice-variable="business_name">{{business_name}}</span> sent you an invoice</h1><p>Hi <span data-invoice-variable="contact_name">{{contact_name}}</span>,</p><p>Please find your invoice attached.</p><h2>Amount due: <span data-invoice-variable="amount_due">{{amount_due}}</span></h2><p>Due <span data-invoice-variable="due_date">{{due_date}}</span></p><div data-invoice-button="true" style="text-align: center">View Invoice</div><p>Regards</p><p>Rishabh Jain<br><span data-invoice-variable="business_phone">{{business_phone}}</span></p>`
 
 // DefaultEstimateSubjectTemplate and DefaultEstimateBodyTemplate are the built-in preset worded for an estimate
 const DefaultEstimateSubjectTemplate = "Estimate {{invoice_number}} from {{business_name}}"

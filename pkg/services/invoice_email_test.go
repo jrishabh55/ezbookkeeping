@@ -238,7 +238,7 @@ func TestInvoiceEmailPreviewFillsBusinessValuesForNonDefaultProfile(t *testing.T
 	require.NoError(t, Invoices.SaveBusinessProfile(ctx, &models.InvoiceProfile{Uid: uid, NumberPrefix: "CDN", DefaultTermsDays: 15, BusinessName: "Codeation", Phone: "98765", Website: "https://codeation.io"}))
 	preview, err := Invoices.PreviewInvoiceEmail(ctx, uid, 0, nil, nil)
 	require.NoError(t, err)
-	for _, value := range []string{"Codeation", "98765", "https://codeation.io"} {
+	for _, value := range []string{"Codeation", "98765"} {
 		require.Contains(t, preview.BodyHtml, value)
 	}
 }
