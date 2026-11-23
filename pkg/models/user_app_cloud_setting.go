@@ -24,6 +24,8 @@ var ALL_ALLOWED_CLOUD_SYNC_APP_SETTING_KEY_TYPES = map[string]UserApplicationClo
 	// Overview Page
 	"desktopOverviewPageLayout":                   USER_APPLICATION_CLOUD_SETTING_TYPE_STRING,
 	"mobileOverviewPageLayout":                    USER_APPLICATION_CLOUD_SETTING_TYPE_STRING,
+	"desktopOverviewExtraDashboards":              USER_APPLICATION_CLOUD_SETTING_TYPE_STRING,
+	"mobileOverviewExtraDashboards":               USER_APPLICATION_CLOUD_SETTING_TYPE_STRING,
 	"showAmountInHomePage":                        USER_APPLICATION_CLOUD_SETTING_TYPE_BOOLEAN,
 	"timezoneUsedForStatisticsInHomePage":         USER_APPLICATION_CLOUD_SETTING_TYPE_NUMBER,
 	"overviewAccountFilterInHomePage":             USER_APPLICATION_CLOUD_SETTING_TYPE_STRING_BOOLEAN_MAP,

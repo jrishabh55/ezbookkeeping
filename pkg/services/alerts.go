@@ -120,6 +120,9 @@ const (
 	categoryNameOtherIncome   = "Other Income"
 )
 
+// businessIncomeCategoryName is the income sub-category whose credits are always business income
+const businessIncomeCategoryName = "Business Income"
+
 // businessCategoryNames are the expense sub-categories that are always business spend (the
 // user's agreed rules: staff, office and all car running costs)
 var businessCategoryNames = map[string]bool{
@@ -1039,7 +1042,8 @@ func (s *AlertService) findAutoSmsTransfers(c core.Context, uid int64, condition
 // transfer-matching list, and hidden categories are excluded from the keyword mapping and from
 // payee history hits, since none of them can legally be used on a new transaction.
 // An expense whose payee history carries the "Business" tag, or whose category is one of
-// businessCategoryNames, is marked Business (only when the user has a visible "Business" tag).
+// businessCategoryNames, is marked Business, as is a credit classified as "Business Income"
+// (only when the user has a visible "Business" tag).
 func (s *AlertService) classify(c core.Context, uid int64, accountId int64, parsed alerts.ParsedAlert, textUpper string, businessTagId int64) (alerts.Classification, error) {
 	accounts, err := Accounts.GetAllAccountsByUid(c, uid)
 
@@ -1163,6 +1167,12 @@ func (s *AlertService) classify(c core.Context, uid int64, accountId int64, pars
 
 	if businessTagId > 0 && parsed.Direction == alerts.Debit && !classification.IsTransfer {
 		if category := categoryById[classification.CategoryId]; category != nil && businessCategoryNames[category.Name] {
+			classification.Business = true
+		}
+	}
+
+	if businessTagId > 0 && parsed.Direction == alerts.Credit && !classification.IsTransfer {
+		if category := categoryById[classification.CategoryId]; category != nil && category.Name == businessIncomeCategoryName {
 			classification.Business = true
 		}
 	}

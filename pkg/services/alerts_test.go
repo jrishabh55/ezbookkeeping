@@ -462,6 +462,46 @@ func TestIngestNeverCreatesBusinessTag(t *testing.T) {
 	}
 }
 
+// businessIncomeTestSetup records a past untagged income from payee in an income category with
+// the given name, with a "Business" tag available
+func businessIncomeTestSetup(t *testing.T, categoryName string, payee string) (core.Context, int64) {
+	ctx, uid := newAlertTestUser(t, "HDFC Bank 1234")
+	accountId := accountIdByName(t, ctx, uid, "HDFC Bank 1234")
+
+	primary := &models.TransactionCategory{Uid: uid, Type: models.CATEGORY_TYPE_INCOME, Name: "Work", Icon: 1, Color: "000000"}
+	secondary := &models.TransactionCategory{Uid: uid, Type: models.CATEGORY_TYPE_INCOME, Name: categoryName, Icon: 1, Color: "000000"}
+	_, err := TransactionCategories.CreateCategories(ctx, uid, map[*models.TransactionCategory][]*models.TransactionCategory{nil: {primary}, primary: {secondary}})
+	assert.Nil(t, err)
+	assert.Nil(t, TransactionTags.CreateTags(ctx, uid, []*models.TransactionTag{{Uid: uid, Name: "Business"}}, true))
+
+	past := &models.Transaction{
+		Uid: uid, Type: models.TRANSACTION_DB_TYPE_INCOME, CategoryId: secondary.CategoryId, AccountId: accountId,
+		Amount: 50000, TransactionTime: utils.GetMinTransactionTimeFromUnixTime(time.Now().Add(-24 * time.Hour).Unix()),
+		TimezoneUtcOffset: 330, Comment: payee,
+	}
+	assert.Nil(t, Transactions.CreateTransaction(ctx, past, nil, nil))
+
+	return ctx, uid
+}
+
+func ingestCreditFrom(t *testing.T, ctx core.Context, uid int64, payee string) []string {
+	r, err := Alerts.Ingest(ctx, uid, "XX-HDFCBK", "INR 5,000.00 credited to A/c XX1234 by IMPS from "+payee, time.Now())
+	assert.Nil(t, err)
+	assert.Equal(t, "added", r.Outcome)
+
+	return tagNamesOf(t, ctx, uid, r.TransactionId)
+}
+
+func TestIngestTagsBusinessIncomeCredit(t *testing.T) {
+	ctx, uid := businessIncomeTestSetup(t, "Business Income", "JOHN DOE")
+	assert.Contains(t, ingestCreditFrom(t, ctx, uid, "JOHN DOE"), "Business")
+}
+
+func TestIngestLeavesOtherIncomeUntagged(t *testing.T) {
+	ctx, uid := businessIncomeTestSetup(t, "Interest Income", "JOHN DOE")
+	assert.NotContains(t, ingestCreditFrom(t, ctx, uid, "JOHN DOE"), "Business")
+}
+
 const (
 	neftPnbDebit   = "Ac XX4215 debited Rs.200000.00 on 30-10-2026 16:36:10 for NEFT thru MBS reqid 793227839 from PUNBY26303389748/0793227839/Ri. Bal Rs.170137.51 CR.Helpline 18001800/18002021. Not u? Fwd this SMS to 9264092640 to block MBS-PNB"
 	neftHdfcCredit = "Update! INR 2,00,000.00 deposited in HDFC Bank A/c XX7731 on 30-OCT-26 for NEFT Cr-PUNB0042800-RISHABH JAIN S O HARISH KUMAR-Rishabh jain-PUNBY26303389748.Avl bal INR 2,90,168.45. Cheque deposits in A/C are subject to clearing"
